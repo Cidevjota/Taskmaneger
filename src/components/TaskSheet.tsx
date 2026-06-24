@@ -1,0 +1,1779 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  X, 
+  Trash2, 
+  CheckSquare, 
+  Square, 
+  Plus, 
+  Calendar as CalendarIcon, 
+  Tag as TagIcon, 
+  User as UserIcon, 
+  Folder as FolderIcon,
+  Flag,
+  CircleDot,
+  Trash,
+  CheckCircle2,
+  Bookmark,
+  Clock,
+  HelpCircle,
+  AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  Layers,
+  Inbox,
+  PenTool,
+  Type,
+  DollarSign,
+  Share2,
+  ChevronRight,
+  ChevronLeft,
+  ChevronDown,
+  Maximize2,
+  Minimize2,
+  XSquare,
+  Bell,
+  FileText,
+  Paperclip,
+  Link2,
+  UserPlus,
+  Check,
+  ExternalLink,
+  Download
+} from 'lucide-react';
+import DatePicker from './DatePicker';
+import RichTextEditor from './RichTextEditor';
+import DesignProperties from './DesignProperties';
+import CopyProperties from './CopyProperties';
+import BudgetProperties from './BudgetProperties';
+import PlanningProperties from './PlanningProperties';
+import TaskChat from './TaskChat';
+import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } from '../types';
+import { useNotifications } from '../context/NotificationContext';
+import { useAuth } from '../context/AuthContext';
+
+interface TaskSheetProps {
+  task: Task | null;
+  isOpen: boolean;
+  onClose: (localTaskState?: any) => void;
+  projects: Project[];
+  allLabels: Label[];
+  onUpdateTask: (updated: Task) => void;
+  onDeleteTask: (taskId: string) => void;
+  allTasks?: Task[];
+  onAddTask?: (task: Task) => void;
+  onSelectTask?: (task: Task) => void;
+}
+
+const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon: React.ReactNode }[] = [
+  { value: 'no_priority', label: 'Sem Prioridade', badgeStyle: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/15 hover:bg-zinc-500/20', icon: null },
+  { value: 'low', label: 'Baixa', badgeStyle: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/15 hover:bg-emerald-500/20', icon: <ArrowDown size={10} className="shrink-0" /> },
+  { value: 'medium', label: 'Média', badgeStyle: 'text-blue-400 bg-blue-500/10 border-blue-500/15 hover:bg-blue-500/20', icon: null },
+  { value: 'high', label: 'Alta', badgeStyle: 'text-orange-400 bg-orange-500/10 border-orange-500/15 hover:bg-orange-500/20', icon: <ArrowUp size={10} className="shrink-0" /> },
+  { value: 'urgent', label: 'Urgente', badgeStyle: 'text-red-400 bg-red-500/10 border-red-500/15 hover:bg-red-500/20', icon: <AlertTriangle size={10} className="shrink-0" /> },
+];
+
+const statuses: { value: TaskStatus; label: string; color: string; dotColor: string; icon: React.ReactNode }[] = [
+  { value: 'no_forecast', label: 'Sem previsão', color: 'bg-slate-700/50 text-slate-300', dotColor: 'bg-slate-500', icon: <Inbox size={12} className="shrink-0" /> },
+  { value: 'todo', label: 'A fazer', color: 'bg-blue-900/40 text-blue-300 border border-blue-500/20', dotColor: 'bg-blue-500', icon: <HelpCircle size={12} className="shrink-0" /> },
+  { value: 'in_progress', label: 'Em progresso', color: 'bg-amber-900/40 text-amber-300 border border-amber-500/20', dotColor: 'bg-amber-500', icon: <Clock size={12} className="shrink-0 animate-pulse" /> },
+  { value: 'paused', label: 'Pausado', color: 'bg-red-900/40 text-red-300 border border-red-500/20', dotColor: 'bg-red-400', icon: <AlertTriangle size={12} className="shrink-0" /> },
+  { value: 'approval', label: 'Aprovação', color: 'bg-purple-900/40 text-purple-300 border border-purple-500/20', dotColor: 'bg-purple-500', icon: <HelpCircle size={12} className="shrink-0" /> },
+  { value: 'rework', label: 'Refação', color: 'bg-orange-900/40 text-orange-300 border border-orange-500/20', dotColor: 'bg-orange-500', icon: <ArrowDown size={12} className="shrink-0" /> },
+  { value: 'implementation', label: 'Implementação', color: 'bg-blue-900/40 text-blue-300 border border-blue-500/20', dotColor: 'bg-blue-500', icon: <Layers size={12} className="shrink-0" /> },
+  { value: 'done', label: 'Concluído', color: 'bg-emerald-900/40 text-emerald-300 border border-emerald-500/20', dotColor: 'bg-emerald-500', icon: <CheckCircle2 size={12} className="shrink-0" /> },
+];
+
+const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, taskAssigneeId }: { attachments?: Attachment[], onUpdate: (newAttachments: Attachment[]) => void, taskId: string, taskTitle: string, taskAssigneeId?: string }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [addMode, setAddMode] = useState<'link' | 'file'>('link');
+  const [docName, setDocName] = useState('');
+  const [docLink, setDocLink] = useState('');
+  const [approverMenuOpenFor, setApproverMenuOpenFor] = useState<string | null>(null);
+  
+  const { allUsers: USERS, currentUser } = useAuth();
+  const { addNotification } = useNotifications();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    const newAttachments = Array.from(files).map(file => ({
+      id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      name: docName || file.name,
+      url: URL.createObjectURL(file),
+      size: file.size,
+      isLink: false,
+      approvalStatus: 'none' as const
+    }));
+    
+    onUpdate([...attachments, ...newAttachments]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    resetAddState();
+  };
+
+  const handleAddLink = () => {
+    if (!docName || !docLink) return;
+    const newAttachment = {
+      id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      name: docName,
+      url: docLink,
+      size: 0,
+      isLink: true,
+      approvalStatus: 'none' as const
+    };
+    onUpdate([...attachments, newAttachment]);
+    resetAddState();
+  };
+
+  const resetAddState = () => {
+    setIsAdding(false);
+    setDocName('');
+    setDocLink('');
+  };
+
+  const removeAttachment = (id: string) => {
+    onUpdate(attachments.filter(a => a.id !== id));
+  };
+
+  const updateAttachmentStatus = (id: string, updates: Partial<Attachment>) => {
+    const att = attachments.find(a => a.id === id);
+    if (!att) return;
+
+    if (updates.approvalStatus === 'pending' && updates.approverId) {
+      addNotification({
+        userId: updates.approverId,
+        actorId: currentUser?.id || 'system',
+        taskId: taskId,
+        targetId: att.id,
+        type: 'review_requested',
+        message: 'Aprovação de Documento',
+        details: `Você foi selecionado para aprovar o documento "${att.name}" na tarefa "${taskTitle}".`
+      });
+    } else if (updates.approvalStatus === 'approved' || updates.approvalStatus === 'rejected') {
+      if (taskAssigneeId) {
+        addNotification({
+          userId: taskAssigneeId,
+          actorId: currentUser?.id || 'system',
+          taskId: taskId,
+          targetId: att.id,
+          type: updates.approvalStatus === 'approved' ? 'approved' : 'rejected',
+          message: updates.approvalStatus === 'approved' ? 'Documento Aprovado' : 'Documento Reprovado',
+          details: `O documento "${att.name}" na tarefa "${taskTitle}" foi ${updates.approvalStatus === 'approved' ? 'aprovado' : 'reprovado'}.`
+        });
+      }
+    }
+
+    onUpdate(attachments.map(a => a.id === id ? { ...a, ...updates } : a));
+    setApproverMenuOpenFor(null);
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {attachments.length > 0 && (
+        <div className="flex flex-col gap-1.5 mb-2">
+          {attachments.map(att => (
+            <div id={`target-${att.id}`} key={att.id} className="group relative flex items-center justify-between p-2 rounded-md border border-zinc-800/60 bg-[#121214] hover:bg-[#18181b] hover:border-zinc-700/80 transition-all">
+              <div className="flex items-center gap-2.5 overflow-hidden flex-1">
+                <div className="w-6 h-6 rounded bg-zinc-800/50 flex items-center justify-center shrink-0">
+                  {att.isLink ? <Link2 size={12} className="text-zinc-400" /> : <FileText size={12} className="text-zinc-400" />}
+                </div>
+                <div className="flex items-center gap-2 overflow-hidden flex-1">
+                  <span className="text-xs font-medium text-zinc-200 truncate">{att.name}</span>
+                  {!att.isLink && <span className="text-[10px] text-zinc-600 font-mono">{formatSize(att.size)}</span>}
+                  
+                  {/* Status Badges */}
+                  {att.approvalStatus === 'pending' && (
+                    <span className="px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold rounded-sm bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                      Em análise
+                    </span>
+                  )}
+                  {att.approvalStatus === 'approved' && (
+                    <span className="px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold rounded-sm bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                      Aprovado
+                    </span>
+                  )}
+                  {att.approvalStatus === 'rejected' && (
+                    <span className="px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-bold rounded-sm bg-red-500/10 text-red-400 border border-red-500/20 shrink-0">
+                      Reprovado
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                {/* Approval Action Buttons (visible when pending) */}
+                {att.approvalStatus === 'pending' && (
+                  <div className="flex items-center gap-0.5 mr-2">
+                    <button type="button" onClick={() => updateAttachmentStatus(att.id, { approvalStatus: 'approved' })} className="p-1 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded transition-colors" title="Aprovar">
+                      <Check size={13} strokeWidth={3} />
+                    </button>
+                    <button type="button" onClick={() => updateAttachmentStatus(att.id, { approvalStatus: 'rejected' })} className="p-1 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" title="Reprovar">
+                      <X size={13} strokeWidth={3} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Send to Approval Button (hover) */}
+                {(!att.approvalStatus || att.approvalStatus === 'none') && (
+                  <div className="relative">
+                    <button 
+                      type="button"
+                      onClick={() => setApproverMenuOpenFor(approverMenuOpenFor === att.id ? null : att.id)}
+                      className="p-1 px-2 text-[10px] font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1"
+                    >
+                      <UserPlus size={11} /> Enviar para aprovação
+                    </button>
+
+                    {/* Approver Dropdown */}
+                    {approverMenuOpenFor === att.id && (
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
+                        <div className="px-2 py-1.5 border-b border-zinc-800/80">
+                          <span className="text-[10px] font-semibold text-zinc-500 uppercase">Selecionar Aprovador</span>
+                        </div>
+                        <div className="max-h-40 overflow-y-auto">
+                          {USERS.map(u => (
+                            <button
+                              type="button"
+                              key={u.id}
+                              onClick={() => updateAttachmentStatus(att.id, { approverId: u.id, approvalStatus: 'pending' })}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left"
+                            >
+                              <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                              <span className="text-xs text-zinc-300">{u.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Always visible Open button */}
+                <a 
+                  href={att.url} 
+                  target={att.isLink ? "_blank" : undefined}
+                  download={!att.isLink ? att.name : undefined} 
+                  className="p-1 px-2 text-[10px] font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded transition-colors flex items-center gap-1"
+                >
+                  {att.isLink ? <ExternalLink size={11} /> : <Download size={11} />}
+                  Abrir
+                </a>
+
+                {/* Remove Button (hover) */}
+                <button type="button" onClick={() => removeAttachment(att.id)} className="p-1 ml-1 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors opacity-0 group-hover:opacity-100" title="Remover">
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {!isAdding ? (
+        <button 
+          type="button"
+          onClick={() => setIsAdding(true)}
+          className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-zinc-800/60 hover:border-zinc-700 hover:bg-zinc-900/30 rounded-lg text-zinc-500 hover:text-zinc-300 text-xs font-medium transition-all"
+        >
+          <Plus size={13} />
+          Anexar documento ou link
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 p-1.5 border border-zinc-800 rounded-lg bg-[#0e0e10] animate-fade-in">
+          <input
+            type="text"
+            autoFocus
+            value={docName}
+            onChange={(e) => setDocName(e.target.value)}
+            placeholder="Nome do documento..."
+            className="flex-1 min-w-[120px] bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-600 focus:ring-0 px-2 h-7"
+          />
+          <div className="w-[1px] h-4 bg-zinc-800" />
+          
+          {addMode === 'link' ? (
+            <input
+              type="text"
+              value={docLink}
+              onChange={(e) => setDocLink(e.target.value)}
+              placeholder="Colar link..."
+              className="flex-1 min-w-[150px] bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-600 focus:ring-0 px-2 h-7"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddLink();
+                }
+              }}
+            />
+          ) : (
+            <button 
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 min-w-[150px] flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 px-2 h-7 transition-colors"
+            >
+              <Paperclip size={12} /> Selecionar do computador
+            </button>
+          )}
+
+          <div className="flex items-center gap-1 shrink-0 px-1">
+            <button 
+              type="button"
+              onClick={() => setAddMode(addMode === 'link' ? 'file' : 'link')}
+              className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-900 rounded hover:bg-zinc-800 transition-colors"
+              title={addMode === 'link' ? "Mudar para Arquivo" : "Mudar para Link"}
+            >
+              {addMode === 'link' ? <Paperclip size={12} /> : <Link2 size={12} />}
+            </button>
+            <button 
+              type="button"
+              onClick={addMode === 'link' ? handleAddLink : () => fileInputRef.current?.click()}
+              disabled={!docName || (addMode === 'link' && !docLink)}
+              className="px-3 h-7 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add
+            </button>
+            <button type="button" onClick={resetAddState} className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors">
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept="*"
+        multiple 
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+};
+
+const TitleInput = ({ taskId, initialValue, onChange, missingTitle }: { taskId: string, initialValue: string, onChange: (val: string) => void, missingTitle: boolean }) => {
+  const [val, setVal] = useState(initialValue);
+  
+  useEffect(() => {
+    setVal(initialValue);
+  }, [taskId]);
+
+  return (
+    <textarea
+      value={val}
+      onChange={(e) => {
+        setVal(e.target.value);
+        onChange(e.target.value);
+      }}
+      placeholder="Dê um nome para sua tarefa..."
+      rows={2}
+      className={`w-full bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-2xl font-bold placeholder-zinc-500 resize-none leading-tight ${missingTitle ? 'text-red-400 placeholder:text-red-400/50' : 'text-zinc-100'}`}
+    />
+  );
+};
+
+const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown }: { subtaskId: string, initialValue: string, onChange: (val: string) => void, onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void }) => {
+  const [val, setVal] = useState(initialValue);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => setVal(initialValue), [subtaskId, initialValue]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [val]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      id={`subtask-input-${subtaskId}`}
+      rows={1}
+      value={val}
+      onChange={(e) => {
+        setVal(e.target.value);
+        onChange(e.target.value);
+      }}
+      onKeyDown={onKeyDown}
+      className="flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-xs font-normal text-zinc-300 placeholder-zinc-600 resize-none overflow-hidden block w-full py-0"
+      placeholder="Descreva a subtarefa..."
+    />
+  );
+};
+
+export default function TaskSheet({
+  task,
+  isOpen,
+  onClose,
+  projects,
+  allLabels,
+  onUpdateTask,
+  onDeleteTask,
+  allTasks,
+  onAddTask,
+  onSelectTask
+}: TaskSheetProps) {
+  const { allUsers: USERS, currentUser } = useAuth();
+  const { addNotification } = useNotifications();
+  const titleRef = useRef(task?.title || '');
+  const descriptionRef = useRef(task?.description || '');
+  const titleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const descTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [status, setStatus] = useState<TaskStatus>(task?.status || 'todo');
+  const [priority, setPriority] = useState<TaskPriority>(task?.priority || 'no_priority');
+  const [projectId, setProjectId] = useState(task?.projectId || '');
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [taskLabels, setTaskLabels] = useState<Label[]>(task?.labels || []);
+  const [dueDate, setDueDate] = useState<string | undefined>(task?.dueDate);
+  const [reminderDate, setReminderDate] = useState<string | undefined>(task?.reminderDate);
+  const [assigneeId, setAssigneeId] = useState<string | undefined>(task?.assigneeId);
+  const [subtasks, setSubtasks] = useState<Subtask[]>(task?.subtasks || []);
+  const [isPriorityOpen, setPriorityOpen] = useState(false);
+  const [isProjectOpen, setProjectOpen] = useState(false);
+  const [isAssigneeOpen, setAssigneeOpen] = useState(false);
+  const [isLabelsExpanded, setIsLabelsExpanded] = useState(false);
+  const [subtaskAssigneeMenuOpenFor, setSubtaskAssigneeMenuOpenFor] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(true);
+
+  const plainDesc = (descriptionRef.current || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim();
+  const missingTitle = !(titleRef.current && titleRef.current.trim());
+  const missingDesc = !plainDesc;
+  const missingLabel = !(taskLabels && taskLabels.length > 0);
+  const missingProject = !projectId;
+  const missingAssignee = !assigneeId;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isFullscreenDesc, setIsFullscreenDesc] = useState(false);
+  
+  const [prevTaskId, setPrevTaskId] = useState(task?.id);
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    properties: true,
+    description: true,
+    hierarchy: true,
+    checklist: true,
+    designProps: true,
+    copyProps: true,
+    planningProps: true,
+    budgetProps: true,
+    attachments: true
+  });
+
+  useEffect(() => {
+    const handleOpenSection = (e: any) => {
+      const payload = e.detail;
+      if (!payload) return;
+      
+      const section = typeof payload === 'string' ? payload : payload.section;
+      const targetId = typeof payload === 'string' ? undefined : payload.targetId;
+
+      if (section && isOpen) {
+        setOpenSections(prev => {
+          const newSections = { ...prev };
+          // Expand the targeted section
+          newSections[section] = true;
+          return newSections;
+        });
+        let attempts = 0;
+        const tryScroll = () => {
+          let el = null;
+          if (targetId) el = document.getElementById(`target-${targetId}`);
+          if (!el) el = document.getElementById(`section-${section}`);
+          
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
+            setTimeout(() => {
+              el.classList.remove('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
+            }, 2500);
+          } else if (attempts < 15) {
+            attempts++;
+            setTimeout(tryScroll, 100);
+          }
+        };
+        setTimeout(tryScroll, 100);
+      }
+    };
+    window.addEventListener('openTaskSection', handleOpenSection);
+    return () => window.removeEventListener('openTaskSection', handleOpenSection);
+  }, [isOpen]);
+
+  const toggleSection = (section: string) => {
+    setOpenSections(prev => {
+      const isNowOpen = !prev[section];
+      const updates: Record<string, boolean> = { [section]: isNowOpen };
+      
+      // Sincronizar as 3 colunas (Checklist, Hierarquia, Documentos)
+      if (['checklist', 'hierarchy', 'attachments'].includes(section)) {
+        updates.checklist = isNowOpen;
+        updates.hierarchy = isNowOpen;
+        updates.attachments = isNowOpen;
+      }
+      
+      return { ...prev, ...updates };
+    });
+  };
+  
+  const [animatingToIndex, setAnimatingToIndex] = useState<number | null>(null);
+  const [currentVisibleIndex, setCurrentVisibleIndex] = useState<number>(-1);
+  const [isLinkDropdownOpen, setIsLinkDropdownOpen] = useState(false);
+  const [linkSearchQuery, setLinkSearchQuery] = useState('');
+
+  if (task?.id !== prevTaskId) {
+    setPrevTaskId(task?.id);
+    titleRef.current = task?.title || '';
+    descriptionRef.current = task?.description || '';
+    setStatus(task?.status || 'todo');
+    setPriority(task?.priority || 'no_priority');
+    setProjectId(task?.projectId || '');
+    setTaskLabels(task?.labels || []);
+    setDueDate(task?.dueDate || '');
+    setReminderDate(task?.reminderDate || '');
+    setAssigneeId(task?.assigneeId);
+    setSubtasks(task?.subtasks || []);
+    
+    setAnimatingToIndex(null);
+    setCurrentVisibleIndex(-1);
+  }
+
+  useEffect(() => {
+    if (task && task.status && task.status !== status) {
+      setStatus(task.status);
+    }
+  }, [task?.status]);
+
+  const primaryLabelId = taskLabels.length > 0 ? taskLabels[0]?.id : null;
+  const primaryLabelData = primaryLabelId ? allLabels.find(l => l.id === primaryLabelId) : null;
+  const primaryColorString = primaryLabelData ? primaryLabelData.color : 'text-blue-500';
+  const baseColorMatch = primaryColorString.match(/text-([a-z]+)-\d+/);
+  const baseColor = baseColorMatch ? baseColorMatch[1] : 'blue';
+
+  const getTheme = (color: string) => {
+    switch (color) {
+      case 'yellow': return { line: 'bg-yellow-600/80', text: 'text-yellow-400', dotBg: 'bg-yellow-500/20', dotBorder: 'border-yellow-500/50', dotInner: 'bg-yellow-500', btnBg: 'bg-yellow-600', btnHover: 'hover:bg-yellow-500', focusRing: 'focus:ring-yellow-500/50', focusBorder: 'focus:border-yellow-500/50', badgeBg: 'bg-yellow-500/10', badgeBorder: 'border-yellow-500/20', badgeHover: 'hover:bg-yellow-500/20' };
+      case 'pink': return { line: 'bg-pink-600/80', text: 'text-pink-400', dotBg: 'bg-pink-500/20', dotBorder: 'border-pink-500/50', dotInner: 'bg-pink-500', btnBg: 'bg-pink-600', btnHover: 'hover:bg-pink-500', focusRing: 'focus:ring-pink-500/50', focusBorder: 'focus:border-pink-500/50', badgeBg: 'bg-pink-500/10', badgeBorder: 'border-pink-500/20', badgeHover: 'hover:bg-pink-500/20' };
+      case 'emerald': return { line: 'bg-emerald-600/80', text: 'text-emerald-400', dotBg: 'bg-emerald-500/20', dotBorder: 'border-emerald-500/50', dotInner: 'bg-emerald-500', btnBg: 'bg-emerald-600', btnHover: 'hover:bg-emerald-500', focusRing: 'focus:ring-emerald-500/50', focusBorder: 'focus:border-emerald-500/50', badgeBg: 'bg-emerald-500/10', badgeBorder: 'border-emerald-500/20', badgeHover: 'hover:bg-emerald-500/20' };
+      case 'purple': return { line: 'bg-purple-600/80', text: 'text-purple-400', dotBg: 'bg-purple-500/20', dotBorder: 'border-purple-500/50', dotInner: 'bg-purple-500', btnBg: 'bg-purple-600', btnHover: 'hover:bg-purple-500', focusRing: 'focus:ring-purple-500/50', focusBorder: 'focus:border-purple-500/50', badgeBg: 'bg-purple-500/10', badgeBorder: 'border-purple-500/20', badgeHover: 'hover:bg-purple-500/20' };
+      case 'orange': return { line: 'bg-orange-600/80', text: 'text-orange-400', dotBg: 'bg-orange-500/20', dotBorder: 'border-orange-500/50', dotInner: 'bg-orange-500', btnBg: 'bg-orange-600', btnHover: 'hover:bg-orange-500', focusRing: 'focus:ring-orange-500/50', focusBorder: 'focus:border-orange-500/50', badgeBg: 'bg-orange-500/10', badgeBorder: 'border-orange-500/20', badgeHover: 'hover:bg-orange-500/20' };
+      default: return { line: 'bg-blue-600/80', text: 'text-blue-400', dotBg: 'bg-blue-500/20', dotBorder: 'border-blue-500/50', dotInner: 'bg-blue-500', btnBg: 'bg-blue-600', btnHover: 'hover:bg-blue-500', focusRing: 'focus:ring-blue-500/50', focusBorder: 'focus:border-blue-500/50', badgeBg: 'bg-blue-500/10', badgeBorder: 'border-blue-500/20', badgeHover: 'hover:bg-blue-500/20' };
+    }
+  };
+  
+  const theme = getTheme(baseColor);
+  const themeTextColor = theme.text;
+
+  const childTasks = allTasks ? allTasks.filter(t => t.parentTaskId === task?.id) : [];
+
+  let ThemeIcon = TagIcon;
+  if (primaryLabelData?.name === 'Design') ThemeIcon = PenTool;
+  else if (primaryLabelData?.name === 'Copy') ThemeIcon = Type;
+  else if (primaryLabelData?.name === 'Tarefa') ThemeIcon = CheckSquare;
+  else if (primaryLabelData?.name === 'Orçamento') ThemeIcon = DollarSign;
+  else if (primaryLabelData?.name === 'Social Mídia') ThemeIcon = Share2;
+
+  useEffect(() => {
+    if (!task) return;
+    if (JSON.stringify(subtasks) === JSON.stringify(task.subtasks)) return;
+    const timer = setTimeout(() => {
+      saveChange({ subtasks });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [subtasks]);
+
+  useEffect(() => {
+    if (animatingToIndex !== null && currentVisibleIndex !== animatingToIndex) {
+      const step = currentVisibleIndex < animatingToIndex ? 1 : -1;
+      const timer = setTimeout(() => {
+        setCurrentVisibleIndex(prev => prev + step);
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (animatingToIndex !== null && currentVisibleIndex === animatingToIndex) {
+      const finishTimer = setTimeout(() => {
+        setAnimatingToIndex(null);
+      }, 100);
+      return () => clearTimeout(finishTimer);
+    }
+  }, [animatingToIndex, currentVisibleIndex]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleEsc);
+    }
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, projectId, assigneeId, taskLabels]);
+
+  if (!isOpen || !task) return null;
+
+  const saveChange = (updates: Partial<Task>) => {
+    if (!task) return;
+    onUpdateTask({ ...updates, id: task.id } as Task);
+  };
+
+  const toggleSubtask = (subId: string) => {
+    setSubtasks(prev => prev.map(s => {
+      if (s.id !== subId) return s;
+      if (!s.completed && !s.canceled) {
+        return { ...s, completed: true, canceled: false };
+      } else if (s.completed && !s.canceled) {
+        return { ...s, completed: false, canceled: true };
+      } else {
+        return { ...s, completed: false, canceled: false };
+      }
+    }));
+  };
+
+  const handleSetSubtaskReminder = (subId: string, date: string) => {
+    setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, reminderDate: date } : s));
+  };
+
+  const handleSetSubtaskAssignee = (subId: string, userId: string) => {
+    setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, assigneeId: userId || undefined } : s));
+    setSubtaskAssigneeMenuOpenFor(null);
+    
+    if (userId && task) {
+      const sub = subtasks.find(s => s.id === subId);
+      addNotification({
+        userId: userId,
+        actorId: currentUser?.id || 'system',
+        taskId: task.id,
+        targetId: subId,
+        type: 'task_assigned',
+        message: 'Responsável por Item',
+        details: `Você foi marcado como responsável pelo item "${sub?.title}" na tarefa "${task.title}".`
+      });
+    }
+  };
+
+  const handleEditSubtaskTitle = (subId: string, newTitle: string) => {
+    setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, title: newTitle } : s));
+  };
+
+  const handleDeleteSubtask = (subId: string) => {
+    setSubtasks(prev => prev.filter(s => s.id !== subId));
+  };
+
+  const handleSubtaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, index: number, subId: string) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const currentLevel = subtasks[index].level || 0;
+      
+      if (e.shiftKey) {
+        if (currentLevel > 0) {
+          setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, level: currentLevel - 1 } : s));
+        }
+      } else {
+        const prevLevel = index > 0 ? (subtasks[index - 1].level || 0) : 0;
+        if (currentLevel <= prevLevel) {
+          setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, level: currentLevel + 1 } : s));
+        }
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const newId = `sub-${Date.now()}`;
+      const newSubtask: Subtask = { 
+        id: newId, 
+        title: '', 
+        completed: false,
+        level: subtasks[index].level || 0
+      };
+      
+      setSubtasks(prev => {
+        const copy = [...prev];
+        copy.splice(index + 1, 0, newSubtask);
+        return copy;
+      });
+
+      setTimeout(() => {
+        document.getElementById(`subtask-input-${newId}`)?.focus();
+      }, 50);
+    } else if (e.key === 'Backspace') {
+      const target = e.currentTarget;
+      const currentLevel = subtasks[index].level || 0;
+      
+      if (target.selectionStart === 0 && target.selectionEnd === 0) {
+        if (currentLevel > 0) {
+          e.preventDefault();
+          setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, level: currentLevel - 1 } : s));
+        } else if (subtasks[index].title === '') {
+          e.preventDefault();
+          handleDeleteSubtask(subId);
+          if (index > 0) {
+            setTimeout(() => {
+              const prevInput = document.getElementById(`subtask-input-${subtasks[index - 1].id}`);
+              if (prevInput) {
+                prevInput.focus();
+                (prevInput as HTMLInputElement).setSelectionRange(9999, 9999);
+              }
+            }, 50);
+          }
+        }
+      }
+    }
+  };
+
+  const handleAddSubtask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubtaskTitle.trim()) return;
+    const newId = `sub-${Date.now()}`;
+    const newSub: Subtask = {
+      id: newId,
+      title: newSubtaskTitle.trim(),
+      completed: false
+    };
+    setSubtasks(prev => [...prev, newSub]);
+    setNewSubtaskTitle('');
+  };
+
+  const toggleLabel = (label: Label) => {
+    const isCurrentlySelected = taskLabels.some(l => l?.id === label.id);
+    if (isCurrentlySelected) return;
+    
+    if (taskLabels.length >= 1) {
+      saveChange({ 
+        labels: [label],
+        designBriefing: undefined
+      });
+      setTaskLabels([label]);
+      setIsLabelsExpanded(false);
+      setToastMessage('A classe da tarefa foi substituída. Cada tarefa permite apenas 1 classe simultaneamente.');
+      setTimeout(() => setToastMessage(null), 4000);
+    } else {
+      setTaskLabels([label]);
+      saveChange({ labels: [label] });
+      setIsLabelsExpanded(false);
+    }
+  };
+
+  const handleAddChildTask = () => {
+    if (!onAddTask) return;
+    const newId = `TSK-${Date.now().toString().slice(-4)}`;
+    const newTask: Task = {
+      id: newId,
+      title: 'Nova Tarefa',
+      description: 'Clique aqui e altere os detalhes no painel lateral de forma instantânea.',
+      status: 'todo',
+      priority: task.priority,
+      projectId: task.projectId,
+      labels: task.labels,
+      subtasks: [],
+      createdAt: new Date().toISOString().split('T')[0],
+      parentTaskId: task.id,
+      assigneeId: task.assigneeId
+    };
+    onAddTask(newTask);
+    if (onSelectTask) {
+      onSelectTask(newTask);
+    }
+  };
+
+
+
+  const handleCreateTaskClass = () => {
+    if (!task) return;
+    
+    if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+    if (descTimerRef.current) clearTimeout(descTimerRef.current);
+    saveChange({ title: titleRef.current, description: descriptionRef.current });
+
+    onClose({
+      ...task,
+      title: titleRef.current,
+      description: descriptionRef.current,
+      projectId,
+      assigneeId,
+      labels: taskLabels
+    });
+  };
+
+  const handleClose = (e?: any) => {
+    if (!task) {
+      onClose();
+      return;
+    }
+    
+    // Flush debounced local state immediately
+    if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+    if (descTimerRef.current) clearTimeout(descTimerRef.current);
+    
+    saveChange({
+      title: titleRef.current,
+      description: descriptionRef.current
+    });
+
+    // Pass the full task object to avoid triggering false positive validation errors
+    // Since App.tsx's handleCloseTaskSheet uses this strictly for validation (and doesn't save it),
+    // it is perfectly safe to pass ...task.
+    onClose({
+      ...task,
+      title: titleRef.current,
+      description: descriptionRef.current,
+      projectId,
+      assigneeId,
+      labels: taskLabels
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 bg-black/55 backdrop-blur-xs flex justify-end animate-fade-in">
+      <div className="flex-1" onMouseDown={handleClose} />
+
+      <div className="w-full md:w-[75vw] h-full bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200">
+        
+        <div className="h-14 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a]">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] bg-zinc-900 px-2.5 py-1 rounded font-mono text-zinc-400 font-semibold border border-zinc-900">
+              {task.id}
+            </span>
+            <span className="text-[10px] text-zinc-650 font-mono">
+              Criado em {task.createdAt}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
+              title="Excluir Tarefa"
+            >
+              <Trash2 size={15} />
+            </button>
+            <button
+              onClick={handleClose}
+              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40 rounded transition-all"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin">
+          
+          <div className="mb-2 flex items-start gap-3 relative">
+            <div className={`mt-[2px] shrink-0 ${themeTextColor}`}>
+              <ThemeIcon size={28} />
+            </div>
+            <TitleInput
+              taskId={task.id}
+              initialValue={titleRef.current}
+              missingTitle={missingTitle}
+              onChange={(val) => {
+                titleRef.current = val;
+                if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+                titleTimerRef.current = setTimeout(() => saveChange({ title: val }), 500);
+              }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => toggleSection('properties')}
+              className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+            >
+              {openSections.properties ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Propriedades
+            </button>
+            {openSections.properties && (
+              <div className="bg-[#08080a]/40 p-5 rounded-md border border-zinc-900 flex flex-col gap-5 text-xs animate-fade-in z-50 relative">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-1.5">
+                {statuses.map((s, idx) => {
+                  const isNormallyActive = status === s.value && animatingToIndex === null;
+                  const isAnimActive = animatingToIndex !== null && currentVisibleIndex === idx;
+                  const isLit = isNormallyActive || isAnimActive;
+
+                  const activeColorStyle = primaryLabelData?.color || 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
+                  const activeDotStyle = themeTextColor.replace('text-', 'bg-');
+
+                  return (
+                    <button
+                      key={s.value}
+                      onClick={() => {
+                        if (status === s.value) return;
+                        const startIdx = statuses.findIndex(x => x.value === status);
+                        const targetIdx = idx;
+                        
+                        setCurrentVisibleIndex(startIdx);
+                        setAnimatingToIndex(targetIdx);
+
+                        setStatus(s.value);
+                        saveChange({ status: s.value });
+                      }}
+                      className={`px-2.5 py-1 rounded-md transition-all duration-150 font-medium text-xs flex items-center gap-1.5 ${
+                        isLit 
+                          ? activeColorStyle 
+                          : 'bg-zinc-950 text-zinc-600 border border-transparent hover:bg-zinc-900 hover:text-zinc-400 shadow-none'
+                      } ${isAnimActive ? 'scale-105 shadow-lg brightness-125 z-10' : 'scale-100'}`}
+                    >
+                      {!isLit && <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />}
+                      <span className={`${!isLit ? 'opacity-60 grayscale' : ''}`}>{s.icon}</span>
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-6 border-t border-zinc-900/50 pt-3 relative z-30">
+              <div className="flex flex-col gap-1.5 relative min-w-[120px]">
+                <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><Flag size={13} className="opacity-60" /> Prioridade</span>
+                <button
+                  type="button"
+                  onClick={() => setPriorityOpen(!isPriorityOpen)}
+                  onBlur={() => setTimeout(() => setPriorityOpen(false), 200)}
+                  className={`inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors ${priorities.find(p => p.value === priority)?.badgeStyle}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    {priorities.find(p => p.value === priority)?.icon}
+                    <span>{priorities.find(p => p.value === priority)?.label}</span>
+                  </div>
+                  <span className="text-[10px] opacity-60 ml-1">▼</span>
+                </button>
+
+                {isPriorityOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1.5 bg-[#121214] border border-zinc-800 rounded-[8px] shadow-2xl p-1.5 z-50 flex flex-col gap-1">
+                    {priorities.map(p => (
+                      <button
+                        key={p.value}
+                        onClick={() => {
+                          setPriority(p.value);
+                          saveChange({ priority: p.value });
+                          setPriorityOpen(false);
+                        }}
+                        className="w-full flex"
+                      >
+                        <div className={`w-full flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded border ${p.badgeStyle}`}>
+                          {p.icon}
+                          <span>{p.label}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5 relative min-w-[140px]">
+                <span className={`${missingProject ? 'text-red-400' : 'text-zinc-500'} font-medium font-sans flex items-center gap-1.5`}><FolderIcon size={13} className="opacity-60" /> Empreendimento</span>
+                <button
+                  type="button"
+                  onClick={() => setProjectOpen(!isProjectOpen)}
+                  onBlur={() => setTimeout(() => setProjectOpen(false), 200)}
+                  className="inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 min-h-[26px] transition-colors"
+                >
+                  <span className="truncate max-w-[150px]">{projects.find(p => p.id === projectId)?.name || 'Selecionar...'}</span>
+                  <span className="text-[10px] opacity-60 ml-1">▼</span>
+                </button>
+
+                {isProjectOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1.5 bg-[#121214] border border-zinc-800 rounded-[8px] shadow-2xl p-1.5 z-50 flex flex-col gap-1 max-h-[200px] overflow-y-auto scrollbar-thin">
+                    {projects.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          setProjectId(p.id);
+                          saveChange({ projectId: p.id });
+                          setProjectOpen(false);
+                        }}
+                        className="w-full flex"
+                      >
+                        <div className="w-full flex items-center justify-start text-[10px] px-2 py-1.5 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 transition-colors">
+                          {p.name}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5 min-w-[120px]">
+                <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><CalendarIcon size={13} className="opacity-60" /> Prazo</span>
+                <DatePicker
+                  value={dueDate}
+                  onChange={(newDate) => {
+                    setDueDate(newDate);
+                    let newStatus = status;
+                    if (status === 'no_forecast' && newDate) {
+                      newStatus = 'todo';
+                      setStatus('todo');
+                    } else if (status === 'todo' && !newDate) {
+                      newStatus = 'no_forecast';
+                      setStatus('no_forecast');
+                    }
+                    saveChange({ dueDate: newDate, status: newStatus });
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 relative min-w-[140px]">
+                <span className={`${missingAssignee ? 'text-red-400' : 'text-zinc-500'} font-medium font-sans flex items-center gap-1.5`}><UserIcon size={13} className="opacity-60" /> Responsável</span>
+                <button
+                  type="button"
+                  onClick={() => setAssigneeOpen(!isAssigneeOpen)}
+                  onBlur={() => setTimeout(() => setAssigneeOpen(false), 200)}
+                  className="inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 min-h-[26px] transition-colors"
+                >
+                  <div className="flex items-center gap-1.5 truncate max-w-[150px]">
+                    {assigneeId && USERS.find(u => u.id === assigneeId) ? (
+                      <>
+                        <img src={USERS.find(u => u.id === assigneeId)?.avatarUrl} alt="Avatar" className="w-4 h-4 rounded-full object-cover" />
+                        <span>{USERS.find(u => u.id === assigneeId)?.name}</span>
+                      </>
+                    ) : (
+                      <span>Sem responsável</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] opacity-60 ml-1">▼</span>
+                </button>
+
+                {isAssigneeOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1.5 bg-[#121214] border border-zinc-800 rounded-[8px] shadow-2xl p-1.5 z-50 flex flex-col gap-1 max-h-[200px] overflow-y-auto scrollbar-thin">
+                    <button
+                      onClick={() => {
+                        setAssigneeId(undefined);
+                        saveChange({ assigneeId: undefined });
+                        setAssigneeOpen(false);
+                      }}
+                      className="w-full flex items-center justify-start text-[10px] px-2 py-1.5 rounded border text-zinc-400 bg-transparent border-transparent hover:bg-zinc-800 transition-colors"
+                    >
+                      Sem responsável
+                    </button>
+                    {USERS.map(u => (
+                      <button
+                        key={u.id}
+                        onClick={() => {
+                          setAssigneeId(u.id);
+                          saveChange({ assigneeId: u.id });
+                          setAssigneeOpen(false);
+                        }}
+                        className="w-full flex"
+                      >
+                        <div className="w-full flex items-center gap-1.5 justify-start text-[10px] px-2 py-1.5 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 transition-colors">
+                          <img src={u.avatarUrl} alt={u.name} className="w-4 h-4 rounded-full object-cover" />
+                          <span>{u.name}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5 relative min-w-[140px]">
+                <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><Bell size={13} className="opacity-60" /> Lembrete</span>
+                <DatePicker
+                  value={reminderDate || ''}
+                  onChange={(date) => {
+                    setReminderDate(date);
+                    saveChange({ reminderDate: date });
+                  }}
+                  enableTime={true}
+                  trigger={
+                    <button
+                      type="button"
+                      className={`w-full inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors ${reminderDate ? 'text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20' : 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20'}`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        {reminderDate ? (
+                          reminderDate.includes('T')
+                            ? `${reminderDate.split('T')[0].split('-').reverse().join('/')} às ${reminderDate.split('T')[1]}`
+                            : reminderDate.split('-').reverse().join('/')
+                        ) : 'Adicionar lembrete'}
+                      </div>
+                      <span className="text-[10px] opacity-60 ml-1">▼</span>
+                    </button>
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-zinc-900/50 pt-4 mt-1">
+              <span className={`${missingLabel ? 'text-red-400' : 'text-zinc-500'} font-medium font-sans`}>Classificação</span>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                
+                {allLabels.filter(label => taskLabels.some(l => l?.id === label.id) || taskLabels.length === 0).map(label => {
+                  const isSelected = taskLabels.some(l => l?.id === label.id);
+                  let LabelIcon = TagIcon;
+                  if (label.name === 'Design') LabelIcon = PenTool;
+                  else if (label.name === 'Copy') LabelIcon = Type;
+                  else if (label.name === 'Tarefa') LabelIcon = CheckSquare;
+                  else if (label.name === 'Orçamento') LabelIcon = DollarSign;
+                  else if (label.name === 'Social Mídia') LabelIcon = Share2;
+
+                  return (
+                    <button
+                      key={label.id}
+                      onClick={() => toggleLabel(label)}
+                      className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1.5 font-medium ${
+                        isSelected 
+                          ? label.color 
+                          : 'bg-[#1f2937]/30 text-zinc-500 hover:text-zinc-300 hover:bg-[#1f2937]/60'
+                      }`}
+                    >
+                      <LabelIcon size={12} className={isSelected ? 'opacity-100' : 'opacity-60'} />
+                      <span>{label.name}</span>
+                      {isSelected && <span className="text-[10px]">✓ </span>}
+                    </button>
+                  );
+                })}
+
+                {taskLabels.length > 0 && !isLabelsExpanded && (
+                  <button
+                    onClick={() => setIsLabelsExpanded(true)}
+                    className="group flex items-center justify-center p-1.5 ml-0.5 text-zinc-500 hover:text-zinc-200 bg-zinc-900/40 hover:bg-[#1f2937]/60 rounded-full transition-all"
+                    title="Exibir outras classificações"
+                  >
+                    <ChevronRight size={14} className="group-hover:translate-x-0.5 group-hover:text-zinc-200 opacity-60 group-hover:opacity-100 transition-all" />
+                  </button>
+                )}
+                {taskLabels.length > 0 && isLabelsExpanded && (
+                  <button
+                    onClick={() => setIsLabelsExpanded(false)}
+                    className="group flex items-center justify-center p-1.5 ml-0.5 text-zinc-500 hover:text-zinc-200 bg-zinc-900/40 hover:bg-[#1f2937]/60 rounded-full transition-all animate-slide-in"
+                    title="Ocultar classificações"
+                  >
+                    <ChevronLeft size={14} className="group-hover:-translate-x-0.5 group-hover:text-zinc-200 opacity-60 group-hover:opacity-100 transition-all" />
+                  </button>
+                )}
+
+                {isLabelsExpanded && allLabels.filter(label => !taskLabels.some(l => l?.id === label.id)).map(label => {
+                  let LabelIcon = TagIcon;
+                  if (label.name === 'Design') LabelIcon = PenTool;
+                  else if (label.name === 'Copy') LabelIcon = Type;
+                  else if (label.name === 'Tarefa') LabelIcon = CheckSquare;
+                  else if (label.name === 'Orçamento') LabelIcon = DollarSign;
+                  else if (label.name === 'Social Mídia') LabelIcon = Share2;
+
+                  return (
+                    <button
+                      key={label.id}
+                      onClick={() => toggleLabel(label)}
+                      className={`animate-slide-in px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1.5 font-medium bg-[#1f2937]/30 text-zinc-500 hover:text-zinc-300 hover:bg-[#1f2937]/60 border border-transparent`}
+                    >
+                      <LabelIcon size={12} className="opacity-60" />
+                      <span>{label.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              </div>
+            </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => toggleSection('description')}
+                  className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${missingDesc ? 'text-red-400' : themeTextColor} hover:opacity-80 transition-opacity text-left`}
+                >
+                  {openSections.description ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  Descrição
+                </button>
+                {openSections.description && (
+                  <button 
+                    onClick={() => setIsFullscreenDesc(true)} 
+                    className="text-[10px] bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                    title="Abrir descrição em tela cheia"
+                  >
+                    <Maximize2 size={12} /> Tela Cheia
+                  </button>
+                )}
+              </div>
+              {openSections.description && (
+                <button
+                  onClick={() => setIsChatOpen(!isChatOpen)}
+                  className={`relative p-1.5 rounded transition-all duration-300 ${themeTextColor} hover:bg-zinc-800/50 hover:scale-110 hover:animate-pulse`}
+                  title={isChatOpen ? "Ocultar Chat" : "Exibir Chat"}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  {!isChatOpen && task.chatMessages && task.chatMessages.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-[#0d1117] shadow-sm leading-none flex items-center justify-center min-w-[16px] h-[16px]">
+                      {task.chatMessages.length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+            {openSections.description && (
+              <div className="flex animate-fade-in items-stretch h-[380px] gap-6 overflow-hidden relative w-full">
+                <div className={`flex flex-col h-full transition-all duration-300 ease-in-out shrink-0 min-w-0 ${isChatOpen ? 'w-full md:w-[calc(66.666%-12px)]' : 'w-full'}`}>
+                  <RichTextEditor
+                    taskId={task.id}
+                    content={descriptionRef.current}
+                    wrapperClassName="h-full"
+                    onChange={(newContent) => {
+                      descriptionRef.current = newContent;
+                      if (descTimerRef.current) clearTimeout(descTimerRef.current);
+                      descTimerRef.current = setTimeout(() => saveChange({ description: newContent }), 800);
+                    }}
+                  />
+                </div>
+                <div 
+                  className={`flex flex-col h-full transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${
+                    isChatOpen ? 'w-full md:w-[calc(33.333%-12px)] opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-10'
+                  }`}
+                >
+                  <TaskChat 
+                    task={task} 
+                    onUpdate={(chatMessages) => saveChange({ chatMessages })}
+                    baseColor={baseColor}
+                    theme={theme}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-6">
+            
+            <div className="flex flex-col gap-3 flex-1 min-w-0">
+              <button
+                onClick={() => toggleSection('checklist')}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+              >
+                {openSections.checklist ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Checklist
+                {subtasks.length > 0 && (
+                  <span className="text-[10px] font-mono text-gray-500 bg-[#0d1117] px-1.5 rounded-full ml-auto">
+                    {subtasks.filter(s => s.completed).length}/{subtasks.length}
+                  </span>
+                )}
+              </button>
+
+              {openSections.checklist && (
+                <div className="space-y-0 animate-fade-in mt-1">
+                  {subtasks.length === 0 && newSubtaskTitle === '' && (
+                    <p className="text-xs text-gray-500 italic py-1 pl-1 bg-[#1f2937]/20 rounded p-1 hidden">Nenhuma subtarefa adicionada.</p>
+                  )}
+                  
+                  {subtasks.map((subtask, index) => (
+                    <div 
+                      id={`target-${subtask.id}`}
+                      key={subtask.id} 
+                      style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
+                      className="flex items-start justify-between py-1 group transition-all border-b border-transparent hover:border-zinc-800/50"
+                    >
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 mt-[2px]">
+                          {subtask.completed ? (
+                            <CheckSquare size={13} className="text-emerald-400/50" />
+                          ) : subtask.canceled ? (
+                            <XSquare size={13} className="text-red-400/50" />
+                          ) : (
+                            <Square size={13} className="text-gray-500 hover:text-gray-300" />
+                          )}
+                        </button>
+                        <SubtaskInput 
+                          subtaskId={subtask.id}
+                          initialValue={subtask.title}
+                          onChange={(val) => handleEditSubtaskTitle(subtask.id, val)}
+                          onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
+                        />
+                      </div>
+                      <div className={`flex items-start mt-[1px] ml-2 shrink-0 transition-opacity gap-1 ${subtask.reminderDate || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        {/* Assignee Dropdown */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setSubtaskAssigneeMenuOpenFor(subtaskAssigneeMenuOpenFor === subtask.id ? null : subtask.id)}
+                            className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors hover:bg-zinc-800/80 ${subtask.assigneeId ? '' : 'text-zinc-500 hover:text-blue-400'}`}
+                            title={subtask.assigneeId ? "Alterar responsável" : "Definir responsável"}
+                          >
+                            {subtask.assigneeId ? (
+                              <img src={USERS.find(u => u.id === subtask.assigneeId)?.avatarUrl} alt="" className="w-3.5 h-3.5 rounded-full" />
+                            ) : (
+                              <UserIcon size={10} />
+                            )}
+                          </button>
+                          
+                          {subtaskAssigneeMenuOpenFor === subtask.id && (
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
+                              <div className="px-2 py-1.5 border-b border-zinc-800/80">
+                                <span className="text-[10px] font-semibold text-zinc-500 uppercase">Responsável pelo Item</span>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetSubtaskAssignee(subtask.id, '')}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left text-zinc-400"
+                                >
+                                  <UserIcon size={12} />
+                                  <span className="text-xs">Remover responsável</span>
+                                </button>
+                                {USERS.map(u => (
+                                  <button
+                                    type="button"
+                                    key={u.id}
+                                    onClick={() => handleSetSubtaskAssignee(subtask.id, u.id)}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left"
+                                  >
+                                    <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                                    <span className="text-xs text-zinc-300">{u.name}</span>
+                                    {subtask.assigneeId === u.id && <Check size={12} className="text-blue-400 ml-auto" />}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Remainder Button / Date Picker */}
+                        <div className="flex items-center justify-center">
+                          <DatePicker
+                            value={subtask.reminderDate || ''}
+                            onChange={(date) => handleSetSubtaskReminder(subtask.id, date)}
+                            enableTime={true}
+                            trigger={
+                              <button
+                                type="button"
+                                className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${subtask.reminderDate ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-500 hover:text-amber-400 hover:bg-zinc-800/80'}`}
+                                title={subtask.reminderDate ? "Alterar data de lembrete" : "Definir lembrete para esta atividade"}
+                              >
+                                <Bell size={10} className={subtask.reminderDate ? "fill-amber-400/20" : ""} />
+                                {subtask.reminderDate ? (
+                                  subtask.reminderDate.includes('T') 
+                                    ? `${subtask.reminderDate.split('T')[0].split('-').reverse().join('/')} às ${subtask.reminderDate.split('T')[1]}` 
+                                    : subtask.reminderDate.split('-').reverse().join('/')
+                                ) : 'Lembrar'}
+                              </button>
+                            }
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleDeleteSubtask(subtask.id)}
+                          className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80 rounded transition-colors"
+                          title="Remover"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Ghost inline input for adding subtasks */}
+                  <div className="flex items-start gap-2 py-1 opacity-50 hover:opacity-100 transition-opacity mt-1">
+                    <Plus size={13} className="text-gray-500 shrink-0 mt-[2px]" />
+                    <textarea
+                      rows={1}
+                      value={newSubtaskTitle}
+                      onChange={(e) => {
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${e.target.scrollHeight}px`;
+                        setNewSubtaskTitle(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (newSubtaskTitle.trim()) {
+                            const newId = `sub-${Date.now()}`;
+                            setSubtasks(prev => [...prev, { id: newId, title: newSubtaskTitle.trim(), completed: false, level: 0 }]);
+                            setNewSubtaskTitle('');
+                          }
+                        }
+                      }}
+                      placeholder="Escreva aqui..."
+                      className="flex-1 bg-transparent border-0 ring-0 outline-none text-xs font-normal text-gray-400 focus:text-gray-200 resize-none overflow-hidden py-0"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Hierarchy (Right, flex-1) */}
+            <div className="flex flex-col gap-3 flex-1 min-w-0">
+               <button
+                  onClick={() => toggleSection('hierarchy')}
+                  className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+                >
+                  {openSections.hierarchy ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  Hierarquia
+                </button>
+                {openSections.hierarchy && (
+                  <div className="flex flex-col gap-4 animate-fade-in bg-[#08080a]/40 p-4 rounded-md border border-zinc-900">
+                    
+                    {(() => {
+                      const parentTask = allTasks?.find(t => t.id === task.parentTaskId);
+                      const eligibleTasksToLink = allTasks?.filter(t => 
+                        t.id !== task.id &&
+                        t.parentTaskId !== task.id &&
+                        !allTasks.some(child => child.parentTaskId === t.id)
+                      ) || [];
+
+                      const renderTaskCard = (t: Task, isParent: boolean) => {
+                         const assignee = USERS.find(u => u.id === t.assigneeId);
+                         const assigneeInitials = assignee?.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || 'UN';
+                         const assigneeName = assignee?.name || 'Não atribuído';
+                         
+                         const statusObj = statuses.find(s => s.value === t.status) || statuses[0];
+                         
+                         const primaryLabel = t.labels?.[0];
+                         let SubIcon = TagIcon;
+                         if (primaryLabel?.name === 'Design') SubIcon = PenTool;
+                         else if (primaryLabel?.name === 'Copy') SubIcon = Type;
+                         else if (primaryLabel?.name === 'Tarefa') SubIcon = CheckSquare;
+                         else if (primaryLabel?.name === 'Orçamento') SubIcon = DollarSign;
+                         else if (primaryLabel?.name === 'Social Mídia') SubIcon = Share2;
+
+                         const iconColor = primaryLabel?.color?.match(/text-[a-z]+-\d+/)?.[0] || 'text-blue-500';
+
+                         return (
+                           <div 
+                             onClick={() => onSelectTask && onSelectTask(t)}
+                             className={`group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 hover:border-zinc-500 hover:bg-zinc-800/80 cursor-pointer transition-all ${isParent ? 'shadow-md' : ''}`}
+                           >
+                             <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                               <SubIcon size={12} className={`${iconColor} shrink-0 opacity-90 group-hover:opacity-100 transition-opacity`} />
+                               <span className="font-medium text-[11px] truncate tracking-wide">{t.title}</span>
+                             </div>
+                             
+                             <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-medium shrink-0">
+                               <span className="flex items-center gap-1" title={assigneeName}>
+                                 <span className="w-4 h-4 rounded-full bg-zinc-900 flex items-center justify-center text-[9px] text-zinc-300 border border-zinc-700 shadow-inner">
+                                   {assigneeInitials}
+                                 </span> 
+                               </span>
+                               <span className="flex items-center gap-1 whitespace-nowrap font-mono tracking-tighter text-[9px] opacity-80">
+                                 {t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR').slice(0, 5) : 'S/P'}
+                               </span>
+                               <span className={`px-1.5 py-0 rounded flex items-center justify-center uppercase tracking-widest text-[9px] font-bold ${statusObj.color} shadow-sm whitespace-nowrap`}>
+                                 {statusObj.label}
+                               </span>
+                             </div>
+                           </div>
+                         );
+                      };
+
+                      return (
+                        <div className="flex flex-col w-full">
+                          {parentTask ? (
+                            <div className="flex flex-col">
+                              
+                              
+                              {/* Level 0: Parent */}
+                              <div className="relative z-10">
+                                {renderTaskCard(parentTask, true)}
+                              </div>
+
+                              <div className="flex flex-col pl-8 mt-2 relative">
+                                {/* Level 1: Current Task */}
+                                <div className={`absolute top-[-8px] bottom-1/2 w-[2px] ${theme.line}`} style={{ left: '19px' }} />
+                                <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '19px', width: '13px', transform: 'translateY(-50%)' }} />
+                                
+                                <div className="group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 shadow-md relative z-10">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                                    <div className={`w-[12px] h-[12px] rounded-full ${theme.dotBg} border ${theme.dotBorder} flex items-center justify-center shrink-0`}>
+                                      <div className={`w-1 h-1 rounded-full ${theme.dotInner}`} />
+                                    </div>
+                                    <span className={`font-medium tracking-widest text-[11px] uppercase ${theme.text} truncate`}>Esta Tarefa</span>
+                                  </div>
+                                </div>
+
+                                {/* Level 2: Children */}
+                                {childTasks.length > 0 && (
+                                  <div className="relative mt-2 flex flex-col gap-2">
+                                    {childTasks.map((ct, idx) => {
+                                      const isLast = idx === childTasks.length - 1;
+                                      return (
+                                        <div key={ct.id} className="relative pl-8">
+                                          <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '19px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
+                                          <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '19px', width: '13px', transform: 'translateY(-50%)' }} />
+                                          <div className="relative z-10">
+                                            {renderTaskCard(ct, false)}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col">
+                              
+                              
+                              {/* Level 0: Current Task */}
+                              <div className="relative z-10">
+                                <div className="group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 shadow-md">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                                    <div className={`w-[12px] h-[12px] rounded-full ${theme.dotBg} border ${theme.dotBorder} flex items-center justify-center shrink-0`}>
+                                      <div className={`w-1 h-1 rounded-full ${theme.dotInner}`} />
+                                    </div>
+                                    <span className={`font-medium tracking-widest text-[11px] uppercase ${theme.text} truncate`}>Esta Tarefa</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Level 1: Children */}
+                              {childTasks.length > 0 && (
+                                <div className="relative mt-2 flex flex-col gap-2">
+                                  {childTasks.map((ct, idx) => {
+                                    const isLast = idx === childTasks.length - 1;
+                                    return (
+                                      <div key={ct.id} className="relative pl-8">
+                                        <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '19px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
+                                        <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '19px', width: '13px', transform: 'translateY(-50%)' }} />
+                                        <div className="relative z-10">
+                                          {renderTaskCard(ct, false)}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {childTasks.length === 0 && (
+                                <div className="pl-2 pt-3">
+                                  <span className="text-xs text-zinc-600 italic">Esta tarefa não possui hierarquia.</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Add/Link Subtask Area */}
+                          {(onAddTask || onUpdateTask) && (
+                            <div className="mt-4 flex gap-2">
+                              {onAddTask && (
+                                <button 
+                                  onClick={handleAddChildTask}
+                                  className={`flex-1 text-[10px] text-zinc-400 hover:text-white bg-zinc-900/50 ${theme.badgeHover} border border-transparent hover:${theme.badgeBorder} p-2 rounded-md transition-all flex items-center justify-center gap-1.5 font-medium`}
+                                >
+                                  <Plus size={13} /> Criar Nova
+                                </button>
+                              )}
+                              {onUpdateTask && eligibleTasksToLink.length > 0 && (
+                                <div className="flex-1 relative">
+                                  <button 
+                                    onClick={() => setIsLinkDropdownOpen(!isLinkDropdownOpen)}
+                                    className={`w-full text-[10px] text-zinc-400 hover:text-white bg-zinc-900/50 ${theme.badgeHover} border border-transparent hover:${theme.badgeBorder} p-2 rounded-md transition-all flex items-center justify-center gap-1.5 font-medium`}
+                                  >
+                                    <Link2 size={13} /> Vincular Existente
+                                  </button>
+                                  
+                                  {isLinkDropdownOpen && (
+                                    <>
+                                      <div className="fixed inset-0 z-40" onClick={() => setIsLinkDropdownOpen(false)}></div>
+                                      <div className="absolute bottom-full mb-1 left-0 w-[240px] bg-[#121214] border border-zinc-800 rounded-lg shadow-2xl z-50 flex flex-col overflow-hidden animate-fade-in">
+                                        <div className="p-2 border-b border-zinc-800/50">
+                                          <input 
+                                            autoFocus
+                                            type="text"
+                                            placeholder="Pesquisar tarefa..."
+                                            value={linkSearchQuery}
+                                            onChange={(e) => setLinkSearchQuery(e.target.value)}
+                                            className="w-full bg-zinc-900/50 border border-zinc-700/50 rounded p-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-500 placeholder-zinc-600"
+                                          />
+                                        </div>
+                                        <div className="max-h-[160px] overflow-y-auto no-scrollbar p-1 flex flex-col gap-0.5">
+                                          {eligibleTasksToLink.filter(t => t.title.toLowerCase().includes(linkSearchQuery.toLowerCase())).length === 0 ? (
+                                            <div className="p-2 text-[10px] text-zinc-500 text-center italic">Nenhuma tarefa encontrada</div>
+                                          ) : (
+                                            eligibleTasksToLink.filter(t => t.title.toLowerCase().includes(linkSearchQuery.toLowerCase())).map(t => (
+                                              <button
+                                                key={t.id}
+                                                onClick={() => {
+                                                  onUpdateTask({ ...t, parentTaskId: task.id });
+                                                  setIsLinkDropdownOpen(false);
+                                                  setLinkSearchQuery('');
+                                                }}
+                                                className="w-full text-left p-1.5 rounded hover:bg-zinc-800 text-[11px] text-zinc-300 hover:text-zinc-100 transition-colors truncate font-medium"
+                                              >
+                                                {t.title}
+                                              </button>
+                                            ))
+                                          )}
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+            <div className="flex flex-col gap-3 flex-1 min-w-0">
+              <button
+                onClick={() => toggleSection('attachments')}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+              >
+                {openSections.attachments ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Documentos
+              </button>
+              {openSections.attachments && (
+                <div className="animate-fade-in">
+                  <AttachmentsSection 
+                    attachments={task.attachments} 
+                    onUpdate={(atts) => saveChange({ attachments: atts })} 
+                    taskId={task.id}
+                    taskTitle={task.title}
+                    taskAssigneeId={task.assigneeId}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dynamic Design Properties */}
+          {taskLabels.some(l => l.name === 'Design') && (
+            <div id="section-designProps" className="flex flex-col gap-3 scroll-mt-20">
+              <button
+                onClick={() => toggleSection('designProps')}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+              >
+                {openSections.designProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Painel de Design & Aprovação
+              </button>
+              <div className={`animate-fade-in ${openSections.designProps ? 'block' : 'hidden'}`}>
+                <DesignProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Copy Properties */}
+          {taskLabels.some(l => l.name === 'Copy') && (
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => toggleSection('copyProps')}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+              >
+                {openSections.copyProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Painel de Copy & Aprovação
+              </button>
+              <div className={`animate-fade-in ${openSections.copyProps ? 'block' : 'hidden'}`}>
+                <CopyProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Budget Properties (Orçamento) */}
+          {taskLabels.some(l => l.name === 'Orçamento') && (
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => toggleSection('budgetProps')}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+              >
+                {openSections.budgetProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Propostas & aprovação
+              </button>
+              <div className={`animate-fade-in ${openSections.budgetProps ? 'block' : 'hidden'}`}>
+                <BudgetProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
+              </div>
+            </div>
+          )}
+
+
+        </div>
+      </div>
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteConfirm && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDeleteConfirm(false);
+          }}
+        >
+          <div 
+            className="bg-[#18181b] border border-zinc-800/80 rounded-xl p-5 flex flex-col gap-3 w-full max-w-[360px] shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-zinc-100">
+              Excluir Tarefa?
+            </h3>
+            <p className="text-sm text-zinc-400 leading-relaxed">
+              Deseja realmente excluir esta tarefa? Esta ação não pode ser desfeita e todo o conteúdo (inclusive briefings e aprovações) será perdido.
+            </p>
+            <div className="flex justify-end gap-2 pt-3 mt-2">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteConfirm(false);
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteTask(task.id);
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 rounded-lg transition-colors"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Tela Cheia para a Descrição */}
+      {isFullscreenDesc && (
+        <div className="fixed inset-0 z-[150] bg-[#08080a] flex flex-col animate-fade-in">
+          <div className="h-14 border-b border-zinc-900 flex items-center justify-between px-6 bg-[#0c0c0e]">
+            <div className="flex items-center gap-3">
+              <div className={`mt-[2px] shrink-0 ${themeTextColor}`}>
+                <ThemeIcon size={20} />
+              </div>
+              <span className="text-zinc-200 font-bold truncate max-w-2xl">{titleRef.current || 'Sem título'}</span>
+              <span className="text-[10px] bg-zinc-900 px-2 py-0.5 rounded font-mono text-zinc-400 font-semibold border border-zinc-800">
+                DESCRIÇÃO EM TELA CHEIA
+              </span>
+            </div>
+            <button
+              onClick={() => setIsFullscreenDesc(false)}
+              className="flex items-center gap-2 text-zinc-400 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 px-3 py-1.5 rounded-md transition-colors text-xs font-semibold"
+            >
+              <Minimize2 size={14} /> Fechar Tela Cheia
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden flex flex-col p-8 max-w-5xl mx-auto w-full">
+            <RichTextEditor
+              taskId={task.id}
+              content={descriptionRef.current}
+              onChange={(newContent) => {
+                descriptionRef.current = newContent;
+                if (descTimerRef.current) clearTimeout(descTimerRef.current);
+                descTimerRef.current = setTimeout(() => saveChange({ description: newContent }), 800);
+              }}
+              variant="borderless"
+            />
+          </div>
+        </div>
+      )}
+      {/* Elegent Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[200] animate-fade-in flex items-center gap-3 bg-[#0d1117]/95 backdrop-blur-md border border-blue-500/30 text-blue-200 px-4 py-3 rounded-lg shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
+          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+             <AlertTriangle size={14} className="text-blue-400" />
+          </div>
+          <div className="text-xs font-medium tracking-wide">
+             {toastMessage}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

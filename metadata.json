@@ -1,0 +1,6 @@
+{
+  "name": "Task Manager",
+  "description": "Minimalist, high-fidelity task management application styled after Linear and Notion with Kanban, list views, Cmd+K search, and custom dark mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

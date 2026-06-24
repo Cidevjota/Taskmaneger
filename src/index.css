@@ -1,0 +1,315 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-*: initial;
+  --color-gray-*: initial;
+  --color-zinc-*: initial;
+  --color-neutral-*: initial;
+  --color-stone-*: initial;
+
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+
+  /* Custom Zinc scale - slightly cooler but deep */
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-650: #44444c;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-800: #27272a;
+  --color-zinc-900: #18181b;
+  --color-zinc-950: #09090b;
+
+  --animate-slide-up: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-in: fadeIn 0.2s ease-out;
+  --animate-scale-in: scaleIn 0.2s ease-out;
+  --animate-slide-in: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-right: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pulse-slow: pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-pulse-subtle: pulseSubtle 2s ease-in-out;
+  
+  @keyframes pulseSubtle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.02); }
+  }
+  
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes pulseSlow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+}
+
+@layer base {
+  body {
+    @apply antialiased text-zinc-200 selection:bg-blue-500/30 selection:text-blue-200 transition-colors duration-300;
+  }
+}
+
+/* Base Editor Styles */
+.rte-wrapper {
+  @apply relative flex flex-col border border-zinc-900 rounded-lg overflow-hidden bg-[#0d0d10] focus-within:border-zinc-700 focus-within:ring-1 focus-within:ring-zinc-700 transition-all;
+}
+
+.rte-borderless {
+  @apply border-0 bg-transparent focus-within:border-0 focus-within:ring-0;
+}
+
+.rte-toolbar {
+  @apply flex flex-wrap items-center gap-1 p-2 border-b border-zinc-900 bg-[#08080a] sticky top-0 z-10;
+}
+
+.rte-btn {
+  @apply p-1.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors flex items-center justify-center;
+}
+
+.rte-btn--active {
+  @apply bg-zinc-800 text-zinc-100 shadow-sm;
+}
+
+.rte-btn:disabled {
+  @apply opacity-30 cursor-not-allowed hover:bg-transparent hover:text-zinc-500;
+}
+
+.rte-divider {
+  @apply w-px h-4 bg-zinc-800 mx-1;
+}
+
+/* Color Picker Popover */
+.rte-color-panel {
+  @apply absolute top-full left-0 mt-1 flex flex-wrap gap-1 p-2 bg-[#121214] border border-zinc-800 rounded shadow-xl z-50 w-36;
+}
+
+.rte-color-swatch {
+  @apply w-5 h-5 rounded-full border border-zinc-700 hover:scale-110 transition-transform cursor-pointer;
+}
+
+.rte-color-reset {
+  @apply w-full mt-1 text-[10px] text-zinc-400 hover:text-zinc-200 p-1 rounded hover:bg-zinc-800 text-left transition-colors;
+}
+
+/* Editor Content Formatting */
+.rte-content {
+  @apply p-4 min-h-[150px] outline-none text-sm text-zinc-300 leading-relaxed font-sans;
+}
+
+.rte-content p {
+  @apply mb-3 last:mb-0;
+}
+
+/* TipTap Placeholder */
+.rte-content p.is-editor-empty:first-child::before {
+  color: #52525b;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Headings */
+.rte-content h1, 
+.rte-content h2, 
+.rte-content h3 {
+  @apply font-semibold text-zinc-100 mt-6 mb-4 leading-tight;
+}
+
+.rte-content h1 {
+  @apply text-2xl font-bold;
+}
+
+.rte-content h2 {
+  @apply text-xl;
+}
+
+.rte-content h3 {
+  @apply text-lg text-zinc-200;
+}
+
+/* Lists */
+.rte-content ul, 
+.rte-content ol {
+  @apply my-4 pl-6;
+}
+
+.rte-content ul {
+  @apply list-disc marker:text-zinc-600;
+}
+
+.rte-content ol {
+  @apply list-decimal marker:text-zinc-600;
+}
+
+.rte-content li {
+  @apply mb-1;
+}
+
+.rte-content li > p {
+  @apply mb-0 inline;
+}
+
+/* Interactive Task Lists */
+.rte-content ul[data-type="taskList"] {
+  @apply list-none p-0 my-4;
+}
+
+.rte-content li[data-type="taskItem"] {
+  @apply flex items-start gap-3 mb-2;
+}
+
+.rte-content li[data-type="taskItem"] > label {
+  @apply flex-shrink-0 mt-0.5 select-none;
+}
+
+.rte-content li[data-type="taskItem"] > label input[type="checkbox"] {
+  @apply appearance-none w-4 h-4 border border-zinc-600 rounded bg-zinc-900 checked:bg-blue-500 checked:border-blue-500 cursor-pointer transition-colors relative;
+}
+
+.rte-content li[data-type="taskItem"] > label input[type="checkbox"]:checked::after {
+  content: "";
+  @apply absolute inset-0 bg-center bg-no-repeat;
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwb2x5bGluZSBwb2ludHM9IjIwIDYgOSAxNyA0IDEyIj48L3BvbHlsaW5lPjwvc3ZnPg==');
+  background-size: 12px;
+}
+
+.rte-content li[data-type="taskItem"] > div {
+  @apply flex-1 outline-none min-w-0;
+}
+
+.rte-content li[data-type="taskItem"][data-checked="true"] > div {
+  @apply text-zinc-500 line-through;
+}
+
+/* Tables */
+.rte-content table {
+  @apply w-full border-collapse my-5 border border-zinc-800 rounded-sm overflow-hidden table-fixed;
+}
+
+.rte-content table td,
+.rte-content table th {
+  @apply border border-zinc-800 p-2 min-w-[3em] relative text-left align-top;
+}
+
+.rte-content table th {
+  @apply bg-zinc-900/50 font-semibold text-zinc-200;
+}
+
+/* Selected cells */
+.rte-content table .selectedCell:after {
+  content: "";
+  @apply absolute inset-0 bg-blue-500/10 pointer-events-none;
+}
+
+.rte-content table .column-resize-handle {
+  @apply absolute -right-1 top-0 bottom-0 w-2 bg-blue-500/50 opacity-0 transition-opacity cursor-col-resize z-10;
+}
+
+.rte-content table th:hover .column-resize-handle,
+.rte-content table td:hover .column-resize-handle {
+  @apply opacity-100;
+}
+
+/* Inline Elements */
+.rte-content strong {
+  @apply font-bold text-zinc-100;
+}
+
+.rte-content em {
+  @apply italic;
+}
+
+.rte-content s {
+  @apply text-zinc-500 line-through;
+}
+
+.rte-content hr {
+  @apply border-0 h-px bg-zinc-800 my-8;
+}
+
+/* Modern Global Scrollbar (Linear/Notion style) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 100px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Custom Scrollbar utility (keep for specific uses if needed) */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Utility to hide scrollbar but keep scroll functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

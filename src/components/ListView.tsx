@@ -1,0 +1,592 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Inbox, 
+  HelpCircle, 
+  Clock, 
+  CheckCircle2, 
+  Search, 
+  ChevronDown, 
+  ChevronUp, 
+  ArrowUp, 
+  ArrowDown, 
+  AlertTriangle, 
+  Plus, 
+  Calendar as CalendarIcon,
+  ChevronsUpDown,
+  SlidersHorizontal,
+  Bookmark,
+  Layers,
+  GripVertical
+} from 'lucide-react';
+import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
+import { useAuth } from '../context/AuthContext';
+
+interface ListViewProps {
+  tasks: Task[];
+  projects: Project[];
+  labels: Label[];
+  onSelectTask: (task: Task) => void;
+  onUpdateTask: (task: Task) => void;
+  onAddTask: (task: Task) => void;
+  currentProjectFilter: string | null;
+}
+
+type GroupByOption = 'none' | 'status' | 'priority';
+
+export type ColumnId = 'status' | 'title' | 'labels' | 'project' | 'priority' | 'dueDate' | 'assignee';
+
+export interface ColumnDef {
+  id: ColumnId;
+  label: string;
+  width: number;
+  visible: boolean;
+}
+
+const defaultColumns: ColumnDef[] = [
+  { id: 'status', label: 'Status', width: 140, visible: true },
+  { id: 'title', label: 'Título', width: 300, visible: true },
+  { id: 'labels', label: 'Tags', width: 150, visible: true },
+  { id: 'project', label: 'Empreendimento', width: 150, visible: true },
+  { id: 'priority', label: 'Prioridade', width: 120, visible: true },
+  { id: 'dueDate', label: 'Vencimento', width: 120, visible: true },
+  { id: 'assignee', label: 'Responsável', width: 150, visible: true },
+];
+
+export default function ListView({
+  tasks,
+  projects,
+  labels,
+  onSelectTask,
+  onUpdateTask,
+  onAddTask,
+  currentProjectFilter
+}: ListViewProps) {
+  const { allUsers: USERS } = useAuth();
+  
+  const [search, setSearch] = useState('');
+  const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>('all');
+  const [groupBy, setGroupBy] = useState<GroupByOption>('status');
+  const [inlineNewTaskText, setInlineNewTaskText] = useState('');
+
+  // Column management state
+  const [columns, setColumns] = useState<ColumnDef[]>(() => {
+    const saved = localStorage.getItem('listViewColumns');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Ensure all default columns exist in case we added new ones
+        const merged = defaultColumns.map(dc => {
+          const found = parsed.find((p: ColumnDef) => p.id === dc.id);
+          return found ? { ...dc, ...found } : dc;
+        });
+        // Preserve saved order
+        const ordered = parsed
+          .filter((p: ColumnDef) => merged.find(m => m.id === p.id))
+          .map((p: ColumnDef) => merged.find(m => m.id === p.id)!)
+          .concat(merged.filter(m => !parsed.find((p: ColumnDef) => p.id === m.id)));
+        return ordered;
+      } catch (e) {
+        return defaultColumns;
+      }
+    }
+    return defaultColumns;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('listViewColumns', JSON.stringify(columns));
+  }, [columns]);
+
+  // Drag and drop state for reordering columns
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+
+  // Resizing state
+  const resizingColRef = useRef<string | null>(null);
+  const startXRef = useRef<number>(0);
+  const startWidthRef = useRef<number>(0);
+
+  // Filter tasks based on project selector, assignee & search input
+  const filteredTasks = tasks.filter(task => {
+    if (currentProjectFilter && task.projectId !== currentProjectFilter) return false;
+    if (filterAssigneeId !== 'all' && task.assigneeId !== filterAssigneeId) return false;
+    if (search.trim() !== '') {
+      const q = search.toLowerCase();
+      return (
+        task.title.toLowerCase().includes(q) ||
+        task.id.toLowerCase().includes(q) ||
+        task.description.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  // Toggle state to quickly cycle task status from the list itself!
+  const cycleStatus = (e: React.MouseEvent, task: Task) => {
+    e.stopPropagation(); // prevent opening sheet
+    const nextStatuses: Record<TaskStatus, TaskStatus> = {
+      'no_forecast': 'todo',
+      'todo': 'in_progress',
+      'in_progress': 'paused',
+      'paused': 'approval',
+      'approval': 'rework',
+      'rework': 'implementation',
+      'implementation': 'done',
+      'done': 'no_forecast'
+    };
+    onUpdateTask({
+      ...task,
+      status: nextStatuses[task.status]
+    });
+  };
+
+  const getStatusIcon = (status: TaskStatus) => {
+    switch (status) {
+      case 'no_forecast':
+        return <Inbox size={14} className="text-slate-400" />;
+      case 'todo':
+        return <HelpCircle size={14} className="text-blue-400" />;
+      case 'in_progress':
+        return <Clock size={14} className="text-amber-400 animate-pulse" />;
+      case 'paused':
+        return <AlertTriangle size={14} className="text-red-400" />;
+      case 'approval':
+        return <HelpCircle size={14} className="text-purple-400" />;
+      case 'rework':
+        return <ArrowDown size={14} className="text-orange-400" />;
+      case 'implementation':
+        return <Layers size={14} className="text-blue-400" />;
+      case 'done':
+        return <CheckCircle2 size={14} className="text-emerald-400" />;
+    }
+  };
+
+  const getStatusLabel = (status: TaskStatus) => {
+    const labels: Record<TaskStatus, string> = {
+      'no_forecast': 'Sem previsão',
+      'todo': 'A fazer',
+      'in_progress': 'Em progresso',
+      'paused': 'Pausado',
+      'approval': 'Aprovação',
+      'rework': 'Refação',
+      'implementation': 'Implementação',
+      'done': 'Concluído'
+    };
+    return labels[status] || status;
+  };
+
+  const getPriorityBadge = (prio: TaskPriority) => {
+    const baseBadgeCls = "inline-flex items-center gap-1.5 text-[10px] font-sans font-medium px-1.5 py-0.5 rounded border select-none w-fit";
+    switch (prio) {
+      case 'urgent':
+        return <span className={`${baseBadgeCls} text-red-400 bg-red-500/10 border-red-500/15`}><AlertTriangle size={10} className="shrink-0" /> Urgente</span>;
+      case 'high':
+        return <span className={`${baseBadgeCls} text-orange-400 bg-orange-500/10 border-orange-500/15`}><ArrowUp size={10} className="shrink-0" /> Alta</span>;
+      case 'medium':
+        return <span className={`${baseBadgeCls} text-blue-400 bg-blue-500/10 border-blue-500/15`}>Média</span>;
+      case 'low':
+        return <span className={`${baseBadgeCls} text-emerald-400 bg-emerald-500/10 border-emerald-500/15`}><ArrowDown size={10} className="shrink-0" /> Baixa</span>;
+      default:
+        return <span className={`${baseBadgeCls} text-zinc-650 bg-zinc-900/10 border-transparent`}>Sem prioridade</span>;
+    }
+  };
+
+  const handleInlineAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inlineNewTaskText.trim()) return;
+
+    const newTask: Task = {
+      id: `TSK-${100 + tasks.length + 1}`,
+      title: inlineNewTaskText.trim(),
+      description: 'Criada instantaneamente via Lista Compacta.',
+      status: 'todo',
+      priority: 'medium',
+      projectId: currentProjectFilter || (projects[0]?.id || 'p1'),
+      labels: [labels.find(l => l.name === 'Tarefa') || labels[0]].filter(Boolean) as Label[],
+      subtasks: [],
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
+    onAddTask(newTask);
+    setInlineNewTaskText('');
+  };
+
+  // --- Resize Logic ---
+  const handleResizeStart = (e: React.MouseEvent, colId: string, currentWidth: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingColRef.current = colId;
+    startXRef.current = e.clientX;
+    startWidthRef.current = currentWidth;
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+  };
+
+  const handleResizeMove = (e: MouseEvent) => {
+    if (!resizingColRef.current) return;
+    const diffX = e.clientX - startXRef.current;
+    const newWidth = Math.max(60, startWidthRef.current + diffX); // min width 60px
+    setColumns(prev => prev.map(c => c.id === resizingColRef.current ? { ...c, width: newWidth } : c));
+  };
+
+  const handleResizeEnd = () => {
+    resizingColRef.current = null;
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+  };
+
+  // --- Drag and Drop Logic ---
+  const handleDragStart = (e: React.DragEvent, colId: string) => {
+    setDraggedColumn(colId);
+    e.dataTransfer.effectAllowed = 'move';
+    // Small delay to prevent the dragged element from looking like a ghost immediately
+    setTimeout(() => {
+      // optional styling logic
+    }, 0);
+  };
+
+  const handleDragOver = (e: React.DragEvent, colId: string) => {
+    e.preventDefault(); // Necessary to allow dropping
+    e.dataTransfer.dropEffect = 'move';
+    if (!draggedColumn || draggedColumn === colId) return;
+
+    setColumns(prev => {
+      const draggedIndex = prev.findIndex(c => c.id === draggedColumn);
+      const targetIndex = prev.findIndex(c => c.id === colId);
+      
+      if (draggedIndex === -1 || targetIndex === -1) return prev;
+      
+      const newCols = [...prev];
+      const [removed] = newCols.splice(draggedIndex, 1);
+      newCols.splice(targetIndex, 0, removed);
+      return newCols;
+    });
+  };
+
+  const handleDragEnd = () => {
+    setDraggedColumn(null);
+  };
+
+  // --- Cell Renderers ---
+  const renderCellContent = (task: Task, col: ColumnDef) => {
+    const project = projects.find(p => p.id === task.projectId);
+    
+    switch (col.id) {
+      case 'status':
+        return (
+          <div className="flex items-center gap-2 max-w-full">
+            <button 
+              onClick={(e) => cycleStatus(e, task)} 
+              className="p-1 rounded hover:bg-zinc-850 shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
+              title="Avançar status"
+            >
+              {getStatusIcon(task.status)}
+            </button>
+            <span className="text-[11px] font-medium text-zinc-300 capitalize truncate">
+              {getStatusLabel(task.status)}
+            </span>
+          </div>
+        );
+      case 'title':
+        return (
+          <span className="font-semibold text-zinc-200 group-hover:text-white truncate block">
+            {task.title}
+          </span>
+        );
+      case 'labels':
+        return (
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            {task.labels && task.labels.slice(0, 2).map(l => {
+              const isCriticalTag = l.name.toLowerCase().includes('bug') || l.name.toLowerCase().includes('urgente') || l.name.toLowerCase().includes('crítico');
+              return (
+                <span 
+                  key={l.id} 
+                  className={`text-[9px] px-1.5 py-0.2 rounded font-sans tracking-tight font-medium shrink-0 ${
+                    isCriticalTag 
+                      ? 'bg-red-500/10 text-red-400 border border-red-500/15'
+                      : 'bg-zinc-800/40 text-zinc-400 border border-zinc-800/30'
+                  }`}
+                >
+                  {l.name}
+                </span>
+              );
+            })}
+          </div>
+        );
+      case 'project':
+        return project ? (
+          <div className="flex items-center gap-1.5 bg-zinc-950 px-1.5 py-0.5 rounded text-[9px] text-zinc-500 font-medium border border-zinc-900/50 w-fit max-w-full">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-current ${project.color}`} />
+            <span className="text-zinc-400 font-medium truncate">
+              {project.name}
+            </span>
+          </div>
+        ) : null;
+      case 'priority':
+        return getPriorityBadge(task.priority);
+      case 'dueDate':
+        return task.dueDate ? (
+          <div className="flex items-center gap-1 text-zinc-500 font-mono text-[10px]">
+            <CalendarIcon size={11} className="shrink-0" />
+            <span className="truncate">{task.dueDate}</span>
+          </div>
+        ) : (
+          <span className="text-zinc-500 pl-4">-</span>
+        );
+      case 'assignee':
+        const user = task.assigneeId ? USERS.find(u => u.id === task.assigneeId) : null;
+        return user ? (
+          <div className="flex items-center gap-2 overflow-hidden">
+            <div 
+              className="w-5 h-5 rounded-full bg-zinc-850 border border-zinc-800 flex items-center justify-center text-[9px] text-zinc-350 font-bold shrink-0 overflow-hidden" 
+              title={user.name}
+            >
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                user.initials
+              )}
+            </div>
+            <span className="text-[11px] text-zinc-350 truncate">{user.name}</span>
+          </div>
+        ) : (
+          <span className="text-zinc-500 text-[10px] font-mono pl-2">Não atribuído</span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderList = (taskList: Task[]) => (
+    <div className="border border-zinc-900 rounded-lg overflow-hidden bg-[#121214]/40 flex flex-col select-none relative w-max min-w-full">
+      
+      {/* Table Header Row */}
+      <div className="flex items-stretch bg-zinc-950/80 border-b border-zinc-900 sticky top-0 z-10 text-[10px] uppercase font-mono tracking-wider text-zinc-500 font-semibold">
+        {columns.filter(c => c.visible).map((col) => (
+          <div 
+            key={col.id}
+            draggable
+            onDragStart={(e) => handleDragStart(e, col.id)}
+            onDragOver={(e) => handleDragOver(e, col.id)}
+            onDragEnd={handleDragEnd}
+            style={{ width: col.width }}
+            className={`relative flex items-center px-4 py-2 hover:bg-zinc-900/60 transition-colors shrink-0 ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+          >
+            <GripVertical size={12} className="opacity-0 hover:opacity-100 cursor-grab text-zinc-600 absolute left-1" />
+            <span className="truncate">{col.label}</span>
+            {/* Resizer Handle */}
+            <div 
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/20 active:bg-blue-500/40"
+              onMouseDown={(e) => handleResizeStart(e, col.id, col.width)}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Table Body */}
+      <div className="flex flex-col divide-y divide-zinc-900">
+        {taskList.map(task => (
+          <div
+            key={task.id}
+            onClick={() => onSelectTask(task)}
+            className="flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350"
+          >
+            {columns.filter(c => c.visible).map(col => (
+              <div 
+                key={col.id} 
+                style={{ width: col.width }}
+                className="px-4 py-2.5 shrink-0 flex flex-col justify-center overflow-hidden"
+              >
+                {renderCellContent(task, col)}
+              </div>
+            ))}
+          </div>
+        ))}
+
+        {/* Quick Add inline row */}
+        <form onSubmit={handleInlineAddSubmit} className="flex items-center gap-3 px-4 py-2 bg-zinc-950/80">
+          <div className="p-1 text-zinc-650 shrink-0">
+            <Plus size={13} />
+          </div>
+          <input
+            type="text"
+            value={inlineNewTaskText}
+            onChange={(e) => setInlineNewTaskText(e.target.value)}
+            placeholder="+ Criar tarefa rapidamente no empreendimento atual... (Pressione Enter para salvar)"
+            className="flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none outline-none text-xs text-gray-300 placeholder-gray-600 min-w-[300px]"
+          />
+          {inlineNewTaskText.trim() !== '' && (
+            <span className="text-[10px] text-blue-500 font-mono tracking-wider animate-pulse shrink-0">
+              ENTER PARA CRIAR
+            </span>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+
+  const renderGroupedContent = () => {
+    if (groupBy === 'status') {
+      const statusesList: { id: TaskStatus; label: string; color: string }[] = [
+        { id: 'no_forecast', label: 'Sem previsão', color: 'bg-slate-500' },
+        { id: 'todo', label: 'A fazer', color: 'bg-blue-500' },
+        { id: 'in_progress', label: 'Em progresso', color: 'bg-amber-500' },
+        { id: 'paused', label: 'Pausado', color: 'bg-red-400' },
+        { id: 'approval', label: 'Aprovação', color: 'bg-purple-500' },
+        { id: 'rework', label: 'Refação', color: 'bg-orange-500' },
+        { id: 'implementation', label: 'Implementação', color: 'bg-blue-500' },
+        { id: 'done', label: 'Concluído', color: 'bg-emerald-500' },
+      ];
+
+      return (
+        <div className="space-y-6">
+          {statusesList.map(statusData => {
+            const statusTasks = filteredTasks.filter(t => t.status === statusData.id);
+            if (statusTasks.length === 0) return null;
+            return (
+              <div key={statusData.id} className="space-y-2">
+                <div className="flex items-center gap-2 px-1 sticky left-0 z-10 w-fit">
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusData.color}`} />
+                  <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest font-mono">{statusData.label}</span>
+                  <span className="text-[10px] font-mono text-gray-500 bg-[#161b22] px-1.5 rounded-md border border-[#30363d]/45">
+                    {statusTasks.length}
+                  </span>
+                </div>
+                {renderList(statusTasks)}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (groupBy === 'priority') {
+      const prioritiesList: { id: TaskPriority; label: string; color: string }[] = [
+        { id: 'urgent', label: 'Urgente', color: 'bg-red-500' },
+        { id: 'high', label: 'Alta', color: 'bg-orange-500' },
+        { id: 'medium', label: 'Média', color: 'bg-amber-500' },
+        { id: 'low', label: 'Baixa', color: 'bg-blue-500' },
+        { id: 'no_priority', label: 'Sem Prioridade', color: 'bg-slate-500' },
+      ];
+
+      return (
+        <div className="space-y-6">
+          {prioritiesList.map(prioData => {
+            const prioTasks = filteredTasks.filter(t => t.priority === prioData.id);
+            if (prioTasks.length === 0) return null;
+            return (
+              <div key={prioData.id} className="space-y-2">
+                <div className="flex items-center gap-2 px-1 sticky left-0 z-10 w-fit">
+                  <span className={`w-1.5 h-1.5 rounded-full ${prioData.color}`} />
+                  <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest font-mono">{prioData.label}</span>
+                  <span className="text-[10px] font-mono text-gray-500 bg-[#161b22] px-1.5 rounded-md border border-[#30363d]/45">
+                    {prioTasks.length}
+                  </span>
+                </div>
+                {renderList(prioTasks)}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return renderList(filteredTasks);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-y-auto px-6 py-6 pb-20 space-y-4 bg-[#08080a] overflow-x-hidden">
+      {/* Header filter options strip */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-950/50 p-3 rounded-lg border border-zinc-900 shrink-0">
+        
+        {/* Search input */}
+        <div className="relative flex-1 max-w-sm">
+          <Search size={12} className="absolute left-2.5 top-2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Pesquisar nesta página..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-7 bg-[#08080a] border border-zinc-900 pl-8 pr-3 text-xs text-zinc-200 rounded-md outline-none focus:border-zinc-750 font-sans"
+          />
+        </div>
+
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Assignee Filter */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">Responsável:</span>
+            
+            <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+              <button
+                onClick={() => setFilterAssigneeId('all')}
+                className={`text-[9px] px-2.5 py-1 rounded-full font-medium transition-all ${
+                  filterAssigneeId === 'all' 
+                    ? 'bg-zinc-800 text-white shadow-sm' 
+                    : 'bg-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Todos
+              </button>
+              <div className="w-[1px] h-3 bg-zinc-800 mx-0.5"></div>
+              <div className="flex items-center pl-1 pr-1 gap-1">
+                {USERS.map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => setFilterAssigneeId(u.id)}
+                    title={u.name}
+                    className={`relative w-5 h-5 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[8px] font-bold shrink-0 ${
+                      filterAssigneeId === u.id 
+                        ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' 
+                        : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
+                  >
+                    {u.avatarUrl ? (
+                      <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-zinc-400">{u.initials}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Grouping switcher */}
+          <div className="flex items-center gap-2 shrink-0">
+          <SlidersHorizontal size={11} className="text-zinc-500" />
+          <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">Agrupar por:</span>
+          <div className="flex bg-[#08080a] p-0.5 rounded-md border border-zinc-900">
+            {(['none', 'status', 'priority'] as GroupByOption[]).map(option => (
+              <button
+                key={option}
+                onClick={() => setGroupBy(option)}
+                className={`px-2.5 py-0.5 text-[10px] rounded font-medium transition-all capitalize ${
+                  groupBy === option 
+                    ? 'bg-zinc-800 text-zinc-100 border border-zinc-700/50 shadow-sm' 
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
+                }`}
+              >
+                {option === 'none' ? 'Sem Grupo' : option === 'status' ? 'Status' : 'Prioridade'}
+              </button>
+            ))}
+          </div>
+        </div>
+        </div>
+      </div>
+
+      {/* Main Container list rendering */}
+      {filteredTasks.length === 0 ? (
+        <div className="flex-1 border border-dashed border-zinc-900 rounded-xl p-12 text-center text-zinc-600 bg-transparent flex flex-col items-center justify-center">
+          <Inbox size={22} className="text-zinc-600 mb-2" />
+          <p className="text-xs font-semibold">Nenhuma tarefa correspondente</p>
+          <p className="text-[11px] text-zinc-650">Altere o filtro de pesquisa ou de empreendimentos</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto overflow-y-hidden pb-4">
+          <div className="min-w-fit">
+            {renderGroupedContent()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
