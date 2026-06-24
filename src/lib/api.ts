@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, Subtask, DesignBriefing, CopyBriefing } from '../types';
+import { Task, Project, Label, Subtask, DesignBriefing, CopyBriefing, AppNotification } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -42,6 +42,8 @@ export async function fetchTasks(): Promise<Task[]> {
       reminderDate: t.reminder_date,
       assigneeId: t.assignee_id,
       parentTaskId: t.parent_task_id,
+      updatedBy: t.updated_by,
+      chatMessages: t.chat_messages || [],
       designBriefing: t.design_briefing,
       copyBriefing: t.copy_briefing,
       planningBriefing: t.planning_briefing,
@@ -75,6 +77,8 @@ export async function saveTask(task: Task) {
     reminder_date: task.reminderDate || null,
     assignee_id: task.assigneeId || null,
     parent_task_id: task.parentTaskId || null,
+    updated_by: task.updatedBy || null,
+    chat_messages: task.chatMessages || [],
     design_briefing: task.designBriefing,
     copy_briefing: task.copyBriefing,
     planning_briefing: {
@@ -123,5 +127,56 @@ export async function deleteTask(taskId: string) {
 
 export async function saveProject(project: Project) {
   const { error } = await supabase.from('projects').upsert(project);
+  if (error) throw error;
+}
+
+export async function fetchNotifications(userId: string): Promise<AppNotification[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId);
+    
+  if (error) throw error;
+  
+  return data.map((n: any): AppNotification => ({
+    id: n.id,
+    userId: n.user_id,
+    actorId: n.actor_id,
+    taskId: n.task_id,
+    type: n.type,
+    status: n.status,
+    createdAt: n.created_at,
+    viewedAt: n.viewed_at,
+    postponedUntil: n.postponed_until,
+    message: n.message,
+    details: n.details,
+    targetId: n.target_id
+  }));
+}
+
+export async function saveNotification(notif: AppNotification) {
+  const { error } = await supabase.from('notifications').upsert({
+    id: notif.id,
+    user_id: notif.userId,
+    actor_id: notif.actorId,
+    task_id: notif.taskId,
+    type: notif.type,
+    status: notif.status,
+    created_at: notif.createdAt,
+    viewed_at: notif.viewedAt,
+    postponed_until: notif.postponedUntil,
+    message: notif.message,
+    details: notif.details,
+    target_id: notif.targetId
+  });
+  if (error) throw error;
+}
+
+export async function deleteArchivedNotifications(userId: string) {
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', userId)
+    .eq('status', 'viewed');
   if (error) throw error;
 }

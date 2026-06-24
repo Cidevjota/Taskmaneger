@@ -61,7 +61,7 @@ export default function ListView({
   onAddTask,
   currentProjectFilter
 }: ListViewProps) {
-  const { allUsers: USERS } = useAuth();
+  const { currentUser, updateProfile, allUsers: USERS } = useAuth();
   
   const [search, setSearch] = useState('');
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>('all');
@@ -70,16 +70,33 @@ export default function ListView({
 
   // Column management state
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
-    const saved = localStorage.getItem('listViewColumns');
-    if (saved) {
+    // 1. Try to load from user profile preferences first
+    if (currentUser?.preferences?.listViewColumns) {
       try {
-        const parsed = JSON.parse(saved);
-        // Ensure all default columns exist in case we added new ones
+        const parsed = currentUser.preferences.listViewColumns;
         const merged = defaultColumns.map(dc => {
           const found = parsed.find((p: ColumnDef) => p.id === dc.id);
           return found ? { ...dc, ...found } : dc;
         });
-        // Preserve saved order
+        const ordered = parsed
+          .filter((p: ColumnDef) => merged.find(m => m.id === p.id))
+          .map((p: ColumnDef) => merged.find(m => m.id === p.id)!)
+          .concat(merged.filter(m => !parsed.find((p: ColumnDef) => p.id === m.id)));
+        return ordered;
+      } catch (e) {
+        return defaultColumns;
+      }
+    }
+    
+    // 2. Fallback to local storage (legacy) or default
+    const saved = localStorage.getItem('listViewColumns');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const merged = defaultColumns.map(dc => {
+          const found = parsed.find((p: ColumnDef) => p.id === dc.id);
+          return found ? { ...dc, ...found } : dc;
+        });
         const ordered = parsed
           .filter((p: ColumnDef) => merged.find(m => m.id === p.id))
           .map((p: ColumnDef) => merged.find(m => m.id === p.id)!)
@@ -92,9 +109,55 @@ export default function ListView({
     return defaultColumns;
   });
 
+  const hasInitializedColumns = useRef(!!currentUser?.preferences?.listViewColumns);
+
   useEffect(() => {
+    if (!hasInitializedColumns.current && currentUser?.preferences?.listViewColumns) {
+      try {
+        const parsed = currentUser.preferences.listViewColumns;
+        const merged = defaultColumns.map(dc => {
+          const found = parsed.find((p: ColumnDef) => p.id === dc.id);
+          return found ? { ...dc, ...found } : dc;
+        });
+        const ordered = parsed
+          .filter((p: ColumnDef) => merged.find(m => m.id === p.id))
+          .map((p: ColumnDef) => merged.find(m => m.id === p.id)!)
+          .concat(merged.filter(m => !parsed.find((p: ColumnDef) => p.id === m.id)));
+        setColumns(ordered);
+        hasInitializedColumns.current = true;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [currentUser?.preferences?.listViewColumns]);
+
+  // Track the timeout to debounce API calls
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Save locally for quick response
     localStorage.setItem('listViewColumns', JSON.stringify(columns));
-  }, [columns]);
+    
+    // Save to user profile with debounce
+    if (currentUser && updateProfile) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        const newPreferences = {
+          ...currentUser.preferences,
+          listViewColumns: columns
+        };
+        // Avoid sending if it's already exactly the same
+        const currentSavedStr = JSON.stringify(currentUser.preferences?.listViewColumns || []);
+        if (JSON.stringify(columns) !== currentSavedStr) {
+          updateProfile({ preferences: newPreferences }).catch(console.error);
+        }
+      }, 1000);
+    }
+    
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [columns, currentUser?.id]);
 
   // Drag and drop state for reordering columns
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);

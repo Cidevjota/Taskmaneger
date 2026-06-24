@@ -764,16 +764,15 @@ export default function TaskSheet({
     const newId = `TSK-${Date.now().toString().slice(-4)}`;
     const newTask: Task = {
       id: newId,
-      title: 'Nova Tarefa',
-      description: 'Clique aqui e altere os detalhes no painel lateral de forma instantânea.',
-      status: 'todo',
-      priority: task.priority,
-      projectId: task.projectId,
-      labels: task.labels,
+      title: '',
+      description: '',
+      status: 'no_forecast',
+      priority: 'medium',
+      projectId: '',
+      labels: [],
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
       parentTaskId: task.id,
-      assigneeId: task.assigneeId
     };
     onAddTask(newTask);
     if (onSelectTask) {
@@ -1267,10 +1266,10 @@ export default function TaskSheet({
                       id={`target-${subtask.id}`}
                       key={subtask.id} 
                       style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
-                      className="flex items-start justify-between py-1 group transition-all border-b border-transparent hover:border-zinc-800/50"
+                      className="flex items-start justify-between py-0.5 group transition-all border-b border-transparent hover:border-zinc-800/50"
                     >
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 mt-[2px]">
+                      <div className="flex items-start gap-2 flex-1 min-w-0 py-[1px]">
+                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 mt-[3px]">
                           {subtask.completed ? (
                             <CheckSquare size={13} className="text-emerald-400/50" />
                           ) : subtask.canceled ? (
@@ -1286,7 +1285,7 @@ export default function TaskSheet({
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />
                       </div>
-                      <div className={`flex items-start mt-[1px] ml-2 shrink-0 transition-opacity gap-1 ${subtask.reminderDate || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                      <div className={`flex items-center mt-[2px] ml-2 shrink-0 transition-opacity gap-0.5 ${subtask.reminderDate || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                         {/* Assignee Dropdown */}
                         <div className="relative">
                           <button
@@ -1298,7 +1297,7 @@ export default function TaskSheet({
                             {subtask.assigneeId ? (
                               <img src={USERS.find(u => u.id === subtask.assigneeId)?.avatarUrl} alt="" className="w-3.5 h-3.5 rounded-full" />
                             ) : (
-                              <UserIcon size={10} />
+                              <UserIcon size={11} />
                             )}
                           </button>
                           
@@ -1350,7 +1349,7 @@ export default function TaskSheet({
                                   subtask.reminderDate.includes('T') 
                                     ? `${subtask.reminderDate.split('T')[0].split('-').reverse().join('/')} às ${subtask.reminderDate.split('T')[1]}` 
                                     : subtask.reminderDate.split('-').reverse().join('/')
-                                ) : 'Lembrar'}
+                                ) : ''}
                               </button>
                             }
                           />
@@ -1444,9 +1443,13 @@ export default function TaskSheet({
                              
                              <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-medium shrink-0">
                                <span className="flex items-center gap-1" title={assigneeName}>
-                                 <span className="w-4 h-4 rounded-full bg-zinc-900 flex items-center justify-center text-[9px] text-zinc-300 border border-zinc-700 shadow-inner">
-                                   {assigneeInitials}
-                                 </span> 
+                                 {assignee?.avatarUrl ? (
+                                   <img src={assignee.avatarUrl} alt={assigneeName} className="w-4 h-4 rounded-full object-cover border border-zinc-700 shadow-inner" />
+                                 ) : (
+                                   <span className="w-4 h-4 rounded-full bg-zinc-900 flex items-center justify-center text-[9px] text-zinc-300 border border-zinc-700 shadow-inner">
+                                     {assigneeInitials}
+                                   </span>
+                                 )}
                                </span>
                                <span className="flex items-center gap-1 whitespace-nowrap font-mono tracking-tighter text-[9px] opacity-80">
                                  {t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR').slice(0, 5) : 'S/P'}

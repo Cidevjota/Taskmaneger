@@ -24,7 +24,7 @@ interface InboxViewProps {
 
 export default function InboxView({ tasks, projects, onSelectTask }: InboxViewProps) {
   const { currentUser } = useAuth();
-  const { notifications, markAsRead, markAsViewed, unarchive, postpone, markAsImportant, clearAll } = useNotifications();
+  const { notifications, markAsRead, markAsViewed, unarchive, postpone, markAsImportant, clearAll, clearArchived } = useNotifications();
 
   const [filterProject, setFilterProject] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -406,7 +406,18 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
               <h3 className="text-[13px] font-semibold text-zinc-400 flex items-center gap-2">
                 Arquivadas
               </h3>
-              <span className="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded">{archivedNotifications.length}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded">{archivedNotifications.length}</span>
+                {archivedNotifications.length > 0 && (
+                  <button 
+                    onClick={clearArchived}
+                    className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
+                    title="Excluir todas as arquivadas"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#0a0a0c]">
               {archivedNotifications.length === 0 ? (

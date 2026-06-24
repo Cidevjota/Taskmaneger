@@ -144,6 +144,7 @@ export interface Proposal {
   observacao: string;
   valorUnitario?: string;
   valorM2?: string;
+  valorMensal?: string;
   approvalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   approverId?: string;
   comments?: ProposalComment[];

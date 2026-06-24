@@ -5,6 +5,7 @@ import { User } from '../lib/users';
 export interface UserProfile extends User {
   email: string;
   role: string;
+  preferences?: any;
 }
 
 interface AuthContextType {
@@ -12,6 +13,7 @@ interface AuthContextType {
   allUsers: UserProfile[];
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  updateProfile: (updates: Partial<UserProfile>, newPassword?: string) => Promise<{ success: boolean; error?: string }>;
   loading: boolean;
 }
 
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: u.name,
           email: u.email,
           role: u.role,
+          preferences: u.preferences || {},
           avatarUrl: u.avatar_url,
           initials: u.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
         }));
@@ -83,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name: data.name,
       email: data.email,
       role: data.role,
+      preferences: data.preferences || {},
       avatarUrl: data.avatar_url,
       initials: data.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
     };
@@ -97,8 +101,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('@taskmanager:user');
   };
 
+  const updateProfile = async (updates: Partial<UserProfile>, newPassword?: string) => {
+    if (!currentUser) return { success: false, error: 'Not logged in' };
+
+    const payload: any = {};
+    if (updates.name) payload.name = updates.name;
+    if (updates.email) payload.email = updates.email;
+    if (updates.role) payload.role = updates.role;
+    if (updates.preferences) payload.preferences = updates.preferences;
+    if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;
+    if (newPassword) payload.password = newPassword;
+
+    const { error } = await supabase
+      .from('users_profile')
+      .update(payload)
+      .eq('id', currentUser.id);
+
+    if (error) {
+      console.error('Error updating profile:', error);
+      return { success: false, error: error.message };
+    }
+
+    const updatedProfile = { ...currentUser, ...updates };
+    if (updates.name) {
+      updatedProfile.initials = updates.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+    }
+    
+    setCurrentUser(updatedProfile);
+    localStorage.setItem('@taskmanager:user', JSON.stringify(updatedProfile));
+    
+    // Update in allUsers array too
+    setAllUsers(prev => prev.map(u => u.id === updatedProfile.id ? updatedProfile : u));
+
+    return { success: true };
+  };
+
   return (
-    <AuthContext.Provider value={{ currentUser, allUsers, login, logout, loading }}>
+    <AuthContext.Provider value={{ currentUser, allUsers, login, logout, updateProfile, loading }}>
       {children}
     </AuthContext.Provider>
   );

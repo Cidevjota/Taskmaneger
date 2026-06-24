@@ -54,11 +54,19 @@ export default function KanbanView({
   onAddTask,
   currentProjectFilter
 }: KanbanViewProps) {
-  const { allUsers: USERS } = useAuth();
+  const { allUsers: USERS, currentUser } = useAuth();
   
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
-  const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>('all');
+  const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
+  const hasInitialized = useRef(!!currentUser);
+
+  React.useEffect(() => {
+    if (!hasInitialized.current && currentUser) {
+      setFilterAssigneeId(currentUser.id);
+      hasInitialized.current = true;
+    }
+  }, [currentUser]);
   
   // Track open state of inline quick-add box per column
   const [inlineQuickAdd, setInlineQuickAdd] = useState<{columnId: string, title: string} | null>(null);

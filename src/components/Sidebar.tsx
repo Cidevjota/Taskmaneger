@@ -31,6 +31,9 @@ import { ViewType, Project, Task } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 
+import SettingsView from '../components/SettingsView';
+import ProfileModal from './ProfileModal';
+
 interface SidebarProps {
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
@@ -66,6 +69,7 @@ export default function Sidebar({
   const { notifications, addNotification, markAsViewed, postpone, markAsImportant } = useNotifications();
   
   const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -519,30 +523,43 @@ export default function Sidebar({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             {currentUser?.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-blue-500/10 shadow-sm" />
+              <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-zinc-800 shadow-sm" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-purple-500 to-blue-600 flex items-center justify-center text-white text-[10px] font-bold leading-none select-none shrink-0 border border-blue-500/10 shadow-sm">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-blue-600 flex items-center justify-center text-white text-[11px] font-bold leading-none select-none shrink-0 border border-zinc-800 shadow-sm">
                 {currentUser?.initials || 'US'}
               </div>
             )}
             {!collapsed && (
-              <div className="min-w-0 text-left flex-1">
-                <div className="text-xs font-semibold text-zinc-250 truncate">{currentUser?.name || 'Usuário'}</div>
-                <div className="text-[9px] text-zinc-600 truncate font-mono">{currentUser?.email || 'email@exemplo.com'}</div>
+              <div className="min-w-0 text-left flex-1 pl-0.5">
+                <div className="text-xs font-semibold text-zinc-200 truncate leading-tight">{currentUser?.name || 'Usuário'}</div>
+                <div className="text-[9px] text-zinc-500 truncate font-mono uppercase tracking-wider mt-0.5">{currentUser?.role || 'Membro'}</div>
               </div>
             )}
           </div>
           {!collapsed && (
-            <button 
-              onClick={logout}
-              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
-              title="Sair"
-            >
-              <LogOut size={14} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button 
+                onClick={() => setIsProfileModalOpen(true)}
+                className="p-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900/80 rounded-md transition-colors"
+                title="Editar Perfil"
+              >
+                <SettingsIcon size={14} />
+              </button>
+              <button 
+                onClick={logout}
+                className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                title="Sair"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
           )}
         </div>
       </div>
+      
+      {isProfileModalOpen && (
+        <ProfileModal onClose={() => setIsProfileModalOpen(false)} />
+      )}
     </aside>
   );
 }

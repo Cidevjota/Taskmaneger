@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AppNotification } from '../types';
 import { useAuth } from './AuthContext';
+import { fetchNotifications, saveNotification, deleteArchivedNotifications } from '../lib/api';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -11,6 +12,7 @@ interface NotificationContextType {
   postpone: (id: string) => void;
   markAsImportant: (id: string) => void;
   clearAll: () => void;
+  clearArchived: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -21,43 +23,42 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (currentUser) {
-      const saved = localStorage.getItem(`@taskmanager:notifications:${currentUser.id}`);
-      if (saved) {
-        try {
-          setNotifications(JSON.parse(saved));
-        } catch(e) {}
-      } else {
-        setNotifications([]);
-      }
+      loadNotifications(currentUser.id);
+    } else {
+      setNotifications([]);
     }
   }, [currentUser]);
 
-  const save = (newNotifs: AppNotification[]) => {
-    setNotifications(newNotifs);
-    if (currentUser) {
-      localStorage.setItem(`@taskmanager:notifications:${currentUser.id}`, JSON.stringify(newNotifs));
+  const loadNotifications = async (userId: string) => {
+    try {
+      const data = await fetchNotifications(userId);
+      setNotifications(data);
+    } catch (e) {
+      console.error("Erro ao buscar notificações", e);
     }
   };
 
-  const addNotification = (notif: Omit<AppNotification, 'id' | 'createdAt' | 'status'>) => {
+  const syncUpdate = async (notif: AppNotification) => {
+    // Optimistic UI update
+    setNotifications(prev => prev.map(n => n.id === notif.id ? notif : n));
+    try {
+      await saveNotification(notif);
+    } catch (e) {
+      console.error("Erro ao salvar notificação", e);
+    }
+  };
+
+  const addNotification = async (notif: Omit<AppNotification, 'id' | 'createdAt' | 'status'>) => {
     if (!notif.userId) return;
     
-    const targetUserId = notif.userId;
-    const targetKey = `@taskmanager:notifications:${targetUserId}`;
-
-    // Load target user's notifications
-    let targetNotifs: AppNotification[] = [];
-    const saved = localStorage.getItem(targetKey);
-    if (saved) {
-      try { targetNotifs = JSON.parse(saved); } catch(e) {}
-    }
-    
-    // Evita duplicatas exatas recentes
-    const isDuplicate = targetNotifs.some(n => {
+    // We only perform duplicate check against currently loaded notifications (if target is me)
+    // If target is someone else, it's harder to check duplicates efficiently without fetching,
+    // but we can just insert it. Let's insert directly.
+    const isDuplicate = notifications.some(n => {
+      if (n.userId !== notif.userId) return false;
       if (n.taskId !== notif.taskId || n.type !== notif.type) return false;
       
       if (notif.type === 'deadline') {
-        // Evita mesma notificação de prazo no período de 24 horas
         return n.message === notif.message && (new Date().getTime() - new Date(n.createdAt).getTime() < 1000 * 60 * 60 * 24);
       }
       
@@ -79,58 +80,73 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       createdAt: new Date().toISOString()
     };
     
-    targetNotifs = [newNotif, ...targetNotifs];
-    localStorage.setItem(targetKey, JSON.stringify(targetNotifs));
+    if (currentUser?.id === notif.userId) {
+      setNotifications(prev => [newNotif, ...prev]);
+    }
 
-    // Se o usuário alvo for o usuário atual logado, atualiza o state da UI
-    if (currentUser?.id === targetUserId) {
-      setNotifications(targetNotifs);
+    try {
+      await saveNotification(newNotif);
+    } catch (e) {
+      console.error("Erro ao adicionar notificação", e);
     }
   };
 
   const markAsRead = (id: string) => {
-    save(notifications.map(n => n.id === id && n.status === 'unread' ? { ...n, status: 'read' } : n));
+    const notif = notifications.find(n => n.id === id);
+    if (notif && notif.status === 'unread') {
+      syncUpdate({ ...notif, status: 'read' });
+    }
   };
 
   const markAsViewed = (id: string) => {
-    save(notifications.map(n => n.id === id ? { ...n, status: 'viewed', viewedAt: new Date().toISOString() } : n));
+    const notif = notifications.find(n => n.id === id);
+    if (notif) {
+      syncUpdate({ ...notif, status: 'viewed', viewedAt: new Date().toISOString() });
+    }
   };
 
   const unarchive = (id: string) => {
-    save(notifications.map(n => {
-      if (n.id === id && n.status === 'viewed') {
-        const { viewedAt, ...rest } = n;
-        return { ...rest, status: 'read' };
-      }
-      return n;
-    }));
+    const notif = notifications.find(n => n.id === id);
+    if (notif && notif.status === 'viewed') {
+      const { viewedAt, ...rest } = notif;
+      syncUpdate({ ...rest, status: 'read' });
+    }
   };
 
   const postpone = (id: string) => {
-    save(notifications.map(n => {
-      if (n.id === id) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const postponedTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-        return { ...n, status: 'postponed', postponedUntil: postponedTime, createdAt: postponedTime };
-      }
-      return n;
-    }));
+    const notif = notifications.find(n => n.id === id);
+    if (notif) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const postponedTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      syncUpdate({ ...notif, status: 'postponed', postponedUntil: postponedTime, createdAt: postponedTime });
+    }
   };
 
   const markAsImportant = (id: string) => {
-    save(notifications.map(n => {
-      if (n.id === id) {
-        return { ...n, status: n.status === 'important' ? 'unread' : 'important' };
-      }
-      return n;
-    }));
+    const notif = notifications.find(n => n.id === id);
+    if (notif) {
+      syncUpdate({ ...notif, status: notif.status === 'important' ? 'unread' : 'important' });
+    }
   };
 
-  const clearAll = () => save([]);
+  const clearAll = () => {
+    // We won't implement a DB wipe for clearAll to be safe, only clearArchived
+    setNotifications([]);
+  };
+  
+  const clearArchived = async () => {
+    if (!currentUser) return;
+    setNotifications(prev => prev.filter(n => n.status !== 'viewed'));
+    try {
+      await deleteArchivedNotifications(currentUser.id);
+    } catch (e) {
+      console.error("Erro ao deletar arquivadas", e);
+    }
+  };
 
   return (
-    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAsViewed, unarchive, postpone, markAsImportant, clearAll }}>
+    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAsViewed, unarchive, postpone, markAsImportant, clearAll, clearArchived }}>
       {children}
     </NotificationContext.Provider>
   );

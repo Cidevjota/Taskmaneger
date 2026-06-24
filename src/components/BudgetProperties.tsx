@@ -77,10 +77,16 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
     saveChange({ proposals: updated }); // Salva imediatamente ao criar
   };
 
-  const handleUpdateProposal = (id: string, updates: Partial<Proposal>) => {
+  const handleUpdateProposal = (id: string, updates: Partial<Proposal>, taskUpdates?: Partial<Task>) => {
     const updated = proposals.map(p => p.id === id ? { ...p, ...updates } : p);
     setProposals(updated); // UI atualiza instantaneamente
-    triggerSave(updated); // Backend salva com debounce
+    
+    if (taskUpdates) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveChange({ proposals: updated, ...taskUpdates });
+    } else {
+      triggerSave(updated); // Backend salva com debounce
+    }
   };
 
   const handleDeleteProposal = (id: string) => {
@@ -117,7 +123,21 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
   };
 
   const handleApprovalAction = (proposalId: string, status: 'approved' | 'rejected') => {
-    handleUpdateProposal(proposalId, { approvalStatus: status });
+    const updatedProposals = proposals.map(p => p.id === proposalId ? { ...p, approvalStatus: status } : p);
+    const pendingCount = updatedProposals.filter(p => p.approvalStatus === 'pending').length;
+    
+    let taskUpdates: Partial<Task> | undefined = undefined;
+    
+    if (pendingCount === 0) {
+      const hasApproved = updatedProposals.some(p => p.approvalStatus === 'approved');
+      if (hasApproved) {
+        taskUpdates = { status: 'implementation' };
+      } else if (updatedProposals.some(p => p.approvalStatus === 'rejected')) {
+        taskUpdates = { status: 'rework' };
+      }
+    }
+    
+    handleUpdateProposal(proposalId, { approvalStatus: status }, taskUpdates);
     const p = proposals.find(pr => pr.id === proposalId);
     if (task.assigneeId) {
       const statusText = status === 'approved' ? 'Aprovada' : 'Reprovada';
@@ -236,7 +256,10 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                                   type="button"
                                   key={u.id}
                                   onClick={() => {
-                                    handleUpdateProposal(p.id, { approverId: u.id, approvalStatus: 'pending' });
+                                    const taskUpdates: Partial<Task> = {};
+                                    if (task.status !== 'approval') taskUpdates.status = 'approval';
+                                    
+                                    handleUpdateProposal(p.id, { approverId: u.id, approvalStatus: 'pending' }, Object.keys(taskUpdates).length > 0 ? taskUpdates : undefined);
                                     addNotification({
                                       userId: u.id,
                                       actorId: currentUser?.id || '',
@@ -370,6 +393,26 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                         />
                       ) : (
                         <span className="text-[11px] text-zinc-300 truncate">{formatCurrency(p.valorM2)}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Row 2b: Valor Mensal */}
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                        <DollarSign size={10} /> Valor Mensal
+                      </label>
+                      {editingId === p.id ? (
+                        <input 
+                          type="text" 
+                          value={p.valorMensal || ''} 
+                          onChange={(e) => handleUpdateProposal(p.id, { valorMensal: e.target.value })} 
+                          placeholder="R$ 0,00 / mês" 
+                          className="bg-zinc-950/50 border border-zinc-800/80 rounded p-1.5 text-[11px] text-zinc-300 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder-zinc-700 transition-all" 
+                        />
+                      ) : (
+                        <span className="text-[11px] text-zinc-300 truncate">{formatCurrency(p.valorMensal)}</span>
                       )}
                     </div>
                   </div>

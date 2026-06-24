@@ -36,7 +36,7 @@ import InboxView from './components/InboxView';
 import ConfirmModal from './components/ConfirmModal';
 
 export default function App() {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, updateProfile } = useAuth();
   const { addNotification } = useNotifications();
   const previousTasksRef = useRef<Task[]>([]);
   const isFirstRender = useRef(true);
@@ -192,12 +192,8 @@ export default function App() {
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       
-      const triggeredRemindersKey = `@taskmanager:triggered_reminders:${currentUser.id}`;
-      let triggeredReminders: string[] = [];
-      try {
-        const saved = localStorage.getItem(triggeredRemindersKey);
-        if (saved) triggeredReminders = JSON.parse(saved);
-      } catch(e) {}
+      // Read triggered reminders from user preferences (synced with Supabase)
+      let triggeredReminders: string[] = currentUser.preferences?.triggeredReminders || [];
       
       let hasNewTriggers = false;
       
@@ -265,7 +261,7 @@ export default function App() {
                message: 'Lembrete de Tarefa',
                details: `O lembrete para a tarefa "${task.title}" foi acionado`
              });
-             triggeredReminders.push(reminderId);
+             triggeredReminders = [...triggeredReminders, reminderId];
              hasNewTriggers = true;
            }
         }
@@ -285,7 +281,7 @@ export default function App() {
                  message: 'Lembrete Acionado',
                  details: `"${st.title}"`
                });
-               triggeredReminders.push(reminderId);
+               triggeredReminders = [...triggeredReminders, reminderId];
                hasNewTriggers = true;
              }
            }
@@ -323,7 +319,7 @@ export default function App() {
                   message: m.label,
                   details: `Criativo ${String(idx + 1).padStart(2, '0')} aguarda sua aprovação na tarefa "${task.title}"`
                 });
-                triggeredReminders.push(reminderId);
+                triggeredReminders = [...triggeredReminders, reminderId];
                 hasNewTriggers = true;
               }
             });
@@ -332,7 +328,13 @@ export default function App() {
       });
       
       if (hasNewTriggers) {
-        localStorage.setItem(triggeredRemindersKey, JSON.stringify(triggeredReminders));
+        // Persist to Supabase so it works across any device
+        updateProfile({
+          preferences: {
+            ...currentUser.preferences,
+            triggeredReminders
+          }
+        }).catch(console.error);
       }
     };
     
