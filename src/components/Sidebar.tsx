@@ -71,58 +71,6 @@ export default function Sidebar({
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      const hasDummies = notifications.some(n => n.message.includes('[TESTE]'));
-      if (!hasDummies && currentUser) {
-        addNotification({
-          userId: currentUser.id,
-          actorId: currentUser.id,
-          taskId: tasks[0]?.id || 'dummy',
-          type: 'rejected',
-          message: '[TESTE] Reprovação: O criativo não seguiu o guia de estilo.',
-        });
-        setTimeout(() => {
-          addNotification({
-            userId: currentUser.id,
-            actorId: currentUser.id,
-            taskId: tasks[0]?.id || 'dummy',
-            type: 'approval_pending',
-            message: '[TESTE] Aprovação Pendente: O cliente precisa aprovar as telas.',
-          });
-        }, 100);
-        setTimeout(() => {
-          addNotification({
-            userId: currentUser.id,
-            actorId: currentUser.id,
-            taskId: tasks[0]?.id || 'dummy',
-            type: 'review_requested',
-            message: '[TESTE] Revisão Solicitada: Por favor, dê uma olhada no texto do post.',
-          });
-        }, 200);
-        setTimeout(() => {
-          addNotification({
-            userId: currentUser.id,
-            actorId: currentUser.id,
-            taskId: tasks[0]?.id || 'dummy',
-            type: 'reminder',
-            message: '[TESTE] Lembrete de Checklist: Verifique as pendências antes de enviar.',
-          });
-        }, 300);
-        setTimeout(() => {
-          addNotification({
-            userId: currentUser.id,
-            actorId: currentUser.id,
-            taskId: tasks[0]?.id || 'dummy',
-            type: 'deadline',
-            message: '[TESTE] Prazo Próximo: A entrega final do projeto é amanhã de manhã.',
-          });
-        }, 400);
-      }
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [currentUser]);
-
   // Filter my active notifications
   const myNotifications = notifications.filter(n => {
     if (n.userId !== currentUser?.id) return false;
