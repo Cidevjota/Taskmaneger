@@ -266,6 +266,7 @@ export default function ListView({
       labels: [labels.find(l => l.name === 'Tarefa') || labels[0]].filter(Boolean) as Label[],
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
+      assigneeId: currentUser?.id,
     };
 
     onAddTask(newTask);

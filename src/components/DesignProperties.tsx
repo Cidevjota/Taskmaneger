@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Task, DesignBriefing } from '../types';
-import { Edit2, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Edit2, Check, ChevronDown, ChevronUp, Plus, X, ExternalLink } from 'lucide-react';
 import RichTextEditor from './RichTextEditor';
 import DeliveryApproval from './DeliveryApproval';
 import DeliveryForm from './DeliveryForm';
@@ -21,7 +21,7 @@ const OBJETIVOS_OPTIONS = [
 ];
 
 const TIPO_PECA_OPTIONS = [
-  'Feed', 'Stories', 'Banner site', 'Video', 'Landing page',
+  'Feed', 'Stories', 'Banner site', 'Vídeo', 'Landing page',
   'Cartão', 'Impresso', 'E-mail marketing', 'Apresentação', 'Anúncio Meta', 'Anúncio Google'
 ];
 
@@ -70,8 +70,37 @@ const FORMATOS_DINAMICOS: Record<string, string[]> = {
     "Hero Desktop - 1920x1080px",
     "Mobile - 360x640px",
     "Personalizado"
+  ],
+  "Vídeo": [
+    "Quadrado (1:1) - 1080x1080px",
+    "Vertical (9:16) - 1080x1920px",
+    "Paisagem (16:9) - 1920x1080px",
+    "Stories/Reels (9:16) - 1080x1920px",
+    "YouTube (16:9) - 1920x1080px",
+    "Personalizado"
+  ],
+  "Impresso": [
+    "A4 - 210x297mm",
+    "A3 - 297x420mm",
+    "A5 - 148x210mm",
+    "Flyer - 150x210mm",
+    "Banner Roll-up - 800x2000mm",
+    "Outdoor - 9000x3000mm",
+    "Personalizado"
+  ],
+  "E-mail marketing": [
+    "Desktop - 600px de largura",
+    "Mobile - 320px de largura",
+    "Personalizado"
   ]
 };
+
+// Pieces that support focus direction (mobile first / desktop first)
+const DIRECAO_FOCO_PIECES = ['Landing page', 'E-mail marketing', 'Banner site'];
+
+const DIRECAO_FOCO_OPTIONS = [
+  'Mobile First', 'Desktop First', 'Responsivo (ambos)', 'App'
+];
 
 const DIRECAO_CRIATIVA_OPTIONS = [
   'Institucional', 'Corporativo', 'Sofisticado', 'Luxo', 'Imponente', 'Lifestyle',
@@ -90,6 +119,9 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
   const [isEditing, setIsEditing] = useState(!task.designBriefing?.isFilled);
   const [isBriefingCollapsed, setIsBriefingCollapsed] = useState(false);
   const { allUsers: USERS, currentUser } = useAuth();
+  const sortedUsers = currentUser
+    ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
+    : USERS;
   const { addNotification } = useNotifications();
   const [briefingForm, setBriefingForm] = useState<DesignBriefing>(task.designBriefing || {
     isFilled: false,
@@ -99,6 +131,8 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
     formatosPersonalizados: {},
     mensagemPrincipal: '',
     direcaoCriativa: [],
+    direcaoFoco: [],
+    inspiracoes: [''],
     copyContent: ''
   });
 
@@ -113,6 +147,8 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
         formatosPersonalizados: {},
         mensagemPrincipal: '',
         direcaoCriativa: [],
+        direcaoFoco: [],
+        inspiracoes: [''],
         copyContent: ''
       });
       setIsEditing(!task.designBriefing?.isFilled);
@@ -205,6 +241,7 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
   };
 
   const renderReadonlyBriefing = () => {
+    const validInspiracoes = (briefingForm.inspiracoes || []).filter(s => s.trim());
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between border-b border-zinc-800/40 pb-3">
@@ -238,12 +275,39 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Direção Criativa</span>
               <span className="text-xs text-zinc-200">{briefingForm.direcaoCriativa.join(', ') || 'Não definido'}</span>
             </div>
+            {(briefingForm.direcaoFoco || []).length > 0 && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Direção de Foco</span>
+                <span className="text-xs text-zinc-200">{(briefingForm.direcaoFoco || []).join(', ')}</span>
+              </div>
+            )}
           </div>
 
           {briefingForm.mensagemPrincipal && (
             <div className="flex flex-col gap-0.5 mt-1">
               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mensagem Principal</span>
               <span className="text-xs text-zinc-200 whitespace-pre-wrap leading-relaxed">{briefingForm.mensagemPrincipal}</span>
+            </div>
+          )}
+
+          {/* Inspirações readonly */}
+          {validInspiracoes.length > 0 && (
+            <div className="flex flex-col gap-1.5 mt-1">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Inspirações</span>
+              <div className="flex flex-wrap gap-2">
+                {validInspiracoes.map((url, idx) => (
+                  <a
+                    key={idx}
+                    href={url.startsWith('http') ? url : `https://${url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-600 transition-all group"
+                  >
+                    <ExternalLink size={10} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+                    Inspiração {idx + 1}
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 
@@ -322,6 +386,14 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                 {renderChipGroup(DIRECAO_CRIATIVA_OPTIONS, briefingForm.direcaoCriativa, (val) => setBriefingForm({ ...briefingForm, direcaoCriativa: val }))}
               </div>
 
+              {/* Direção de Foco — shown only when Landing page or E-mail marketing is selected */}
+              {briefingForm.tipoPeca.some(p => DIRECAO_FOCO_PIECES.includes(p)) && (
+                <div className="flex flex-col gap-3">
+                  <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Direção de Foco:</span>
+                  {renderChipGroup(DIRECAO_FOCO_OPTIONS, briefingForm.direcaoFoco || [], (val) => setBriefingForm({ ...briefingForm, direcaoFoco: val }))}
+                </div>
+              )}
+
               {/* Tipo da Peça */}
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Tipo da Peça:</span>
@@ -379,6 +451,55 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                   })}
                 </div>
               </div>
+
+              {/* Inspirações */}
+              <div className="flex flex-col gap-3">
+                <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Inspirações:</span>
+                <div className="flex flex-col gap-2">
+                  {(briefingForm.inspiracoes || ['']).map((url, idx) => (
+                    <div key={idx} className="flex items-center gap-2 group">
+                      <div className="flex-1 flex items-center gap-2 bg-[#121214] border border-zinc-800/80 hover:border-zinc-700 focus-within:border-yellow-500/50 rounded-lg px-3 py-2 transition-all">
+                        <ExternalLink size={11} className="text-zinc-600 shrink-0" />
+                        <input
+                          type="text"
+                          value={url}
+                          onChange={(e) => {
+                            const newList = [...(briefingForm.inspiracoes || [''])];
+                            newList[idx] = e.target.value;
+                            setBriefingForm({ ...briefingForm, inspiracoes: newList });
+                          }}
+                          placeholder={`https://... (link de inspiração ${idx + 1})`}
+                          className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 outline-none"
+                        />
+                      </div>
+                      {(briefingForm.inspiracoes || ['']).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newList = (briefingForm.inspiracoes || ['']).filter((_, i) => i !== idx);
+                            setBriefingForm({ ...briefingForm, inspiracoes: newList.length > 0 ? newList : [''] });
+                          }}
+                          className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                          title="Remover"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newList = [...(briefingForm.inspiracoes || ['']), ''];
+                      setBriefingForm({ ...briefingForm, inspiracoes: newList });
+                    }}
+                    className="self-start flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-200 py-1 px-2 rounded hover:bg-zinc-900 transition-colors"
+                  >
+                    <Plus size={12} />
+                    Adicionar mais uma inspiração
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end pt-4 border-t border-zinc-900/50">
@@ -434,7 +555,7 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
             {/* Formulário de Criação / Edição */}
             {(isCreatingDelivery || editingDeliveryId) && (
               <DeliveryForm
-                users={USERS}
+                users={sortedUsers}
                 initialData={briefingForm.deliveries?.find(d => d.id === editingDeliveryId)}
                 onCancel={() => {
                   setIsCreatingDelivery(false);

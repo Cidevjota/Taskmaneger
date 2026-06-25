@@ -13,6 +13,9 @@ interface BudgetPropertiesProps {
 
 export default function BudgetProperties({ task, saveChange, themeColor }: BudgetPropertiesProps) {
   const { currentUser, allUsers } = useAuth();
+  const sortedAllUsers = currentUser
+    ? [currentUser, ...allUsers.filter(u => u.id !== currentUser.id)]
+    : allUsers;
   const { addNotification } = useNotifications();
   const [activeTab, setActiveTab] = useState<'propostas' | 'aprovacao'>('propostas');
   const [proposals, setProposals] = useState<Proposal[]>(task.proposals || []);
@@ -251,7 +254,7 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Selecionar Aprovador</span>
                             </div>
                             <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                              {allUsers.map(u => (
+                              {sortedAllUsers.map(u => (
                                 <button
                                   type="button"
                                   key={u.id}

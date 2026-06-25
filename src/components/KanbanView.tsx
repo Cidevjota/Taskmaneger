@@ -19,7 +19,9 @@ import {
   Share2,
   LayoutTemplate,
   Tag as TagIcon,
-  BellRing
+  BellRing,
+  AlignJustify,
+  LayoutGrid
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -55,11 +57,15 @@ export default function KanbanView({
   currentProjectFilter
 }: KanbanViewProps) {
   const { allUsers: USERS, currentUser } = useAuth();
+  const sortedUsers = currentUser
+    ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
+    : USERS;
   
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
   const hasInitialized = useRef(!!currentUser);
+  const [isCompact, setIsCompact] = useState(false);
 
   React.useEffect(() => {
     if (!hasInitialized.current && currentUser) {
@@ -83,6 +89,7 @@ export default function KanbanView({
       labels: [labels.find(l => l.name === 'Tarefa') || labels[0]].filter(Boolean) as Label[],
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
+      assigneeId: currentUser?.id,
     };
     onAddTask(newTask);
     onSelectTask(newTask);
@@ -163,6 +170,7 @@ export default function KanbanView({
       labels: [labels.find(l => l.name === 'Tarefa') || labels[0]].filter(Boolean) as Label[],
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
+      assigneeId: currentUser?.id,
     };
 
     onAddTask(newTask);
@@ -227,7 +235,7 @@ export default function KanbanView({
             </button>
             <div className="w-[1px] h-4 bg-zinc-800 mx-0.5"></div>
             <div className="flex items-center pl-1 pr-1 gap-1">
-              {USERS.map(u => (
+              {sortedUsers.map(u => (
                 <button
                   key={u.id}
                   onClick={() => setFilterAssigneeId(u.id)}
@@ -249,6 +257,21 @@ export default function KanbanView({
             </div>
           </div>
         </div>
+        {/* Compact mode toggle */}
+        <div className="ml-auto flex items-center">
+          <button
+            onClick={() => setIsCompact(v => !v)}
+            title={isCompact ? 'Modo Normal' : 'Modo Ultra-Compacto'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
+              isCompact
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {isCompact ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
+            <span>{isCompact ? 'Normal' : 'Compacto'}</span>
+          </button>
+        </div>
       </div>
 
       <div 
@@ -266,7 +289,7 @@ export default function KanbanView({
             key={column.id}
             onDragOver={(e) => handleDragOver(e, column.id)}
             onDrop={(e) => handleDrop(e, column.id)}
-            className={`group/column flex-1 min-w-[280px] max-w-[340px] bg-transparent rounded-xl flex flex-col p-2 border border-transparent transition-all duration-200 scrollbar-none`}
+            className={`group/column flex-1 bg-transparent rounded-xl flex flex-col p-2 border border-transparent transition-all duration-200 scrollbar-none min-w-[320px] max-w-[380px]`}
           >
             {/* Column Title header */}
             <div className="flex items-center justify-between mb-4 px-1 shrink-0">
@@ -351,7 +374,76 @@ export default function KanbanView({
                 else if (primaryLabelData?.name === 'Social Mídia') ThemeIcon = Share2;
                 else if (primaryLabelData) ThemeIcon = TagIcon;
 
-                return (
+                return isCompact ? (
+                  /* ── COMPACT CARD ── */
+                  <div
+                    key={task.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, task.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => onSelectTask(task)}
+                    className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${
+                      isDragging ? 'opacity-30 scale-[0.98]' : ''
+                    }`}
+                  >
+                    {/* Theme Icon */}
+                    {ThemeIcon && (
+                      <div className={`shrink-0 ${themeTextColor}`}>
+                        <ThemeIcon size={12} />
+                      </div>
+                    )}
+
+                    {/* Title — 35 char cap */}
+                    <span className="flex-1 text-[11px] font-medium text-zinc-200 truncate min-w-0" title={task.title}>
+                      {task.title.length > 35 ? task.title.slice(0, 35) + '…' : task.title}
+                    </span>
+
+                    {/* Priority — single letter badge */}
+                    {(() => {
+                      const map: Record<string, { letter: string; cls: string }> = {
+                        urgent: { letter: 'U', cls: 'text-red-400 bg-red-500/10' },
+                        high:   { letter: 'A', cls: 'text-orange-400 bg-orange-500/10' },
+                        medium: { letter: 'M', cls: 'text-blue-400 bg-blue-500/10' },
+                        low:    { letter: 'B', cls: 'text-emerald-400 bg-emerald-500/10' },
+                      };
+                      const p = map[task.priority];
+                      return p ? (
+                        <span className={`text-[9px] font-bold px-1 rounded shrink-0 ${p.cls}`}>{p.letter}</span>
+                      ) : null;
+                    })()}
+
+                    {/* Due date DD/MM */}
+                    {task.dueDate && (() => {
+                      const [, m, d] = task.dueDate.split('-');
+                      const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
+                      return (
+                        <span className={`text-[9px] font-mono shrink-0 ${
+                          isOverdue ? 'text-red-400' : 'text-zinc-500'
+                        }`}>{d}/{m}</span>
+                      );
+                    })()}
+
+                    {/* Reminder bell */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (task.reminderDate) {
+                          onUpdateTask({ ...task, reminderDate: undefined });
+                        } else {
+                          const tomorrow = new Date();
+                          tomorrow.setDate(tomorrow.getDate() + 1);
+                          onUpdateTask({ ...task, reminderDate: `${tomorrow.toISOString().split('T')[0]}T09:00` });
+                        }
+                      }}
+                      className={`shrink-0 transition-colors ${
+                        task.reminderDate ? 'text-amber-400' : 'text-zinc-700 hover:text-zinc-500'
+                      }`}
+                      title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}
+                    >
+                      <BellRing size={10} />
+                    </button>
+                  </div>
+                ) : (
                   <div
                     key={task.id}
                     draggable
@@ -447,8 +539,8 @@ export default function KanbanView({
                         </button>
                       </div>
                     </div>
-                  </div>
-                );
+                    </div>
+                ); // end normal card
               })
               )}
               

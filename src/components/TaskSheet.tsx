@@ -38,7 +38,10 @@ import {
   UserPlus,
   Check,
   ExternalLink,
-  Download
+  Download,
+  GitFork,
+  Columns,
+  Search
 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import RichTextEditor from './RichTextEditor';
@@ -92,6 +95,9 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
   const [approverMenuOpenFor, setApproverMenuOpenFor] = useState<string | null>(null);
   
   const { allUsers: USERS, currentUser } = useAuth();
+  const sortedUsers = currentUser
+    ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
+    : USERS;
   const { addNotification } = useNotifications();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -241,7 +247,7 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
                           <span className="text-[10px] font-semibold text-zinc-500 uppercase">Selecionar Aprovador</span>
                         </div>
                         <div className="max-h-40 overflow-y-auto">
-                          {USERS.map(u => (
+                          {sortedUsers.map(u => (
                             <button
                               type="button"
                               key={u.id}
@@ -424,6 +430,9 @@ export default function TaskSheet({
   onSelectTask
 }: TaskSheetProps) {
   const { allUsers: USERS, currentUser } = useAuth();
+  const sortedUsers = currentUser
+    ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
+    : USERS;
   const { addNotification } = useNotifications();
   const titleRef = useRef(task?.title || '');
   const descriptionRef = useRef(task?.description || '');
@@ -509,25 +518,17 @@ export default function TaskSheet({
   }, [isOpen]);
 
   const toggleSection = (section: string) => {
-    setOpenSections(prev => {
-      const isNowOpen = !prev[section];
-      const updates: Record<string, boolean> = { [section]: isNowOpen };
-      
-      // Sincronizar as 3 colunas (Checklist, Hierarquia, Documentos)
-      if (['checklist', 'hierarchy', 'attachments'].includes(section)) {
-        updates.checklist = isNowOpen;
-        updates.hierarchy = isNowOpen;
-        updates.attachments = isNowOpen;
-      }
-      
-      return { ...prev, ...updates };
-    });
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
   
   const [animatingToIndex, setAnimatingToIndex] = useState<number | null>(null);
   const [currentVisibleIndex, setCurrentVisibleIndex] = useState<number>(-1);
   const [isLinkDropdownOpen, setIsLinkDropdownOpen] = useState(false);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
+  
+  const [compareTaskId, setCompareTaskId] = useState<string | null>(null);
+  const [isCompareSearchOpen, setIsCompareSearchOpen] = useState(false);
+  const [compareSearchQuery, setCompareSearchQuery] = useState('');
 
   if (task?.id !== prevTaskId) {
     setPrevTaskId(task?.id);
@@ -541,6 +542,7 @@ export default function TaskSheet({
     setReminderDate(task?.reminderDate || '');
     setAssigneeId(task?.assigneeId);
     setSubtasks(task?.subtasks || []);
+    setShowDeleteConfirm(false);
     
     setAnimatingToIndex(null);
     setCurrentVisibleIndex(-1);
@@ -831,9 +833,9 @@ export default function TaskSheet({
     <div className="fixed inset-0 z-40 bg-black/55 backdrop-blur-xs flex justify-end animate-fade-in">
       <div className="flex-1" onMouseDown={handleClose} />
 
-      <div className="w-full md:w-[75vw] h-full bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200">
+      <div className={`h-full bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200 transition-all duration-300 ${compareTaskId ? 'w-full' : 'w-full md:w-[75vw]'}`}>
         
-        <div className="h-14 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a]">
+        <div className="h-14 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a] relative">
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-zinc-900 px-2.5 py-1 rounded font-mono text-zinc-400 font-semibold border border-zinc-900">
               {task.id}
@@ -843,7 +845,64 @@ export default function TaskSheet({
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 relative">
+            {compareTaskId && (
+              <button
+                onClick={() => {
+                  setCompareTaskId(null);
+                  setCompareSearchQuery('');
+                }}
+                className="mr-2 px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded text-xs font-semibold uppercase tracking-wider transition-all"
+              >
+                Encerrar Comparação
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsCompareSearchOpen(!isCompareSearchOpen)}
+              className={`p-1.5 rounded transition-all flex items-center gap-1 text-[11px] font-medium ${compareTaskId ? 'bg-blue-500 text-white' : 'text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10'}`}
+              title="Comparar com outra tarefa"
+            >
+              <Columns size={15} />
+            </button>
+
+            {isCompareSearchOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-[#121214] border border-zinc-800 rounded-md shadow-xl p-2 z-50">
+                <div className="flex items-center gap-2 mb-2 px-2 py-1 bg-[#08080a] border border-zinc-800 rounded">
+                  <Search size={12} className="text-zinc-500" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Buscar tarefa..."
+                    value={compareSearchQuery}
+                    onChange={e => setCompareSearchQuery(e.target.value)}
+                    className="flex-1 bg-transparent border-none text-xs text-zinc-200 outline-none"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto flex flex-col gap-1 pr-1 scrollbar-thin">
+                  {allTasks
+                    .filter(t => t.id !== task.id && (t.title.toLowerCase().includes(compareSearchQuery.toLowerCase()) || t.id.toLowerCase().includes(compareSearchQuery.toLowerCase())))
+                    .slice(0, 10)
+                    .map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          setCompareTaskId(t.id);
+                          setIsCompareSearchOpen(false);
+                          setCompareSearchQuery('');
+                        }}
+                        className="text-left px-2 py-1.5 hover:bg-zinc-800 rounded flex flex-col gap-0.5"
+                      >
+                        <span className="text-[10px] font-mono text-zinc-500">{t.id}</span>
+                        <span className="text-xs font-medium text-zinc-300 truncate w-full">{t.title}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            <div className="w-[1px] h-4 bg-zinc-800 mx-1"></div>
+
             <button
               onClick={() => setShowDeleteConfirm(true)}
               className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
@@ -860,7 +919,9 @@ export default function TaskSheet({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin">
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main Task Panel */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin border-r border-zinc-900">
           
           <div className="mb-2 flex items-start gap-3 relative">
             <div className={`mt-[2px] shrink-0 ${themeTextColor}`}>
@@ -1050,7 +1111,7 @@ export default function TaskSheet({
                     >
                       Sem responsável
                     </button>
-                    {USERS.map(u => (
+                    {sortedUsers.map(u => (
                       <button
                         key={u.id}
                         onClick={() => {
@@ -1239,24 +1300,25 @@ export default function TaskSheet({
             )}
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-6">
-            
-            <div className="flex flex-col gap-3 flex-1 min-w-0">
-              <button
-                onClick={() => toggleSection('checklist')}
-                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
-              >
-                {openSections.checklist ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <div className="flex flex-row gap-4 items-start">
+            {/* ═══ CHECKLIST — always visible, grows to fill ═══ */}
+            <div className={`flex flex-col gap-3 transition-all duration-300 ${
+              !openSections.hierarchy && !openSections.attachments ? 'flex-[3]' :
+              !openSections.hierarchy || !openSections.attachments ? 'flex-[2]' :
+              'flex-1'
+            } min-w-0`}>
+              {/* Checklist — always open, cannot collapse */}
+              <div className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor}`}>
+                <CheckSquare size={14} />
                 Checklist
                 {subtasks.length > 0 && (
                   <span className="text-[10px] font-mono text-gray-500 bg-[#0d1117] px-1.5 rounded-full ml-auto">
                     {subtasks.filter(s => s.completed).length}/{subtasks.length}
                   </span>
                 )}
-              </button>
+              </div>
 
-              {openSections.checklist && (
-                <div className="space-y-0 animate-fade-in mt-1">
+              <div className="space-y-0 mt-1">
                   {subtasks.length === 0 && newSubtaskTitle === '' && (
                     <p className="text-xs text-gray-500 italic py-1 pl-1 bg-[#1f2937]/20 rounded p-1 hidden">Nenhuma subtarefa adicionada.</p>
                   )}
@@ -1315,7 +1377,7 @@ export default function TaskSheet({
                                   <UserIcon size={12} />
                                   <span className="text-xs">Remover responsável</span>
                                 </button>
-                                {USERS.map(u => (
+                                {sortedUsers.map(u => (
                                   <button
                                     type="button"
                                     key={u.id}
@@ -1391,17 +1453,28 @@ export default function TaskSheet({
                     />
                   </div>
                 </div>
-              )}
             </div>
 
-            {/* Hierarchy (Right, flex-1) */}
-            <div className="flex flex-col gap-3 flex-1 min-w-0">
+            {/* ═══ HIERARCHY — collapses to icon ═══ */}
+            <div className={`flex flex-col gap-3 transition-all duration-300 ${
+              openSections.hierarchy ? 'flex-1 min-w-0' : 'w-auto shrink-0'
+            }`}>
                <button
                   onClick={() => toggleSection('hierarchy')}
-                  className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+                  className={`text-xs font-semibold font-sans flex items-center uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-all ${openSections.hierarchy ? 'gap-1.5 w-full text-left' : 'flex-col gap-2 justify-center py-4 bg-[#08080a]/40 border border-zinc-900 rounded-md h-full min-h-[200px]'}`}
+                  title={!openSections.hierarchy ? "Expandir Hierarquia" : undefined}
                 >
-                  {openSections.hierarchy ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  Hierarquia
+                  {openSections.hierarchy ? (
+                    <>
+                      <ChevronDown size={14} />
+                      Hierarquia
+                    </>
+                  ) : (
+                    <>
+                      <GitFork size={18} className="text-zinc-500" />
+                      <span className="[writing-mode:vertical-lr] rotate-180 tracking-widest mt-2 text-zinc-500 font-medium whitespace-nowrap">HIERARQUIA</span>
+                    </>
+                  )}
                 </button>
                 {openSections.hierarchy && (
                   <div className="flex flex-col gap-4 animate-fade-in bg-[#08080a]/40 p-4 rounded-md border border-zinc-900">
@@ -1454,9 +1527,46 @@ export default function TaskSheet({
                                <span className="flex items-center gap-1 whitespace-nowrap font-mono tracking-tighter text-[9px] opacity-80">
                                  {t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR').slice(0, 5) : 'S/P'}
                                </span>
-                               <span className={`px-1.5 py-0 rounded flex items-center justify-center uppercase tracking-widest text-[9px] font-bold ${statusObj.color} shadow-sm whitespace-nowrap`}>
-                                 {statusObj.label}
-                               </span>
+                               <div className="flex items-center shrink-0" title={statusObj.label}>
+                                {(() => {
+                                  const pct = (() => {
+                                    switch (t.status) {
+                                      case 'no_forecast':
+                                      case 'todo': return 0;
+                                      case 'in_progress': return 25;
+                                      case 'approval': return 75;
+                                      case 'rework': return 50;
+                                      case 'implementation': return 95;
+                                      case 'done': return 100;
+                                      case 'paused': {
+                                        return null; 
+                                      }
+                                      default: return 0;
+                                    }
+                                  })();
+                                  const isPaused = t.status === 'paused';
+                                  const barPct = isPaused ? 50 : (pct ?? 0);
+                                  const barColor = isPaused
+                                    ? 'bg-red-500'
+                                    : pct === 100
+                                    ? 'bg-emerald-500'
+                                    : 'bg-blue-500';
+                                  const trackColor = isPaused ? 'bg-red-500/15' : 'bg-zinc-700/50';
+                                  return (
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={`w-12 h-[4px] rounded-full ${trackColor} overflow-hidden`}>
+                                        <div
+                                          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                                          style={{ width: `${barPct}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[9px] font-mono leading-none tracking-tighter opacity-80 min-w-[28px] text-right">
+                                        {isPaused ? 'PAUSA' : `${pct}%`}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
                              </div>
                            </div>
                          );
@@ -1615,13 +1725,26 @@ export default function TaskSheet({
                 )}
               </div>
 
-            <div className="flex flex-col gap-3 flex-1 min-w-0">
+            {/* ═══ ATTACHMENTS — collapses to icon ═══ */}
+            <div className={`flex flex-col gap-3 transition-all duration-300 ${
+              openSections.attachments ? 'flex-1 min-w-0' : 'w-auto shrink-0'
+            }`}>
               <button
                 onClick={() => toggleSection('attachments')}
-                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+                className={`text-xs font-semibold font-sans flex items-center uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-all ${openSections.attachments ? 'gap-1.5 w-full text-left' : 'flex-col gap-2 justify-center py-4 bg-[#08080a]/40 border border-zinc-900 rounded-md h-full min-h-[200px]'}`}
+                title={!openSections.attachments ? "Expandir Documentos" : undefined}
               >
-                {openSections.attachments ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                Documentos
+                {openSections.attachments ? (
+                  <>
+                    <ChevronDown size={14} />
+                    Documentos
+                  </>
+                ) : (
+                  <>
+                    <Paperclip size={18} className="text-zinc-500" />
+                    <span className="[writing-mode:vertical-lr] rotate-180 tracking-widest mt-2 text-zinc-500 font-medium whitespace-nowrap">DOCUMENTOS</span>
+                  </>
+                )}
               </button>
               {openSections.attachments && (
                 <div className="animate-fade-in">
@@ -1685,8 +1808,70 @@ export default function TaskSheet({
             </div>
           )}
 
-
         </div>
+
+        {/* Compare Task Panel (Read Only) */}
+        {compareTaskId && (() => {
+          const cTask = allTasks.find(t => t.id === compareTaskId);
+          if (!cTask) return null;
+          
+          return (
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin bg-[#0c0c0e] animate-slide-in relative">
+              <div className="mb-2 flex items-start gap-3">
+                <div className="mt-[2px] shrink-0 text-zinc-500">
+                  <TagIcon size={28} />
+                </div>
+                <h2 className="text-2xl font-bold text-zinc-400 font-sans tracking-tight">
+                  {cTask.title}
+                </h2>
+              </div>
+              
+              <div className="flex flex-col gap-3">
+                <div className="text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider text-zinc-500">
+                  <ChevronDown size={14} />
+                  Propriedades
+                </div>
+                <div className="bg-[#08080a]/40 p-5 rounded-md border border-zinc-900 flex flex-col gap-5 text-xs">
+                  <div className="flex items-center justify-between border-b border-zinc-800/40 pb-2">
+                    <span className="text-zinc-500 font-medium">Status</span>
+                    <span className="text-zinc-300 font-medium px-2 py-0.5 rounded bg-zinc-800">{statuses.find(s => s.value === cTask.status)?.label || cTask.status}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-zinc-800/40 pb-2">
+                    <span className="text-zinc-500 font-medium">Prioridade</span>
+                    <span className="text-zinc-300 font-medium px-2 py-0.5 rounded bg-zinc-800">{priorities.find(p => p.value === cTask.priority)?.label || cTask.priority}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-zinc-800/40 pb-2">
+                    <span className="text-zinc-500 font-medium">Responsável</span>
+                    <span className="text-zinc-300 font-medium px-2 py-0.5 rounded bg-zinc-800">{USERS.find(u => u.id === cTask.assigneeId)?.name || 'Não atribuído'}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-zinc-800/40 pb-2">
+                    <span className="text-zinc-500 font-medium">Vencimento</span>
+                    <span className="text-zinc-300 font-medium px-2 py-0.5 rounded bg-zinc-800">{cTask.dueDate ? cTask.dueDate.split('-').reverse().join('/') : 'Sem prazo'}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-zinc-800/40 pb-2">
+                    <span className="text-zinc-500 font-medium">Projeto</span>
+                    <span className="text-zinc-300 font-medium px-2 py-0.5 rounded bg-zinc-800">{projects.find(p => p.id === cTask.projectId)?.name || 'Nenhum'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div className="text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider text-zinc-500">
+                  <ChevronDown size={14} />
+                  Descrição
+                </div>
+                <div className="bg-[#08080a]/40 p-5 rounded-md border border-zinc-900 relative">
+                  <div 
+                    className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 text-zinc-400"
+                    dangerouslySetInnerHTML={{ __html: cTask.description || '<p class="text-zinc-600 italic">Sem descrição fornecida.</p>' }}
+                  />
+                </div>
+              </div>
+
+            </div>
+          );
+        })()}
+        </div> {/* <-- Closes the flex-1 flex overflow-hidden wrapper */}
       </div>
 
       {/* Modal de Confirmação de Exclusão */}

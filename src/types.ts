@@ -65,6 +65,8 @@ export interface DesignBriefing {
   formatosPersonalizados?: Record<string, FormatoPersonalizado>;
   mensagemPrincipal: string;
   direcaoCriativa: string[];
+  direcaoFoco?: string[];
+  inspiracoes?: string[];
   copyContent?: string;
   deliveries?: Delivery[];
 }

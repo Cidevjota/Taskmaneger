@@ -90,6 +90,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
   const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
   
   const { allUsers: USERS, currentUser } = useAuth();
+  const sortedUsers = currentUser
+    ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
+    : USERS;
   const { addNotification } = useNotifications();
   
   const [selectedCopyEditorId, setSelectedCopyEditorId] = useState<string>('');
@@ -675,7 +678,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Aprovadores Disponíveis</span>
                           </div>
                           <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                            {USERS.map(u => (
+                            {sortedUsers.map(u => (
                               <button
                                 key={u.id}
                                 type="button"
