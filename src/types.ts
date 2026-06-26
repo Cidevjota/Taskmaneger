@@ -16,6 +16,7 @@ export interface Subtask {
   reminderDate?: string;
   assigneeId?: string;
   level?: number;
+  completedAt?: string; // ISO timestamp when marked completed
 }
 
 export interface FormatoPersonalizado {

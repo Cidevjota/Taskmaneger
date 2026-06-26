@@ -210,6 +210,7 @@ export default function App() {
 
           let message = '';
           let details = '';
+          let deadlineKey = '';
 
           const createdAtDate = new Date(task.createdAt.split('T')[0] + 'T00:00:00');
           createdAtDate.setHours(0,0,0,0);
@@ -218,24 +219,31 @@ export default function App() {
           if (diffDays === 3 && totalDurationDays > 3) {
             message = 'Prazo em 3 dias';
             details = `O prazo da tarefa se encerra em 3 dias`;
+            deadlineKey = `deadline_${task.id}_3d_${task.dueDate}`;
           } else if (diffDays === 1) {
             message = 'Prazo Amanhã';
             details = `O prazo da tarefa se encerra amanhã`;
+            deadlineKey = `deadline_${task.id}_1d_${task.dueDate}`;
           } else if (diffDays === 0) {
             message = 'Prazo Vencendo Hoje';
             details = `O prazo desta tarefa vence hoje`;
+            deadlineKey = `deadline_${task.id}_0d_${task.dueDate}`;
           } else if (diffDays === -3) {
             message = 'Prazo Atrasado (3 dias)';
             details = `A tarefa está 3 dias atrasada`;
+            deadlineKey = `deadline_${task.id}_-3d_${task.dueDate}`;
           } else if (diffDays === -7) {
             message = 'Prazo Atrasado (7 dias)';
             details = `A tarefa está 7 dias atrasada`;
+            deadlineKey = `deadline_${task.id}_-7d_${task.dueDate}`;
           } else if (diffDays === -15) {
             message = 'Prazo Atrasado (15 dias)';
             details = `A tarefa está 15 dias atrasada`;
+            deadlineKey = `deadline_${task.id}_-15d_${task.dueDate}`;
           }
 
-          if (message) {
+          // Only fire each deadline alert once per task+type+dueDate combination
+          if (message && deadlineKey && !triggeredReminders.includes(deadlineKey)) {
             addNotification({
               userId: currentUser.id,
               actorId: 'system',
@@ -244,6 +252,8 @@ export default function App() {
               message,
               details
             });
+            triggeredReminders = [...triggeredReminders, deadlineKey];
+            hasNewTriggers = true;
           }
         }
 

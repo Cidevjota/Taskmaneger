@@ -454,6 +454,7 @@ export default function TaskSheet({
   const [subtaskAssigneeMenuOpenFor, setSubtaskAssigneeMenuOpenFor] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(true);
+  const [descColumns, setDescColumns] = useState(1);
 
   const plainDesc = (descriptionRef.current || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim();
   const missingTitle = !(titleRef.current && titleRef.current.trim());
@@ -630,11 +631,14 @@ export default function TaskSheet({
     setSubtasks(prev => prev.map(s => {
       if (s.id !== subId) return s;
       if (!s.completed && !s.canceled) {
-        return { ...s, completed: true, canceled: false };
+        // Mark as completed and set timestamp
+        return { ...s, completed: true, canceled: false, completedAt: new Date().toISOString() };
       } else if (s.completed && !s.canceled) {
-        return { ...s, completed: false, canceled: true };
+        // Move to canceled, clear timestamp
+        return { ...s, completed: false, canceled: true, completedAt: undefined };
       } else {
-        return { ...s, completed: false, canceled: false };
+        // Reset to neutral
+        return { ...s, completed: false, canceled: false, completedAt: undefined };
       }
     }));
   };
@@ -1277,6 +1281,8 @@ export default function TaskSheet({
                     taskId={task.id}
                     content={descriptionRef.current}
                     wrapperClassName="h-full"
+                    columns={descColumns as 1|2|3}
+                    onColumnsChange={(c) => setDescColumns(c)}
                     onChange={(newContent) => {
                       descriptionRef.current = newContent;
                       if (descTimerRef.current) clearTimeout(descTimerRef.current);
@@ -1340,6 +1346,11 @@ export default function TaskSheet({
                             <Square size={13} className="text-gray-500 hover:text-gray-300" />
                           )}
                         </button>
+                        {subtask.completed && subtask.completedAt && (
+                          <span className="text-[9px] text-zinc-400 ml-1 whitespace-nowrap">
+                            {new Date(subtask.completedAt).toLocaleDateString('pt-BR')} {new Date(subtask.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
                         <SubtaskInput 
                           subtaskId={subtask.id}
                           initialValue={subtask.title}

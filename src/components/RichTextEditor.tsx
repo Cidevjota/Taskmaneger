@@ -28,6 +28,8 @@ interface RichTextEditorProps {
   onChange: (content: string) => void;
   variant?: 'default' | 'borderless';
   wrapperClassName?: string;
+  columns?: 1 | 2 | 3;
+  onColumnsChange?: (cols: 1 | 2 | 3) => void;
 }
 
 const COLORS = [
@@ -73,7 +75,27 @@ function toggleMarkKeepingColor(
   }
 }
 
-function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+// SVG icons for column layouts
+const Col1Icon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <rect x="2" y="2" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+  </svg>
+);
+const Col2Icon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <rect x="1" y="2" width="5" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="8" y="2" width="5" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+  </svg>
+);
+const Col3Icon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <rect x="1" y="2" width="3" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="5.5" y="2" width="3" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="10" y="2" width="3" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+  </svg>
+);
+
+function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: ReturnType<typeof useEditor>; columns?: 1|2|3; onColumnsChange?: (c: 1|2|3) => void }) {
   const [isColorOpen, setColorOpen] = useState(false);
   const colorRef = useRef<HTMLDivElement>(null);
 
@@ -252,6 +274,25 @@ function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         )}
       </div>
 
+      {/* Column Layout */}
+      <div className="rte-divider" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title="Layout em colunas">
+        {([1,2,3] as const).map(n => {
+          const Icon = n === 1 ? Col1Icon : n === 2 ? Col2Icon : Col3Icon;
+          return (
+            <button
+              key={n}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onColumnsChange?.(n); }}
+              title={`${n} coluna${n > 1 ? 's' : ''}`}
+              className={`rte-btn ${columns === n ? 'rte-btn--active' : ''}`}
+            >
+              <Icon />
+            </button>
+          );
+        })}
+      </div>
+
       {/* Table Actions (Visible only when inside a table) */}
       {editor.isActive('table') && (
         <div className="flex items-center gap-1 ml-2 bg-zinc-900/50 p-1 rounded-md border border-zinc-800">
@@ -274,7 +315,7 @@ function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   );
 }
 
-export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '' }: RichTextEditorProps) {
+export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '', columns = 1, onColumnsChange }: RichTextEditorProps) {
   const editorRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
@@ -346,10 +387,16 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, editor]);
 
+  const colStyle: React.CSSProperties = columns > 1
+    ? { columnCount: columns, columnGap: '1.25rem' }
+    : {};
+
   return (
     <div className={`rte-wrapper flex flex-col ${variant === 'borderless' ? 'rte-borderless !border-transparent !bg-transparent' : ''} ${wrapperClassName}`}>
-      <MenuBar editor={editor} />
-      <EditorContent editor={editor} className="flex-1 overflow-y-auto" />
+      <MenuBar editor={editor} columns={columns} onColumnsChange={onColumnsChange} />
+      <div className="flex-1 overflow-y-auto" style={colStyle}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }
