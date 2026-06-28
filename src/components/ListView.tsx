@@ -13,13 +13,25 @@ import {
   Plus, 
   Calendar as CalendarIcon,
   ChevronsUpDown,
-  SlidersHorizontal,
-  Bookmark,
   Layers,
-  GripVertical
+  SlidersHorizontal,
+  GripVertical,
+  Columns,
+  Bell,
+  BellRing,
+  PenTool,
+  Type,
+  CheckSquare,
+  DollarSign,
+  Share2,
+  Tag as TagIcon
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
 import { useAuth } from '../context/AuthContext';
+import DatePicker from './DatePicker';
+import StatusPicker from './StatusPicker';
+import PriorityPicker from './PriorityPicker';
+import AssigneePicker from './AssigneePicker';
 
 interface ListViewProps {
   tasks: Task[];
@@ -33,23 +45,24 @@ interface ListViewProps {
 
 type GroupByOption = 'none' | 'status' | 'priority';
 
-export type ColumnId = 'status' | 'title' | 'labels' | 'project' | 'priority' | 'dueDate' | 'assignee';
+export type ColumnId = 'status' | 'title' | 'labels' | 'project' | 'priority' | 'dueDate' | 'assignee' | 'reminder';
 
 export interface ColumnDef {
   id: ColumnId;
   label: string;
   width: number;
-  visible: boolean;
+  visible?: boolean;
 }
 
 const defaultColumns: ColumnDef[] = [
   { id: 'status', label: 'Status', width: 140, visible: true },
-  { id: 'title', label: 'Título', width: 300, visible: true },
-  { id: 'labels', label: 'Tags', width: 150, visible: true },
-  { id: 'project', label: 'Empreendimento', width: 150, visible: true },
-  { id: 'priority', label: 'Prioridade', width: 120, visible: true },
-  { id: 'dueDate', label: 'Vencimento', width: 120, visible: true },
-  { id: 'assignee', label: 'Responsável', width: 150, visible: true },
+  { id: 'title', label: 'Nome da Tarefa', width: 350, visible: true },
+  { id: 'labels', label: 'Tags', width: 120, visible: true },
+  { id: 'project', label: 'Projeto', width: 130, visible: true },
+  { id: 'priority', label: 'Prioridade', width: 100, visible: true },
+  { id: 'dueDate', label: 'Prazo', width: 100, visible: true },
+  { id: 'assignee', label: 'Responsável', width: 120, visible: true },
+  { id: 'reminder', label: 'Lembrete', width: 100, visible: true }
 ];
 
 export default function ListView({
@@ -65,8 +78,12 @@ export default function ListView({
   
   const [search, setSearch] = useState('');
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>('all');
+  const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
+  const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('none');
   const [groupBy, setGroupBy] = useState<GroupByOption>('status');
   const [inlineNewTaskText, setInlineNewTaskText] = useState('');
+  const [showColToggle, setShowColToggle] = useState(false);
 
   // Column management state
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
@@ -168,19 +185,57 @@ export default function ListView({
   const startWidthRef = useRef<number>(0);
 
   // Filter tasks based on project selector, assignee & search input
-  const filteredTasks = tasks.filter(task => {
+  let filteredTasks = tasks.filter(task => {
     if (currentProjectFilter && task.projectId !== currentProjectFilter) return false;
     if (filterAssigneeId !== 'all' && task.assigneeId !== filterAssigneeId) return false;
-    if (search.trim() !== '') {
+    if (filterPriority !== 'all' && task.priority !== filterPriority) return false;
+    if (search.trim()) {
       const q = search.toLowerCase();
       return (
         task.title.toLowerCase().includes(q) ||
-        task.id.toLowerCase().includes(q) ||
-        task.description.toLowerCase().includes(q)
+        task.description.toLowerCase().includes(q) ||
+        (task.labels && task.labels.some(l => l.name.toLowerCase().includes(q)))
       );
     }
     return true;
   });
+
+  if (sortPriority !== 'none' || sortDue !== 'none') {
+    const priorityWeight: Record<TaskPriority, number> = {
+      urgent: 4,
+      high: 3,
+      medium: 2,
+      low: 1,
+      no_priority: 0
+    };
+
+    filteredTasks = [...filteredTasks].sort((a, b) => {
+      // 1. Sort by Priority
+      if (sortPriority !== 'none') {
+        const pA = priorityWeight[a.priority];
+        const pB = priorityWeight[b.priority];
+        if (pA !== pB) {
+          return sortPriority === 'asc' ? pA - pB : pB - pA;
+        }
+      }
+
+      // 2. Sort by Due Date
+      if (sortDue !== 'none') {
+        const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+        const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+        
+        if (!a.dueDate && b.dueDate) return 1;
+        if (a.dueDate && !b.dueDate) return -1;
+        if (!a.dueDate && !b.dueDate) return 0;
+        
+        if (dateA !== dateB) {
+          return sortDue === 'asc' ? dateA - dateB : dateB - dateA;
+        }
+      }
+      
+      return 0;
+    });
+  }
 
   // Toggle state to quickly cycle task status from the list itself!
   const cycleStatus = (e: React.MouseEvent, task: Task) => {
@@ -336,25 +391,47 @@ export default function ListView({
     switch (col.id) {
       case 'status':
         return (
+          <StatusPicker
+            value={task.status}
+            onChange={(val) => onUpdateTask({ ...task, status: val })}
+            trigger={
+              <div className="flex items-center gap-2 max-w-full cursor-pointer hover:bg-zinc-800/60 p-1 rounded-md transition-colors -ml-1">
+                <div className="shrink-0 text-zinc-500">
+                  {getStatusIcon(task.status)}
+                </div>
+                <span className="text-[11px] font-medium text-zinc-300 capitalize truncate">
+                  {getStatusLabel(task.status)}
+                </span>
+              </div>
+            }
+          />
+        );
+      case 'title': {
+        const primaryLabelId = task.labels.length > 0 ? task.labels[0]?.id : null;
+        const primaryLabelData = primaryLabelId ? labels.find(l => l.id === primaryLabelId) : null;
+        const themeTextColor = primaryLabelData ? (primaryLabelData.color.match(/text-[a-z]+-\d+/) || ['text-zinc-500'])[0] : '';
+
+        let ThemeIcon: any = null;
+        if (primaryLabelData?.name === 'Design') ThemeIcon = PenTool;
+        else if (primaryLabelData?.name === 'Copy') ThemeIcon = Type;
+        else if (primaryLabelData?.name === 'Tarefa') ThemeIcon = CheckSquare;
+        else if (primaryLabelData?.name === 'Orçamento') ThemeIcon = DollarSign;
+        else if (primaryLabelData?.name === 'Social Media') ThemeIcon = Share2;
+        else if (primaryLabelData) ThemeIcon = TagIcon;
+
+        return (
           <div className="flex items-center gap-2 max-w-full">
-            <button 
-              onClick={(e) => cycleStatus(e, task)} 
-              className="p-1 rounded hover:bg-zinc-850 shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
-              title="Avançar status"
-            >
-              {getStatusIcon(task.status)}
-            </button>
-            <span className="text-[11px] font-medium text-zinc-300 capitalize truncate">
-              {getStatusLabel(task.status)}
+            {ThemeIcon && (
+              <div className={`shrink-0 ${themeTextColor}`}>
+                <ThemeIcon size={12} />
+              </div>
+            )}
+            <span className="font-semibold text-zinc-200 group-hover:text-white truncate block">
+              {task.title}
             </span>
           </div>
         );
-      case 'title':
-        return (
-          <span className="font-semibold text-zinc-200 group-hover:text-white truncate block">
-            {task.title}
-          </span>
-        );
+      }
       case 'labels':
         return (
           <div className="flex items-center gap-1.5 overflow-hidden">
@@ -385,7 +462,17 @@ export default function ListView({
           </div>
         ) : null;
       case 'priority':
-        return getPriorityBadge(task.priority);
+        return (
+          <PriorityPicker
+            value={task.priority}
+            onChange={(val) => onUpdateTask({ ...task, priority: val })}
+            trigger={
+              <button type="button" className="hover:scale-105 transition-transform active:scale-95 text-left">
+                {getPriorityBadge(task.priority)}
+              </button>
+            }
+          />
+        );
       case 'dueDate':
         return task.dueDate ? (
           <div className="flex items-center gap-1 text-zinc-500 font-mono text-[10px]">
@@ -396,23 +483,69 @@ export default function ListView({
           <span className="text-zinc-500 pl-4">-</span>
         );
       case 'assignee':
-        const user = task.assigneeId ? USERS.find(u => u.id === task.assigneeId) : null;
-        return user ? (
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div 
-              className="w-5 h-5 rounded-full bg-zinc-850 border border-zinc-800 flex items-center justify-center text-[9px] text-zinc-350 font-bold shrink-0 overflow-hidden" 
-              title={user.name}
-            >
-              {user.avatarUrl ? (
-                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
-              ) : (
-                user.initials
-              )}
-            </div>
-            <span className="text-[11px] text-zinc-350 truncate">{user.name}</span>
-          </div>
-        ) : (
-          <span className="text-zinc-500 text-[10px] font-mono pl-2">Não atribuído</span>
+        return (
+          <AssigneePicker
+            value={task.assigneeId}
+            onChange={(val) => onUpdateTask({ ...task, assigneeId: val })}
+            trigger={
+              <div className="flex items-center gap-2 overflow-hidden cursor-pointer hover:bg-zinc-800/60 p-1 rounded-md transition-colors -ml-1">
+                {task.assigneeId && USERS.find(u => u.id === task.assigneeId) ? (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-zinc-850 border border-zinc-800 flex items-center justify-center shrink-0 overflow-hidden">
+                      <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <span className="text-[11px] font-medium text-zinc-400 truncate hidden md:block">
+                      {USERS.find(u => u.id === task.assigneeId)?.name}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-5 h-5 rounded-full border border-dashed border-zinc-800 shrink-0 bg-zinc-900/50 flex items-center justify-center text-[10px] text-zinc-600">
+                      -
+                    </div>
+                    <span className="text-[11px] font-medium text-zinc-500 truncate hidden md:block">
+                      Não atribuído
+                    </span>
+                  </>
+                )}
+              </div>
+            }
+          />
+        );
+      case 'reminder':
+        return (
+          <DatePicker
+            value={task.reminderDate || ''}
+            onChange={(date) => {
+              if (date) {
+                onUpdateTask({ ...task, reminderDate: date });
+              } else {
+                onUpdateTask({ ...task, reminderDate: undefined });
+              }
+            }}
+            enableTime={true}
+            onQuickAdd={() => {
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              onUpdateTask({ ...task, reminderDate: `${tomorrow.toISOString().split('T')[0]}T09:00` });
+            }}
+            trigger={
+              <button
+                type="button"
+                className={`w-[80px] inline-flex items-center justify-between gap-1.5 text-[9px] font-sans font-medium px-2 py-1 rounded border min-h-[22px] transition-colors truncate ${task.reminderDate ? 'text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20' : 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20'}`}
+                title={task.reminderDate ? "Alterar lembrete" : "Adicionar lembrete"}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <Bell size={10} className={task.reminderDate ? 'opacity-100' : 'opacity-60'} />
+                  {task.reminderDate ? (
+                    task.reminderDate.includes('T')
+                      ? `${task.reminderDate.split('T')[0].split('-').reverse().join('/').substring(0, 5)} ${task.reminderDate.split('T')[1]}`
+                      : task.reminderDate.split('-').reverse().join('/').substring(0, 5)
+                  ) : 'Adicionar'}
+                </div>
+              </button>
+            }
+          />
         );
       default:
         return null;
@@ -420,11 +553,11 @@ export default function ListView({
   };
 
   const renderList = (taskList: Task[]) => (
-    <div className="border border-zinc-900 rounded-lg overflow-hidden bg-[#121214]/40 flex flex-col select-none relative w-max min-w-full">
+    <div className="border border-zinc-900 rounded-lg bg-[#121214]/40 flex flex-col select-none relative w-max min-w-full">
       
       {/* Table Header Row */}
-      <div className="flex items-stretch bg-zinc-950/80 border-b border-zinc-900 sticky top-0 z-10 text-[10px] uppercase font-mono tracking-wider text-zinc-500 font-semibold">
-        {columns.filter(c => c.visible).map((col) => (
+      <div className="flex items-stretch bg-zinc-950/80 border-b border-zinc-900 sticky top-0 z-10 text-[10px] uppercase font-mono tracking-wider text-zinc-500 font-semibold rounded-t-lg">
+        {columns.filter(c => c.visible !== false).map((col) => (
           <div 
             key={col.id}
             draggable
@@ -453,11 +586,11 @@ export default function ListView({
             onClick={() => onSelectTask(task)}
             className="flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350"
           >
-            {columns.filter(c => c.visible).map(col => (
+            {columns.filter(c => c.visible !== false).map(col => (
               <div 
                 key={col.id} 
                 style={{ width: col.width }}
-                className="px-4 py-2.5 shrink-0 flex flex-col justify-center overflow-hidden"
+                className="px-4 py-2.5 shrink-0 flex flex-col justify-center"
               >
                 {renderCellContent(task, col)}
               </div>
@@ -557,7 +690,7 @@ export default function ListView({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto px-6 py-6 pb-20 space-y-4 bg-[#08080a] overflow-x-hidden">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-6 py-6 pb-2 space-y-4 bg-[#08080a]">
       {/* Header filter options strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-950/50 p-3 rounded-lg border border-zinc-900 shrink-0">
         
@@ -614,6 +747,87 @@ export default function ListView({
             </div>
           </div>
 
+          {/* Priority Filter */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">Prioridade:</span>
+            <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+              <button
+                onClick={() => setFilterPriority('all')}
+                className={`text-[9px] px-2.5 py-1 rounded-full font-medium transition-all ${
+                  filterPriority === 'all' 
+                    ? 'bg-zinc-800 text-white shadow-sm' 
+                    : 'bg-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Todas
+              </button>
+              <div className="w-[1px] h-3 bg-zinc-800 mx-0.5"></div>
+              <div className="flex items-center pl-1 pr-1 gap-1">
+                {[
+                  { id: 'urgent', label: 'U', icon: <AlertTriangle size={10} />, color: 'text-red-400 border-red-500 bg-red-500/10', title: 'Urgente' },
+                  { id: 'high', label: 'A', icon: <ArrowUp size={10} />, color: 'text-orange-400 border-orange-500 bg-orange-500/10', title: 'Alta' },
+                  { id: 'medium', label: 'M', icon: null, color: 'text-blue-400 border-blue-500 bg-blue-500/10', title: 'Média' },
+                  { id: 'low', label: 'B', icon: <ArrowDown size={10} />, color: 'text-emerald-400 border-emerald-500 bg-emerald-500/10', title: 'Baixa' },
+                  { id: 'no_priority', label: '-', icon: null, color: 'text-zinc-500 border-zinc-500 bg-zinc-900/10', title: 'Sem prioridade' },
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setFilterPriority(p.id as TaskPriority)}
+                    title={p.title}
+                    className={`relative w-5 h-5 rounded-full border-2 transition-all duration-300 flex items-center justify-center text-[8px] font-bold shrink-0 ${
+                      filterPriority === p.id 
+                        ? `${p.color} scale-110 shadow-lg shadow-black/20` 
+                        : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Sort Filter */}
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">Ordenar:</span>
+            
+            <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+              <button
+                onClick={() => {
+                  if (sortPriority === 'asc') setSortPriority('desc');
+                  else if (sortPriority === 'desc') setSortPriority('none');
+                  else setSortPriority('asc');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${
+                  sortPriority !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Prioridade
+                <div className="flex flex-col gap-[1px]">
+                  <ArrowUp size={8} className={sortPriority === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                  <ArrowDown size={8} className={sortPriority === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (sortDue === 'asc') setSortDue('desc');
+                  else if (sortDue === 'desc') setSortDue('none');
+                  else setSortDue('asc');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${
+                  sortDue !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Prazo
+                <div className="flex flex-col gap-[1px]">
+                  <ArrowUp size={8} className={sortDue === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                  <ArrowDown size={8} className={sortDue === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Grouping switcher */}
           <div className="flex items-center gap-2 shrink-0">
           <SlidersHorizontal size={11} className="text-zinc-500" />
@@ -634,7 +848,55 @@ export default function ListView({
             ))}
           </div>
         </div>
+
+        {/* Column Toggler */}
+        <div className="flex items-center gap-2 shrink-0 ml-auto relative">
+          <button
+            onClick={() => setShowColToggle(!showColToggle)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-[10px] font-medium ${
+              showColToggle 
+                ? 'bg-zinc-800 text-zinc-200 border-zinc-700' 
+                : 'bg-zinc-900/40 text-zinc-500 border-zinc-800/50 hover:text-zinc-300'
+            }`}
+          >
+            <Columns size={12} />
+            Colunas
+          </button>
+          
+          {showColToggle && (
+            <div className="absolute top-full right-0 mt-2 bg-[#121214] border border-zinc-800 rounded-lg shadow-xl p-2 z-50 flex flex-col gap-1 w-[160px]">
+              <div className="text-[10px] font-mono text-zinc-500 uppercase font-bold px-2 py-1 mb-1">
+                Visibilidade
+              </div>
+              {columns.map(col => (
+                <label key={col.id} className="flex items-center gap-2 px-2 py-1 hover:bg-zinc-800/50 rounded cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={col.visible !== false}
+                    onChange={(e) => {
+                      const newCols = columns.map(c => c.id === col.id ? { ...c, visible: e.target.checked } : c);
+                      setColumns(newCols);
+                      
+                      // Save to user preferences if available
+                      if (currentUser) {
+                         const prefs = currentUser.preferences || {};
+                         updateProfile({ preferences: { ...prefs, listViewColumns: newCols } });
+                      } else {
+                         localStorage.setItem('listViewColumns', JSON.stringify(newCols));
+                      }
+                    }}
+                    className="w-3 h-3 rounded-sm border-zinc-700 bg-zinc-900 text-blue-500 focus:ring-0 focus:ring-offset-0"
+                  />
+                  <span className="text-[11px] text-zinc-300 group-hover:text-zinc-100 transition-colors">
+                    {col.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
+
+      </div>
       </div>
 
       {/* Main Container list rendering */}
@@ -645,7 +907,7 @@ export default function ListView({
           <p className="text-[11px] text-zinc-650">Altere o filtro de pesquisa ou de empreendimentos</p>
         </div>
       ) : (
-        <div className="overflow-x-auto overflow-y-hidden pb-4">
+        <div className="flex-1 overflow-auto pb-20 scrollbar-minimal min-h-0">
           <div className="min-w-fit">
             {renderGroupedContent()}
           </div>

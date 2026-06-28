@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom';
 import { X, Undo2, Eraser, Pen, Check, Save } from 'lucide-react';
 
 interface FullscreenImageEditorProps {
-  imageUrl: string;
-  initialAnnotatedDataUrl?: string;
-  onSave: (annotatedDataUrl: string) => void;
+  imageUrls: string[];
+  initialIndex?: number;
+  initialAnnotatedDataUrls?: string[];
+  onSave: (annotatedDataUrls: string[]) => void;
   onClose: () => void;
 }
 
@@ -20,11 +21,15 @@ const COLORS = [
 ];
 
 export default function FullscreenImageEditor({
-  imageUrl,
-  initialAnnotatedDataUrl,
+  imageUrls,
+  initialIndex = 0,
+  initialAnnotatedDataUrls = [],
   onSave,
   onClose
 }: FullscreenImageEditorProps) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [annotations, setAnnotations] = useState<string[]>([...initialAnnotatedDataUrls]);
+  
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#ef4444');
   const [isEraser, setIsEraser] = useState(false);
@@ -34,33 +39,39 @@ export default function FullscreenImageEditor({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   
+  useEffect(() => {
+    setImageLoaded(false);
+    setHistory([]);
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
+  }, [currentIndex]);
+
   // Initialize canvas when image loads
   useEffect(() => {
     if (imageLoaded && canvasRef.current && imageRef.current) {
       canvasRef.current.width = imageRef.current.clientWidth;
       canvasRef.current.height = imageRef.current.clientHeight;
       
-      // Save initial blank state
       saveState();
 
-      // If there's an existing annotation, we would load it here.
-      // For simplicity, we assume we're drawing fresh or the existing annotation is rendered below.
-      // Note: If initialAnnotatedDataUrl exists, we can draw it on the canvas.
-      if (initialAnnotatedDataUrl) {
+      const existingAnnotation = annotations[currentIndex];
+      if (existingAnnotation) {
         const img = new Image();
         img.onload = () => {
           if (canvasRef.current) {
             const ctx = canvasRef.current.getContext('2d');
             if (ctx) {
               ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
-              saveState(); // Update history with loaded image
+              saveState();
             }
           }
         };
-        img.src = initialAnnotatedDataUrl;
+        img.src = existingAnnotation;
       }
     }
-  }, [imageLoaded, initialAnnotatedDataUrl]);
+  }, [imageLoaded]);
 
   const saveState = () => {
     if (!canvasRef.current) return;
@@ -147,24 +158,41 @@ export default function FullscreenImageEditor({
     ctx.moveTo(x, y);
   };
 
-  const handleSave = () => {
-    if (!canvasRef.current || !imageRef.current) return;
-    
-    // Create a composite image of the base image + annotations
+  const getCurrentDataUrl = () => {
+    if (!canvasRef.current || !imageRef.current) return null;
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvasRef.current.width;
     tempCanvas.height = canvasRef.current.height;
     const tCtx = tempCanvas.getContext('2d');
-    
     if (tCtx) {
-      // Fill with white background in case image has transparency before converting to JPEG
       tCtx.fillStyle = '#ffffff';
       tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       tCtx.drawImage(imageRef.current, 0, 0, tempCanvas.width, tempCanvas.height);
       tCtx.drawImage(canvasRef.current, 0, 0);
-      const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.5); // 50% quality JPEG drastically reduces size
-      onSave(dataUrl);
+      return tempCanvas.toDataURL('image/jpeg', 0.5);
     }
+    return null;
+  };
+
+  const handleSave = () => {
+    const currentUrl = getCurrentDataUrl();
+    if (currentUrl) {
+      const newAnnotations = [...annotations];
+      newAnnotations[currentIndex] = currentUrl;
+      onSave(newAnnotations);
+    } else {
+      onSave(annotations);
+    }
+  };
+
+  const changeImage = (newIndex: number) => {
+    const currentUrl = getCurrentDataUrl();
+    if (currentUrl && history.length > 1) { // Only save if there's drawing
+      const newAnnotations = [...annotations];
+      newAnnotations[currentIndex] = currentUrl;
+      setAnnotations(newAnnotations);
+    }
+    setCurrentIndex(newIndex);
   };
 
   return createPortal(
@@ -236,11 +264,21 @@ export default function FullscreenImageEditor({
 
       {/* Canvas Area */}
       <div className="flex-1 overflow-hidden flex items-center justify-center p-4 relative select-none">
+        
+        {imageUrls.length > 1 && (
+          <button
+            onClick={() => changeImage(currentIndex === 0 ? imageUrls.length - 1 : currentIndex - 1)}
+            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-zinc-900/80 hover:bg-zinc-800 text-white rounded-full transition-colors z-50 backdrop-blur-sm border border-zinc-700/50"
+          >
+            <Undo2 size={24} className="rotate-[-45deg]" /> {/* just a placeholder icon or import ChevronLeft */}
+          </button>
+        )}
+
         <div className="relative max-w-full max-h-full inline-flex justify-center items-center">
           <img 
             ref={imageRef}
-            src={imageUrl} 
-            alt="Tela cheia" 
+            src={imageUrls[currentIndex]} 
+            alt={`Tela cheia ${currentIndex + 1}`} 
             className="max-w-full max-h-[calc(100vh-100px)] object-contain pointer-events-none shadow-2xl"
             onLoad={() => setImageLoaded(true)}
           />
@@ -259,6 +297,15 @@ export default function FullscreenImageEditor({
             />
           )}
         </div>
+        
+        {imageUrls.length > 1 && (
+          <button
+            onClick={() => changeImage(currentIndex === imageUrls.length - 1 ? 0 : currentIndex + 1)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-zinc-900/80 hover:bg-zinc-800 text-white rounded-full transition-colors z-50 backdrop-blur-sm border border-zinc-700/50"
+          >
+            <Undo2 size={24} className="rotate-[135deg]" />
+          </button>
+        )}
       </div>
     </div>,
     document.body

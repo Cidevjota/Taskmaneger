@@ -304,6 +304,27 @@
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Minimalist Scrollbar (Linear/Notion style) */
+.scrollbar-minimal::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 /* Utility to hide scrollbar but keep scroll functionality */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

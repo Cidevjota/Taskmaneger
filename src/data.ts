@@ -5,7 +5,7 @@ export const MOCK_LABELS: Label[] = [
   { id: 'l2', name: 'Copy', color: 'bg-pink-500/10 text-pink-500 border border-pink-500/20' },
   { id: 'l3', name: 'Tarefa', color: 'bg-blue-500/10 text-blue-500 border border-blue-500/20' },
   { id: 'l4', name: 'Orçamento', color: 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' },
-  { id: 'l5', name: 'Social Mídia', color: 'bg-purple-500/10 text-purple-500 border border-purple-500/20' },
+  { id: 'l5', name: 'Social Media', color: 'bg-purple-500/10 text-purple-500 border border-purple-500/20' },
 ];
 
 export const MOCK_PROJECTS: Project[] = [

@@ -25,7 +25,8 @@ import {
   X,
   Check,
   MessageSquare,
-  Search
+  Search,
+  Receipt
 } from 'lucide-react';
 import { ViewType, Project, Task } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -212,6 +213,21 @@ export default function Sidebar({
                       key={n.id}
                       className="group relative flex flex-col cursor-pointer rounded-lg px-2 py-1.5 hover:bg-zinc-900/60 hover:shadow-md transition-all"
                       onClick={() => {
+                        // Special handling for Sienge Titles
+                        if (n.message === 'Lembrete de Título' || n.details?.includes('título')) {
+                          setActiveView('sienge');
+                          setCurrentProjectFilter(null);
+                          setTimeout(() => {
+                            const titleEl = document.getElementById(`sienge-title-${n.taskId}`);
+                            if (titleEl) {
+                              titleEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              titleEl.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2', 'ring-offset-black');
+                              setTimeout(() => titleEl.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2', 'ring-offset-black'), 3000);
+                            }
+                          }, 300);
+                          return;
+                        }
+
                         const task = tasks.find(t => t.id === n.taskId);
                         if (task && onSelectTask) {
                           onSelectTask(task);
@@ -222,13 +238,26 @@ export default function Sidebar({
                               if (n.targetId?.startsWith('copy-')) sectionName = 'copyProps';
                               else if (n.targetId?.startsWith('proposal-')) sectionName = 'budgetProps';
                               else if (n.targetId?.startsWith('design-')) sectionName = 'designProps';
+                              else if (n.targetId === 'socialMediaProps') sectionName = 'socialMediaProps';
 
                               const event = new CustomEvent('openTaskSection', { detail: { section: sectionName, targetId: n.targetId } });
                               window.dispatchEvent(event);
                             }, 400);
-                          } else if (n.type === 'task_assigned' || n.type === 'reminder') {
+                          } else if (n.type === 'task_assigned') {
                             setTimeout(() => {
                               const event = new CustomEvent('openTaskSection', { detail: { section: 'checklist', targetId: n.targetId } });
+                              window.dispatchEvent(event);
+                            }, 400);
+                          } else if (n.type === 'reminder') {
+                            setTimeout(() => {
+                              const isSubtaskReminder = (n.targetId && n.targetId !== 'reminder' && n.targetId !== n.taskId) || n.message === 'Lembrete Acionado';
+                              const sectionName = isSubtaskReminder ? 'checklist' : 'reminder';
+                              const event = new CustomEvent('openTaskSection', { detail: { section: sectionName, targetId: n.targetId } });
+                              window.dispatchEvent(event);
+                            }, 400);
+                          } else if (n.type === 'deadline' || n.type === 'deadline_changed') {
+                            setTimeout(() => {
+                              const event = new CustomEvent('openTaskSection', { detail: { section: 'deadline', targetId: 'deadline' } });
                               window.dispatchEvent(event);
                             }, 400);
                           } else if (n.type === 'chat_mention') {
@@ -388,6 +417,21 @@ export default function Sidebar({
               {!collapsed && <span>Calendário</span>}
             </button>
 
+            {/* Divider */}
+            {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
+
+            <button
+              onClick={() => setActiveView('sienge')}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeView === 'sienge'
+                  ? 'bg-blue-500/10 text-blue-300 border border-blue-500/20'
+                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+              }`}
+            >
+              <Receipt size={14} className={activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'} />
+              {!collapsed && <span>Títulos Sienge</span>}
+            </button>
+
             <button
               onClick={() => setActiveView('settings')}
               className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
@@ -440,17 +484,16 @@ export default function Sidebar({
                       setActiveView('tasks_board');
                     }
                   }}
-                  className={`w-full flex items-center gap-2 px-3 py-1 rounded-md text-xs transition-all ${
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     isFiltered 
-                      ? 'bg-zinc-900/55 text-zinc-100 border border-zinc-850/80 pl-2' 
-                      : 'hover:bg-zinc-900/40 hover:text-zinc-250 border border-transparent'
+                      ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50' 
+                      : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent text-zinc-400'
                   }`}
                   title={project.name}
                 >
-                  <span className={`w-2 h-2 rounded-full shrink-0 bg-current ${project.color}`} />
                   {!collapsed && (
                     <div className="flex-1 flex items-center justify-between text-left truncate">
-                      <span className={`truncate font-medium ${isFiltered ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                      <span className="truncate">
                         {project.name}
                       </span>
                       <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">

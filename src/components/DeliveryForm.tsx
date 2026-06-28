@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Delivery } from '../types';
 import { User } from '../lib/users';
-import { Check, X, Image as ImageIcon, Link as LinkIcon, FileText, User as UserIcon, ChevronDown } from 'lucide-react';
+import { Check, X, Image as ImageIcon, Link as LinkIcon, FileText, User as UserIcon, ChevronDown, Plus } from 'lucide-react';
 
 interface DeliveryFormProps {
   initialData?: Delivery;
@@ -11,7 +11,11 @@ interface DeliveryFormProps {
 }
 
 export default function DeliveryForm({ initialData, users = [], onSave, onCancel }: DeliveryFormProps) {
-  const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
+  const [imageUrls, setImageUrls] = useState<string[]>(() => {
+    if (initialData?.imageUrls && initialData.imageUrls.length > 0) return initialData.imageUrls;
+    if (initialData?.imageUrl) return [initialData.imageUrl];
+    return [''];
+  });
   const [figmaLink, setFigmaLink] = useState(initialData?.figmaLink || '');
   const [creativeDefense, setCreativeDefense] = useState(initialData?.creativeDefense || '');
   const [approverId, setApproverId] = useState(initialData?.approverId || '');
@@ -19,7 +23,8 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imageUrl.trim() || !approverId) return;
+    const validImageUrls = imageUrls.filter(url => url.trim() !== '');
+    if (validImageUrls.length === 0 || !approverId) return;
 
     let finalLink = figmaLink.trim();
     if (finalLink && !/^https?:\/\//i.test(finalLink)) {
@@ -27,8 +32,9 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
     }
 
     onSave({
-      imageUrl,
-      thumbnailUrl: imageUrl, // Em um cenário real, o backend geraria a miniatura
+      imageUrl: validImageUrls[0], // Backwards compatibility
+      imageUrls: validImageUrls,
+      thumbnailUrl: validImageUrls[0], // Em um cenário real, o backend geraria a miniatura
       figmaLink: finalLink,
       creativeDefense,
       approverId: approverId || undefined,
@@ -47,63 +53,101 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
-            <ImageIcon size={12} /> Imagem do Criativo *
+            <ImageIcon size={12} /> {imageUrls.length > 1 ? 'Imagens do Criativo *' : 'Imagem do Criativo *'}
           </label>
-          <div 
-            className={`bg-[#121214] border ${imageUrl ? 'border-zinc-800' : 'border-zinc-800 border-dashed'} rounded-md p-4 flex flex-col items-center justify-center gap-2 transition-colors focus-within:border-yellow-500/50`}
-            onPaste={(e) => {
-              const items = e.clipboardData?.items;
-              if (!items) return;
-              for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf('image') !== -1) {
-                  e.preventDefault();
-                  const blob = items[i].getAsFile();
-                  if (blob) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      if (event.target?.result) setImageUrl(event.target.result as string);
-                    };
-                    reader.readAsDataURL(blob);
+          <div className="flex flex-col gap-3">
+            {imageUrls.map((url, idx) => (
+              <div 
+                key={idx}
+                className={`bg-[#121214] border ${url ? 'border-zinc-800' : 'border-zinc-800 border-dashed'} rounded-md p-4 flex flex-col items-center justify-center gap-2 transition-colors focus-within:border-yellow-500/50 relative`}
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                      e.preventDefault();
+                      const blob = items[i].getAsFile();
+                      if (blob) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          if (event.target?.result) {
+                            const newUrls = [...imageUrls];
+                            newUrls[idx] = event.target.result as string;
+                            setImageUrls(newUrls);
+                          }
+                        };
+                        reader.readAsDataURL(blob);
+                      }
+                    }
                   }
-                }
-              }
-            }}
-            tabIndex={0}
-          >
-            {imageUrl ? (
-              <div className="relative group w-full flex justify-center">
-                {imageUrl.startsWith('data:image') || imageUrl.startsWith('http') ? (
-                  <img src={imageUrl} alt="Preview" className="max-h-40 object-contain rounded" />
+                }}
+                tabIndex={0}
+              >
+                {url ? (
+                  <div className="relative group w-full flex justify-center">
+                    {url.startsWith('data:image') || url.startsWith('http') ? (
+                      <img src={url} alt={`Preview ${idx + 1}`} className="max-h-40 object-contain rounded" />
+                    ) : (
+                      <span className="text-xs text-yellow-400 break-all">{url}</span>
+                    )}
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        const newUrls = [...imageUrls];
+                        newUrls[idx] = '';
+                        setImageUrls(newUrls);
+                      }}
+                      className="absolute top-2 right-2 bg-red-500/80 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remover Imagem"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 ) : (
-                  <span className="text-xs text-yellow-400 break-all">{imageUrl}</span>
+                  <>
+                    <ImageIcon size={24} className="text-zinc-600" />
+                    <p className="text-xs text-zinc-400 text-center">
+                      Clique aqui e aperte <strong>Ctrl+V</strong> para colar o print do layout,<br/>
+                      ou insira uma URL válida abaixo.
+                    </p>
+                    <input
+                      type="text"
+                      value={url}
+                      onChange={(e) => {
+                        const newUrls = [...imageUrls];
+                        newUrls[idx] = e.target.value;
+                        setImageUrls(newUrls);
+                      }}
+                      placeholder="https://exemplo.com/imagem.png"
+                      className="w-full max-w-sm mt-2 bg-[#0a0a0c] border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500 transition-colors"
+                    />
+                  </>
                 )}
-                <button 
-                  type="button" 
-                  onClick={() => setImageUrl('')}
-                  className="absolute top-2 right-2 bg-red-500/80 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Remover Imagem"
-                >
-                  <X size={14} />
-                </button>
+                {imageUrls.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageUrls(imageUrls.filter((_, i) => i !== idx));
+                    }}
+                    className="absolute top-2 right-2 p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                    title="Remover Campo"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-            ) : (
-              <>
-                <ImageIcon size={24} className="text-zinc-600" />
-                <p className="text-xs text-zinc-400 text-center">
-                  Clique aqui e aperte <strong>Ctrl+V</strong> para colar o print do layout,<br/>
-                  ou insira uma URL válida abaixo.
-                </p>
-                <input
-                  type="text"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://exemplo.com/imagem.png"
-                  className="w-full max-w-sm mt-2 bg-[#0a0a0c] border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500 transition-colors"
-                />
-              </>
-            )}
+            ))}
+            
+            <button
+              type="button"
+              onClick={() => setImageUrls([...imageUrls, ''])}
+              className="self-start flex items-center gap-1.5 text-[11px] font-medium text-zinc-400 hover:text-yellow-400 py-1.5 px-3 rounded border border-zinc-800 hover:border-yellow-500/30 hover:bg-yellow-500/5 transition-all"
+            >
+              <Plus size={12} />
+              Adicionar mais uma imagem
+            </button>
           </div>
         </div>
 
@@ -198,7 +242,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
           </button>
           <button
             type="submit"
-            disabled={!imageUrl.trim()}
+            disabled={imageUrls.filter(u => u.trim() !== '').length === 0}
             className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Check size={14} /> {initialData ? 'Salvar Edição' : 'Cadastrar Criativo'}

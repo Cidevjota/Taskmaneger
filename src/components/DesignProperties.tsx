@@ -10,6 +10,7 @@ import { useNotifications } from '../context/NotificationContext';
 
 interface DesignPropertiesProps {
   task: Task;
+  allTasks?: Task[];
   saveChange: (updates: Partial<Task>) => void;
   themeColor?: string;
 }
@@ -110,7 +111,7 @@ const DIRECAO_CRIATIVA_OPTIONS = [
 
 type TabId = 'copy' | 'aprovacao';
 
-export default function DesignProperties({ task, saveChange, themeColor = 'text-blue-500' }: DesignPropertiesProps) {
+export default function DesignProperties({ task, allTasks = [], saveChange, themeColor = 'text-blue-500' }: DesignPropertiesProps) {
   const [isCreatingDelivery, setIsCreatingDelivery] = useState(false);
   const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
   
@@ -118,6 +119,7 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
 
   const [isEditing, setIsEditing] = useState(!task.designBriefing?.isFilled);
   const [isBriefingCollapsed, setIsBriefingCollapsed] = useState(false);
+  const [isCopyDropdownOpen, setIsCopyDropdownOpen] = useState(false);
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
@@ -136,7 +138,6 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
     copyContent: ''
   });
 
-  // Sync state when task changes (important since this component is never unmounted by TaskSheet)
   useEffect(() => {
     if (task) {
       setBriefingForm(task.designBriefing || {
@@ -157,8 +158,6 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
 
   useEffect(() => {
     const handleOpenSection = (e: CustomEvent<{ section: string, targetId?: string }>) => {
-      // With the new layout, approval is always visible below, so we don't need to switch tabs anymore
-      // We can keep the listener just in case we need to scroll or handle other things
     };
     window.addEventListener('openTaskSection', handleOpenSection as EventListener);
     return () => window.removeEventListener('openTaskSection', handleOpenSection as EventListener);
@@ -176,7 +175,6 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
     saveChange({ designBriefing: updatedBriefing });
   };
 
-  // Auto-save debounced for copyContent
   useEffect(() => {
     if (!task) return;
     if (briefingForm.copyContent === task.designBriefing?.copyContent) return;
@@ -185,6 +183,44 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
     }, 800);
     return () => clearTimeout(timer);
   }, [briefingForm.copyContent]);
+
+  const relatedCopyTasks = React.useMemo(() => {
+    return allTasks.filter(t => 
+      t.labels.some(l => l.name === 'Copy') && (
+        t.parentTaskId === task.id || 
+        (task.parentTaskId && t.id === task.parentTaskId)
+      )
+    );
+  }, [allTasks, task]);
+
+  const approvedCopies = React.useMemo(() => {
+    const copies: { taskId: string; editorId: string; content: string; title: string }[] = [];
+    relatedCopyTasks.forEach(ct => {
+      if (ct.copyBriefing?.copyEditors) {
+        ct.copyBriefing.copyEditors.forEach(editor => {
+          if (editor.content) {
+             copies.push({
+               taskId: ct.id,
+               editorId: editor.id,
+               content: editor.content,
+               title: `${ct.title} - ${editor.name}`
+             });
+          }
+        });
+      }
+    });
+    return copies;
+  }, [relatedCopyTasks]);
+
+  const handleImportCopy = (editorId: string) => {
+    if (!editorId) return;
+    const selectedCopy = approvedCopies.find(c => c.editorId === editorId);
+    if (selectedCopy) {
+      setBriefingForm(prev => ({ ...prev, copyContent: selectedCopy.content }));
+      saveChange({ designBriefing: { ...briefingForm, copyContent: selectedCopy.content } });
+    }
+    setIsCopyDropdownOpen(false);
+  };
 
   const handleCopyChange = (newCopy: string) => {
     setBriefingForm(prev => ({ ...prev, copyContent: newCopy }));
@@ -290,7 +326,6 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
             </div>
           )}
 
-          {/* Inspirações readonly */}
           {validInspiracoes.length > 0 && (
             <div className="flex flex-col gap-1.5 mt-1">
               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Inspirações</span>
@@ -350,10 +385,8 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
 
   return (
     <div className="flex flex-col bg-[#08080a]/40 rounded-md border border-zinc-900/40 animate-slide-down overflow-hidden mt-2">
-      {/* 2 Colunas: Briefing e Copy */}
       <div className="grid grid-cols-2 gap-8 px-5 pt-5 pb-5">
         
-        {/* Coluna 1: Briefing da Peça */}
         <div className="flex flex-col gap-4">
           {isEditing ? (
             <div className="flex flex-col gap-4 bg-[#08080a] p-5 rounded-xl border border-zinc-900/50">
@@ -363,13 +396,11 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                 </h3>
               </div>
               <div className="flex flex-col gap-8 animate-fade-in">
-              {/* Objetivo */}
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Objetivo:</span>
                 {renderChipGroup(OBJETIVOS_OPTIONS, briefingForm.objetivos, (val) => setBriefingForm({ ...briefingForm, objetivos: val }))}
               </div>
 
-              {/* Mensagem Principal */}
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Mensagem Principal</span>
                 <textarea
@@ -380,13 +411,11 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                 />
               </div>
 
-              {/* Direção Criativa */}
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Direção Criativa:</span>
                 {renderChipGroup(DIRECAO_CRIATIVA_OPTIONS, briefingForm.direcaoCriativa, (val) => setBriefingForm({ ...briefingForm, direcaoCriativa: val }))}
               </div>
 
-              {/* Direção de Foco — shown only when Landing page or E-mail marketing is selected */}
               {briefingForm.tipoPeca.some(p => DIRECAO_FOCO_PIECES.includes(p)) && (
                 <div className="flex flex-col gap-3">
                   <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Direção de Foco:</span>
@@ -394,12 +423,10 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                 </div>
               )}
 
-              {/* Tipo da Peça */}
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Tipo da Peça:</span>
                 {renderChipGroup(TIPO_PECA_OPTIONS, briefingForm.tipoPeca, (val) => setBriefingForm({ ...briefingForm, tipoPeca: val }))}
                 
-                {/* Dynamic Formats Blocks based on selected Tipo da Peça */}
                 <div className="flex flex-col gap-3 mt-1">
                   {briefingForm.tipoPeca.map(peca => {
                     const formatsForPeca = FORMATOS_DINAMICOS[peca];
@@ -417,7 +444,6 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                           setBriefingForm({ ...briefingForm, formatosEspecificos: newFormatos });
                         })}
                         
-                        {/* Custom Format Inputs */}
                         {isCustomSelected && (
                           <div className="flex items-center gap-2 mt-2 animate-fade-in bg-zinc-900/50 p-2 rounded-md border border-zinc-800">
                             <input
@@ -452,7 +478,6 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
                 </div>
               </div>
 
-              {/* Inspirações */}
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Inspirações:</span>
                 <div className="flex flex-col gap-2">
@@ -516,20 +541,48 @@ export default function DesignProperties({ task, saveChange, themeColor = 'text-
           )}
         </div>
 
-        {/* Coluna 2: Copy */}
         <div className="flex flex-col gap-4 h-full">
-          <div className="flex items-center justify-between border-b border-zinc-800/40 pb-3">
-            <h3 className={`text-xs font-semibold font-sans uppercase tracking-wider flex items-center gap-1.5 ${themeColor}`}>
-              Copy
-            </h3>
-          </div>
-          <div className="flex-1 flex flex-col gap-3 animate-fade-in bg-[#121214] border border-zinc-800/40 rounded-lg p-2 min-h-[300px]">
-            <RichTextEditor
+          <h4 className="text-sm font-semibold text-zinc-100 mb-4 flex items-center gap-2">
+            <Edit2 size={16} className={themeColor} />
+            Copy
+          </h4>
+          <div className="flex-1 flex flex-col animate-fade-in bg-[#121214] border border-zinc-800/40 rounded-lg p-3 min-h-[300px]">
+            {approvedCopies.length > 0 && (
+              <div className="mb-3 border-b border-zinc-800/40 pb-2 relative">
+                <button
+                  onClick={() => setIsCopyDropdownOpen(!isCopyDropdownOpen)}
+                  className="w-full flex items-center justify-between bg-transparent text-zinc-500 hover:text-zinc-300 text-xs py-1 cursor-pointer focus:outline-none focus:ring-0 border-none transition-colors outline-none font-medium"
+                >
+                  <span>Importar Copy...</span>
+                  <ChevronDown size={12} className={`transition-transform ${isCopyDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {isCopyDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsCopyDropdownOpen(false)}></div>
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1b1e] border border-zinc-800 rounded-lg shadow-xl z-50 flex flex-col overflow-hidden animate-fade-in py-1">
+                      {approvedCopies.map(copy => (
+                        <button
+                          key={copy.editorId}
+                          onClick={() => handleImportCopy(copy.editorId)}
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors"
+                        >
+                          {copy.title}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            <div className="flex-1 relative">
+              <RichTextEditor
               taskId={`copy-${task.id}`}
               content={briefingForm.copyContent || ''}
               onChange={handleCopyChange}
               variant="borderless"
             />
+            </div>
           </div>
         </div>
       </div>

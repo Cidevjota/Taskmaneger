@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, X, ExternalLink, Image as ImageIcon, Send, Pencil, Trash2, RotateCcw, Maximize2, MessageSquare, AlertCircle, RefreshCw } from 'lucide-react';
+import { Check, X, ExternalLink, Image as ImageIcon, Send, Pencil, Trash2, RotateCcw, Maximize2, MessageSquare, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Delivery, DeliveryThreadMessage } from '../types';
 import FullscreenImageEditor from './FullscreenImageEditor';
 import { useAuth } from '../context/AuthContext';
@@ -31,14 +31,20 @@ export default function DeliveryApproval({
   const [newDefense, setNewDefense] = useState('');
 
   const [isFullscreenEditorOpen, setIsFullscreenEditorOpen] = useState(false);
-  const [annotatedImage, setAnnotatedImage] = useState<string | undefined>(undefined);
+  const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
   const [isSubmittingNewVersion, setIsSubmittingNewVersion] = useState(false);
   const [isExpanded, setIsExpanded] = useState(delivery.status !== 'approved');
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const isExpired = new Date(delivery.createdAt).getTime() < Date.now() - 30 * 24 * 60 * 60 * 1000;
 
   // Build the unified thread. If the delivery is old and has no thread, we mock it.
   const thread: DeliveryThreadMessage[] = [...(delivery.thread || [])];
+  
+  const images = delivery.imageUrls && delivery.imageUrls.length > 0 
+    ? delivery.imageUrls 
+    : [delivery.imageUrl].filter(Boolean) as string[];
+    
   
   // If thread has no submission (because it's old), inject the defense
   if (!thread.some(t => t.type === 'submission') && delivery.creativeDefense) {
@@ -122,20 +128,28 @@ export default function DeliveryApproval({
     const submissions = thread.filter(t => t.type === 'submission');
     const currentRevisionNumber = submissions.length > 0 ? submissions[submissions.length - 1].revisionNumber || submissions.length : 1;
 
+    const hasAnnotations = annotatedImages.some(Boolean);
+
     const newThread = addMessage({
       role: 'manager',
       type: 'feedback',
       action: 'rejected',
       content: feedback,
-      annotatedImageUrl: annotatedImage,
+      annotatedImageUrl: hasAnnotations ? annotatedImages.find(Boolean) : undefined,
+      annotatedImageUrls: hasAnnotations ? annotatedImages : undefined,
       revisionNumber: currentRevisionNumber,
       editorName: currentUser?.name || 'Aprovador'
     });
     
-    onUpdate(delivery.id, { status: 'rejected', thread: newThread, annotatedImageUrl: annotatedImage });
+    onUpdate(delivery.id, { 
+      status: 'rejected', 
+      thread: newThread, 
+      annotatedImageUrl: hasAnnotations ? annotatedImages.find(Boolean) : undefined,
+      annotatedImageUrls: hasAnnotations ? annotatedImages : undefined
+    });
     setFeedback('');
     setShowFeedbackInput(false);
-    setAnnotatedImage(undefined);
+    setAnnotatedImages([]);
   };
 
   const handleDesignerReply = (action: 'request_review' | 'will_rework') => {
@@ -380,6 +394,8 @@ export default function DeliveryApproval({
                   const revisionCount = Math.max(1, submissions.length);
                   const latestSubmission = submissions.length > 0 ? submissions[submissions.length - 1] : null;
                   const isCopyDelivery = !!latestSubmission?.copyText;
+                    
+                  const displayImage = annotatedImages[currentImageIndex] || delivery.annotatedImageUrls?.[currentImageIndex] || delivery.annotatedImageUrl || images[currentImageIndex];
                   
                   return (
                     <>
@@ -388,6 +404,7 @@ export default function DeliveryApproval({
                           REV {revisionCount.toString().padStart(2, '0')}
                         </span>
                       </div>
+                      
                       {isCopyDelivery ? (
                         <div className="w-full h-full p-6 overflow-y-auto max-h-full text-zinc-300 text-sm prose prose-invert prose-p:my-1 prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-left">
                           <div className="mb-4 font-bold text-pink-400 uppercase tracking-widest text-[10px]">
@@ -396,20 +413,53 @@ export default function DeliveryApproval({
                           <div dangerouslySetInnerHTML={{ __html: latestSubmission.copyText || '' }} />
                         </div>
                       ) : (
-                        <img 
-                          src={annotatedImage || delivery.annotatedImageUrl || delivery.imageUrl} 
-                          alt="Entrega" 
-                          onClick={() => {
-                            if (delivery.status === 'pending' || delivery.status === 'review_requested' || delivery.status === 'rejected') setIsFullscreenEditorOpen(true);
-                          }}
-                          className="max-h-full h-full w-auto object-contain block group-hover:brightness-75 transition-all cursor-pointer mx-auto"
-                        />
+                        <div className="relative w-full h-full flex items-center justify-center">
+                          <img 
+                            src={displayImage} 
+                            alt={`Entrega ${currentImageIndex + 1}`} 
+                            onClick={() => {
+                              if (delivery.status === 'pending' || delivery.status === 'review_requested' || delivery.status === 'rejected') setIsFullscreenEditorOpen(true);
+                            }}
+                            className="max-h-full h-full w-auto object-contain block group-hover:brightness-75 transition-all cursor-pointer mx-auto"
+                          />
+                          
+                          {!annotatedImages[currentImageIndex] && !delivery.annotatedImageUrls?.[currentImageIndex] && !delivery.annotatedImageUrl && images.length > 1 && (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1);
+                                }}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors z-20"
+                              >
+                                <ChevronLeft size={20} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1);
+                                }}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors z-20"
+                              >
+                                <ChevronRight size={20} />
+                              </button>
+                              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/40 px-2 py-1 rounded-full">
+                                {images.map((_, idx) => (
+                                  <div 
+                                    key={idx} 
+                                    className={`w-1.5 h-1.5 rounded-full transition-all ${idx === currentImageIndex ? 'bg-white scale-125' : 'bg-white/40'}`} 
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       )}
                     </>
                   );
                 })()}
                 {(delivery.status === 'pending' || delivery.status === 'review_requested' || delivery.status === 'rejected') && (
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                     <div className="bg-black/60 p-3 rounded-full text-white backdrop-blur-sm">
                       <Maximize2 size={24} />
                     </div>
@@ -511,10 +561,10 @@ export default function DeliveryApproval({
                       placeholder="Explique o que precisa ser ajustado na peça..."
                       className="w-full bg-[#121214] border border-red-900/50 rounded-md p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-red-500/50 resize-none min-h-[80px]"
                     />
-                    {annotatedImage && (
+                    {annotatedImages.some(Boolean) && (
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-emerald-400 flex items-center gap-1"><Check size={12}/> Imagem com rabiscos anexada</span>
-                        <button onClick={() => setAnnotatedImage(undefined)} className="text-[10px] text-zinc-500 hover:text-red-400">Remover rabiscos</button>
+                        <span className="text-xs text-emerald-400 flex items-center gap-1"><Check size={12}/> Imagens com rabiscos anexadas</span>
+                        <button onClick={() => setAnnotatedImages([])} className="text-[10px] text-zinc-500 hover:text-red-400">Remover rabiscos</button>
                       </div>
                     )}
                   </div>
@@ -637,10 +687,11 @@ export default function DeliveryApproval({
 
       {isFullscreenEditorOpen && (
         <FullscreenImageEditor
-          imageUrl={delivery.imageUrl!}
-          initialAnnotatedDataUrl={annotatedImage || delivery.annotatedImageUrl}
-          onSave={(dataUrl) => {
-            setAnnotatedImage(dataUrl);
+          imageUrls={images}
+          initialIndex={currentImageIndex}
+          initialAnnotatedDataUrls={annotatedImages.length > 0 ? annotatedImages : (delivery.annotatedImageUrls || (delivery.annotatedImageUrl ? [delivery.annotatedImageUrl] : []))}
+          onSave={(dataUrls) => {
+            setAnnotatedImages(dataUrls);
             setIsFullscreenEditorOpen(false);
           }}
           onClose={() => setIsFullscreenEditorOpen(false)}

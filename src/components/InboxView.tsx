@@ -138,9 +138,21 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
                 const event = new CustomEvent('openTaskSection', { detail: { section: sectionName, targetId: n.targetId } });
                 window.dispatchEvent(event);
               }, 100);
-            } else if (n.type === 'task_assigned' || n.type === 'reminder') {
+            } else if (n.type === 'task_assigned') {
               setTimeout(() => {
                 const event = new CustomEvent('openTaskSection', { detail: { section: 'checklist', targetId: n.targetId } });
+                window.dispatchEvent(event);
+              }, 100);
+            } else if (n.type === 'reminder') {
+              setTimeout(() => {
+                const isSubtaskReminder = (n.targetId && n.targetId !== 'reminder' && n.targetId !== n.taskId) || n.message === 'Lembrete Acionado';
+                const sectionName = isSubtaskReminder ? 'checklist' : 'reminder';
+                const event = new CustomEvent('openTaskSection', { detail: { section: sectionName, targetId: n.targetId } });
+                window.dispatchEvent(event);
+              }, 100);
+            } else if (n.type === 'deadline' || n.type === 'deadline_changed') {
+              setTimeout(() => {
+                const event = new CustomEvent('openTaskSection', { detail: { section: 'deadline', targetId: 'deadline' } });
                 window.dispatchEvent(event);
               }, 100);
             }

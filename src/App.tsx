@@ -20,8 +20,8 @@ import { useAuth } from './context/AuthContext';
 import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
-import { Task, Project, Label, ViewType } from './types';
-import { fetchTasks, fetchProjects, fetchLabels, saveTask, deleteTask, saveProject } from './lib/api';
+import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote } from './types';
+import { fetchTasks, fetchProjects, fetchLabels, saveTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
 import { supabase } from './lib/supabase';
 
 import Sidebar from './components/Sidebar';
@@ -34,12 +34,14 @@ import ProjectsView from './components/ProjectsView';
 import SettingsView from './components/SettingsView';
 import InboxView from './components/InboxView';
 import ConfirmModal from './components/ConfirmModal';
+import SiengeView from './components/SiengeView';
 
 export default function App() {
   const { currentUser, loading, updateProfile } = useAuth();
   const { addNotification } = useNotifications();
   const previousTasksRef = useRef<Task[]>([]);
   const isFirstRender = useRef(true);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Navigation Routing states
   const [activeView, setActiveView] = useState<ViewType>('tasks_board');
@@ -50,6 +52,8 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
+  const [siengeTitles, setSiengeTitles] = useState<SiengeTitle[]>([]);
+  const [siengeLotes, setSiengeLotes] = useState<SiengeLote[]>([]);
   
   // Custom Confirm Modal state for task sheet closure
   const [confirmModalData, setConfirmModalData] = useState<{
@@ -67,6 +71,7 @@ export default function App() {
   const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [socialMediaFilter, setSocialMediaFilter] = useState(false);
   
   // Custom Initial Loading State for Workspace Data
   const [isDataLoading, setIsDataLoading] = useState(true);
@@ -74,11 +79,13 @@ export default function App() {
   // Fetch initial data and setup realtime
   useEffect(() => {
     setIsDataLoading(true);
-    Promise.all([fetchTasks(), fetchProjects(), fetchLabels()])
-      .then(([t, p, l]) => {
+    Promise.all([fetchTasks(), fetchProjects(), fetchLabels(), fetchSiengeTitles(), fetchSiengeLotes()])
+      .then(([t, p, l, s, lotes]) => {
         setTasks(t);
         setProjects(p);
         if (l.length > 0) setLabels(l);
+        setSiengeTitles(s);
+        setSiengeLotes(lotes);
         // Add a slight delay just for aesthetic UX feeling (optional, but requested by user if we can't make it instant)
         setTimeout(() => setIsDataLoading(false), 800);
       })
@@ -91,13 +98,19 @@ export default function App() {
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
         // Re-fetch on any data changes to keep all clients perfectly synced
-        Promise.all([fetchTasks(), fetchProjects(), fetchLabels()])
-          .then(([t, p, l]) => {
-            setTasks(t);
-            setProjects(p);
-            if (l.length > 0) setLabels(l);
-          })
-          .catch(console.error);
+        // Debounce to prevent flashing UI when saveTask triggers multiple quick inserts/deletes
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(() => {
+          Promise.all([fetchTasks(), fetchProjects(), fetchLabels(), fetchSiengeTitles(), fetchSiengeLotes()])
+            .then(([t, p, l, s, lotes]) => {
+              setTasks(t);
+              setProjects(p);
+              if (l.length > 0) setLabels(l);
+              setSiengeTitles(s);
+              setSiengeLotes(lotes);
+            })
+            .catch(console.error);
+        }, 1500);
       })
       .subscribe();
 
@@ -126,6 +139,7 @@ export default function App() {
           userId: task.assigneeId,
           actorId: currentUser.id,
           taskId: task.id,
+          targetId: 'assignee',
           type: 'task_assigned',
           message: 'Nova Atribuição',
           details: `Você foi designado para esta tarefa`
@@ -141,6 +155,7 @@ export default function App() {
             userId: task.assigneeId,
             actorId: currentUser.id,
             taskId: task.id,
+            targetId: 'assignee',
             type: 'task_assigned',
             message: 'Nova Atribuição',
             details: `A tarefa foi atribuída a você`
@@ -173,6 +188,7 @@ export default function App() {
               userId: task.assigneeId,
               actorId: currentUser.id,
               taskId: task.id,
+              targetId: 'deadline',
               type: 'deadline_changed',
               message: 'Prazo Alterado',
               details: task.dueDate ? `O prazo da sua tarefa foi alterado para ${task.dueDate.split('-').reverse().join('/')}` : 'A tarefa agora não possui previsão'
@@ -248,6 +264,7 @@ export default function App() {
               userId: currentUser.id,
               actorId: 'system',
               taskId: task.id,
+              targetId: 'deadline',
               type: 'deadline',
               message,
               details
@@ -267,6 +284,7 @@ export default function App() {
                userId: currentUser.id,
                actorId: 'system',
                taskId: task.id,
+               targetId: 'reminder',
                type: 'reminder',
                message: 'Lembrete de Tarefa',
                details: `O lembrete para a tarefa "${task.title}" foi acionado`
@@ -287,6 +305,7 @@ export default function App() {
                  userId: currentUser.id,
                  actorId: 'system',
                  taskId: task.id,
+                 targetId: st.id,
                  type: 'reminder',
                  message: 'Lembrete Acionado',
                  details: `"${st.title}"`
@@ -296,6 +315,28 @@ export default function App() {
              }
            }
         });
+      });
+
+      // Check Sienge Titles reminders
+      siengeTitles.filter(t => t.assigneeId === currentUser.id && t.status !== 'pago' && t.status !== 'recusados').forEach(title => {
+        if (title.reminderDate) {
+           const reminderTime = new Date(title.reminderDate).getTime();
+           const reminderId = `sienge_${title.id}_${title.reminderDate}`;
+           
+           if (now.getTime() >= reminderTime && !triggeredReminders.includes(reminderId)) {
+             addNotification({
+               userId: currentUser.id,
+               actorId: 'system',
+               taskId: title.id,
+               targetId: 'reminder',
+               type: 'reminder',
+               message: 'Lembrete de Título',
+               details: `O lembrete para o título "${title.titulo}" foi acionado`
+             });
+             triggeredReminders = [...triggeredReminders, reminderId];
+             hasNewTriggers = true;
+           }
+        }
       });
 
       // Check creative approvals for current user
@@ -355,7 +396,7 @@ export default function App() {
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [tasks, currentUser]);
+  }, [tasks, siengeTitles, currentUser]);
 
   // Bind Cmd+K and on-screen toggling listeners
   useEffect(() => {
@@ -399,7 +440,44 @@ export default function App() {
     setTasks(prev => {
       const targetTask = prev.find(t => t.id === updates.id);
       if (!targetTask) return prev;
+      
       const mergedTask = { ...targetTask, ...updates };
+
+      // --- Time Tracking Logic ---
+      if (updates.status && updates.status !== targetTask.status) {
+        const tt = mergedTask.timeTracking ? { ...mergedTask.timeTracking } : { accumulatedMs: 0, isTimerRunning: false };
+        const now = new Date().toISOString();
+        const nowMs = Date.now();
+
+        const runStates = ['in_progress', 'rework'];
+        const stopStates = ['implementation', 'done'];
+
+        const isRunningNow = tt.isTimerRunning;
+        const willRun = runStates.includes(updates.status);
+
+        // Pause/Stop logic
+        if (isRunningNow && !willRun) {
+          const startedAtMs = tt.lastStartedAt ? new Date(tt.lastStartedAt).getTime() : nowMs;
+          tt.accumulatedMs += Math.max(0, nowMs - startedAtMs);
+          tt.isTimerRunning = false;
+          tt.lastStartedAt = undefined;
+        }
+
+        // Start logic
+        if (!isRunningNow && willRun) {
+          tt.isTimerRunning = true;
+          tt.lastStartedAt = now;
+        }
+
+        if (stopStates.includes(updates.status)) {
+          if (!tt.reachedImplementationAt) tt.reachedImplementationAt = now;
+        } else {
+          tt.reachedImplementationAt = undefined;
+        }
+
+        mergedTask.timeTracking = tt;
+      }
+      // ----------------------------
       
       // Asynchronously trigger save to avoid React warnings about side-effects inside setState
       setTimeout(() => {
@@ -508,6 +586,17 @@ export default function App() {
   };
 
   // Breadcrumbs text label parser
+  const visibleTasks = tasks.filter(t => {
+    let matches = true;
+    if (currentProjectFilter) {
+      matches = matches && t.projectId === currentProjectFilter;
+    }
+    if (socialMediaFilter) {
+      matches = matches && t.labels.some(l => l.name === 'Social Media');
+    }
+    return matches;
+  });
+
   const getBreadcrumbLabel = () => {
     switch (activeView) {
       case 'tasks_board':
@@ -650,7 +739,7 @@ export default function App() {
 
           {activeView === 'tasks_board' && activeTaskViewType === 'board' && (
             <KanbanView
-              tasks={tasks}
+              tasks={visibleTasks}
               projects={projects}
               labels={labels}
               onSelectTask={(task) => {
@@ -660,12 +749,14 @@ export default function App() {
               onUpdateTask={handleUpdateTask}
               onAddTask={handleAddTask}
               currentProjectFilter={currentProjectFilter}
+              socialMediaFilter={socialMediaFilter}
+              setSocialMediaFilter={setSocialMediaFilter}
             />
           )}
 
           {activeView === 'tasks_board' && activeTaskViewType === 'list' && (
             <ListView
-              tasks={tasks}
+              tasks={visibleTasks}
               projects={projects}
               labels={labels}
               onSelectTask={(task) => {
@@ -680,14 +771,18 @@ export default function App() {
 
           {activeView === 'calendar' && (
             <CalendarView
-              tasks={tasks}
+              tasks={visibleTasks}
               projects={projects}
+              labels={labels}
               onSelectTask={(task) => {
                 setSelectedTask(task);
                 setIsTaskSheetOpen(true);
               }}
               onAddTask={handleAddTask}
+              onUpdateTask={handleUpdateTask}
               currentProjectFilter={currentProjectFilter}
+              socialMediaFilter={socialMediaFilter}
+              setSocialMediaFilter={setSocialMediaFilter}
             />
           )}
 
@@ -706,6 +801,41 @@ export default function App() {
               isDarkMode={isDarkMode}
               onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
               onResetMockData={handleResetDatabase}
+            />
+          )}
+
+          {activeView === 'sienge' && (
+            <SiengeView
+              titles={siengeTitles}
+              lotes={siengeLotes}
+              projects={projects}
+              currentProjectFilter={currentProjectFilter}
+              onSaveTitle={async (title) => {
+                setSiengeTitles(prev => {
+                  const exists = prev.find(t => t.id === title.id);
+                  return exists
+                    ? prev.map(t => t.id === title.id ? title : t)
+                    : [title, ...prev];
+                });
+                saveSiengeTitle(title).catch(console.error);
+              }}
+              onDeleteTitle={async (id) => {
+                setSiengeTitles(prev => prev.filter(t => t.id !== id));
+                deleteSiengeTitle(id).catch(console.error);
+              }}
+              onSaveLote={async (lote) => {
+                setSiengeLotes(prev => {
+                  const exists = prev.find(l => l.id === lote.id);
+                  return exists
+                    ? prev.map(l => l.id === lote.id ? lote : l)
+                    : [lote, ...prev];
+                });
+                saveSiengeLote(lote).catch(console.error);
+              }}
+              onDeleteLote={async (id) => {
+                setSiengeLotes(prev => prev.filter(l => l.id !== id));
+                deleteSiengeLote(id).catch(console.error);
+              }}
             />
           )}
         </div>

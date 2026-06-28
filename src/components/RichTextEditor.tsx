@@ -37,7 +37,7 @@ const COLORS = [
   { hex: '#ec4899', label: 'Rosa (Copy)' },
   { hex: '#3b82f6', label: 'Azul (Tarefa)' },
   { hex: '#10b981', label: 'Verde (Orçamento)' },
-  { hex: '#a855f7', label: 'Roxo (Social Mídia)' },
+  { hex: '#a855f7', label: 'Roxo (Social Media)' },
   { hex: '#ffffff', label: 'Branco' },
   { hex: '#a1a1aa', label: 'Cinza' },
 ];

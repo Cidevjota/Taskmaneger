@@ -49,6 +49,7 @@ import DesignProperties from './DesignProperties';
 import CopyProperties from './CopyProperties';
 import BudgetProperties from './BudgetProperties';
 import PlanningProperties from './PlanningProperties';
+import SocialMediaApproval from './SocialMediaApproval';
 import TaskChat from './TaskChat';
 import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } from '../types';
 import { useNotifications } from '../context/NotificationContext';
@@ -433,7 +434,7 @@ export default function TaskSheet({
   const sortedUsers = currentUser
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
-  const { addNotification } = useNotifications();
+  const { addNotification, notifications } = useNotifications();
   const titleRef = useRef(task?.title || '');
   const descriptionRef = useRef(task?.description || '');
   const titleTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -470,12 +471,13 @@ export default function TaskSheet({
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     properties: true,
     description: true,
-    hierarchy: true,
+    hierarchy: false,
     checklist: true,
     designProps: true,
     copyProps: true,
     planningProps: true,
     budgetProps: true,
+    socialMediaProps: true,
     attachments: true
   });
 
@@ -497,14 +499,31 @@ export default function TaskSheet({
         let attempts = 0;
         const tryScroll = () => {
           let el = null;
-          if (targetId) el = document.getElementById(`target-${targetId}`);
-          if (!el) el = document.getElementById(`section-${section}`);
+          let fallbackEl = document.getElementById(`section-${section}`);
           
+          if (targetId && targetId !== section && targetId !== task?.id) {
+            el = document.getElementById(`target-${targetId}`);
+            
+            // Try to find by title if targetId is missing but we know it's a subtask (old notifications)
+            if (!el && (!targetId || targetId === 'checklist')) {
+              // This is handled below or we can't reliably do it here without the notification payload
+            }
+          }
+
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             el.classList.add('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
             setTimeout(() => {
               el.classList.remove('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
+            }, 2500);
+          } else if (targetId && attempts < 15) {
+            attempts++;
+            setTimeout(tryScroll, 100);
+          } else if (fallbackEl) {
+            fallbackEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            fallbackEl.classList.add('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
+            setTimeout(() => {
+              fallbackEl.classList.remove('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
             }, 2500);
           } else if (attempts < 15) {
             attempts++;
@@ -555,6 +574,12 @@ export default function TaskSheet({
     }
   }, [task?.status]);
 
+  useEffect(() => {
+    if (task && task.labels) {
+      setTaskLabels(task.labels);
+    }
+  }, [JSON.stringify(task?.labels)]);
+
   const primaryLabelId = taskLabels.length > 0 ? taskLabels[0]?.id : null;
   const primaryLabelData = primaryLabelId ? allLabels.find(l => l.id === primaryLabelId) : null;
   const primaryColorString = primaryLabelData ? primaryLabelData.color : 'text-blue-500';
@@ -582,7 +607,7 @@ export default function TaskSheet({
   else if (primaryLabelData?.name === 'Copy') ThemeIcon = Type;
   else if (primaryLabelData?.name === 'Tarefa') ThemeIcon = CheckSquare;
   else if (primaryLabelData?.name === 'Orçamento') ThemeIcon = DollarSign;
-  else if (primaryLabelData?.name === 'Social Mídia') ThemeIcon = Share2;
+  else if (primaryLabelData?.name === 'Social Media') ThemeIcon = Share2;
 
   useEffect(() => {
     if (!task) return;
@@ -1063,7 +1088,7 @@ export default function TaskSheet({
                 )}
               </div>
 
-              <div className="flex flex-col gap-1.5 min-w-[120px]">
+              <div id="section-deadline" className="flex flex-col gap-1.5 min-w-[120px]">
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><CalendarIcon size={13} className="opacity-60" /> Prazo</span>
                 <DatePicker
                   value={dueDate}
@@ -1135,7 +1160,7 @@ export default function TaskSheet({
                 )}
               </div>
 
-              <div className="flex flex-col gap-1.5 relative min-w-[140px]">
+              <div id="section-reminder" className="flex flex-col gap-1.5 relative min-w-[140px]">
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><Bell size={13} className="opacity-60" /> Lembrete</span>
                 <DatePicker
                   value={reminderDate || ''}
@@ -1144,10 +1169,25 @@ export default function TaskSheet({
                     saveChange({ reminderDate: date });
                   }}
                   enableTime={true}
+                  onQuickAdd={() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const val = `${tomorrow.toISOString().split('T')[0]}T09:00`;
+                    setReminderDate(val);
+                    saveChange({ reminderDate: val });
+                  }}
                   trigger={
-                    <button
-                      type="button"
-                      className={`w-full inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors ${reminderDate ? 'text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20' : 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20'}`}
+                    (() => {
+                      const relatedNotif = notifications.find(n => n.type === 'reminder' && n.taskId === task.id && (!n.targetId || n.targetId === task.id));
+                      const isReminderSeen = relatedNotif && relatedNotif.status !== 'unread';
+                      const activeColorClass = isReminderSeen 
+                        ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 hover:bg-emerald-400/20' 
+                        : 'text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20';
+
+                      return (
+                        <button
+                          type="button"
+                          className={`w-full inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors ${reminderDate ? activeColorClass : 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20'}`}
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         {reminderDate ? (
@@ -1157,7 +1197,9 @@ export default function TaskSheet({
                         ) : 'Adicionar lembrete'}
                       </div>
                       <span className="text-[10px] opacity-60 ml-1">▼</span>
-                    </button>
+                        </button>
+                      );
+                    })()
                   }
                 />
               </div>
@@ -1174,7 +1216,7 @@ export default function TaskSheet({
                   else if (label.name === 'Copy') LabelIcon = Type;
                   else if (label.name === 'Tarefa') LabelIcon = CheckSquare;
                   else if (label.name === 'Orçamento') LabelIcon = DollarSign;
-                  else if (label.name === 'Social Mídia') LabelIcon = Share2;
+                  else if (label.name === 'Social Media') LabelIcon = Share2;
 
                   return (
                     <button
@@ -1218,7 +1260,7 @@ export default function TaskSheet({
                   else if (label.name === 'Copy') LabelIcon = Type;
                   else if (label.name === 'Tarefa') LabelIcon = CheckSquare;
                   else if (label.name === 'Orçamento') LabelIcon = DollarSign;
-                  else if (label.name === 'Social Mídia') LabelIcon = Share2;
+                  else if (label.name === 'Social Media') LabelIcon = Share2;
 
                   return (
                     <button
@@ -1308,7 +1350,7 @@ export default function TaskSheet({
 
           <div className="flex flex-row gap-4 items-start">
             {/* ═══ CHECKLIST — always visible, grows to fill ═══ */}
-            <div className={`flex flex-col gap-3 transition-all duration-300 ${
+            <div id="section-checklist" className={`flex flex-col gap-3 transition-all duration-300 order-1 ${
               !openSections.hierarchy && !openSections.attachments ? 'flex-[3]' :
               !openSections.hierarchy || !openSections.attachments ? 'flex-[2]' :
               'flex-1'
@@ -1337,7 +1379,7 @@ export default function TaskSheet({
                       className="flex items-start justify-between py-0.5 group transition-all border-b border-transparent hover:border-zinc-800/50"
                     >
                       <div className="flex items-start gap-2 flex-1 min-w-0 py-[1px]">
-                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 mt-[3px]">
+                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 mt-[2px]">
                           {subtask.completed ? (
                             <CheckSquare size={13} className="text-emerald-400/50" />
                           ) : subtask.canceled ? (
@@ -1346,11 +1388,6 @@ export default function TaskSheet({
                             <Square size={13} className="text-gray-500 hover:text-gray-300" />
                           )}
                         </button>
-                        {subtask.completed && subtask.completedAt && (
-                          <span className="text-[9px] text-zinc-400 ml-1 whitespace-nowrap">
-                            {new Date(subtask.completedAt).toLocaleDateString('pt-BR')} {new Date(subtask.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
                         <SubtaskInput 
                           subtaskId={subtask.id}
                           initialValue={subtask.title}
@@ -1358,7 +1395,13 @@ export default function TaskSheet({
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />
                       </div>
-                      <div className={`flex items-center mt-[2px] ml-2 shrink-0 transition-opacity gap-0.5 ${subtask.reminderDate || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                      <div className={`flex items-center mt-[1px] ml-2 shrink-0 transition-opacity gap-1 ${subtask.completed || subtask.reminderDate || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        {subtask.completed && subtask.completedAt && (
+                          <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
+                            <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                            <span>{new Date(subtask.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        )}
                         {/* Assignee Dropdown */}
                         <div className="relative">
                           <button
@@ -1368,9 +1411,9 @@ export default function TaskSheet({
                             title={subtask.assigneeId ? "Alterar responsável" : "Definir responsável"}
                           >
                             {subtask.assigneeId ? (
-                              <img src={USERS.find(u => u.id === subtask.assigneeId)?.avatarUrl} alt="" className="w-3.5 h-3.5 rounded-full" />
+                              <img src={USERS.find(u => u.id === subtask.assigneeId)?.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
                             ) : (
-                              <UserIcon size={11} />
+                              <UserIcon size={14} />
                             )}
                           </button>
                           
@@ -1407,32 +1450,47 @@ export default function TaskSheet({
 
                         {/* Remainder Button / Date Picker */}
                         <div className="flex items-center justify-center">
-                          <DatePicker
-                            value={subtask.reminderDate || ''}
-                            onChange={(date) => handleSetSubtaskReminder(subtask.id, date)}
-                            enableTime={true}
-                            trigger={
-                              <button
-                                type="button"
-                                className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${subtask.reminderDate ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-500 hover:text-amber-400 hover:bg-zinc-800/80'}`}
-                                title={subtask.reminderDate ? "Alterar data de lembrete" : "Definir lembrete para esta atividade"}
-                              >
-                                <Bell size={10} className={subtask.reminderDate ? "fill-amber-400/20" : ""} />
-                                {subtask.reminderDate ? (
-                                  subtask.reminderDate.includes('T') 
-                                    ? `${subtask.reminderDate.split('T')[0].split('-').reverse().join('/')} às ${subtask.reminderDate.split('T')[1]}` 
-                                    : subtask.reminderDate.split('-').reverse().join('/')
-                                ) : ''}
-                              </button>
-                            }
-                          />
+                          {(() => {
+                            const relatedNotif = notifications.find(n => n.type === 'reminder' && n.targetId === subtask.id);
+                            const isReminderSeen = relatedNotif && relatedNotif.status !== 'unread';
+                            const activeColorClass = isReminderSeen ? 'text-emerald-400 bg-emerald-400/10' : 'text-amber-400 bg-amber-400/10';
+                            const activeFillClass = isReminderSeen ? 'fill-emerald-400/20' : 'fill-amber-400/20';
+                            const hoverColorClass = isReminderSeen ? 'hover:text-emerald-400' : 'hover:text-amber-400';
+
+                            return (
+                              <DatePicker
+                                value={subtask.reminderDate || ''}
+                                onChange={(date) => handleSetSubtaskReminder(subtask.id, date)}
+                                enableTime={true}
+                                onQuickAdd={() => {
+                                  const tomorrow = new Date();
+                                  tomorrow.setDate(tomorrow.getDate() + 1);
+                                  handleSetSubtaskReminder(subtask.id, `${tomorrow.toISOString().split('T')[0]}T09:00`);
+                                }}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${subtask.reminderDate ? activeColorClass : `text-zinc-500 ${hoverColorClass} hover:bg-zinc-800/80`}`}
+                                    title={subtask.reminderDate ? "Alterar data de lembrete" : "Definir lembrete para esta atividade"}
+                                  >
+                                    <Bell size={14} className={subtask.reminderDate ? activeFillClass : ""} />
+                                    {subtask.reminderDate ? (
+                                      subtask.reminderDate.includes('T') 
+                                        ? `${subtask.reminderDate.split('T')[0].split('-').reverse().slice(0, 2).join('/')} às ${subtask.reminderDate.split('T')[1]}` 
+                                        : subtask.reminderDate.split('-').reverse().slice(0, 2).join('/')
+                                    ) : ''}
+                                  </button>
+                                }
+                              />
+                            );
+                          })()}
                         </div>
                         <button
                           onClick={() => handleDeleteSubtask(subtask.id)}
                           className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80 rounded transition-colors"
                           title="Remover"
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </div>
@@ -1467,7 +1525,7 @@ export default function TaskSheet({
             </div>
 
             {/* ═══ HIERARCHY — collapses to icon ═══ */}
-            <div className={`flex flex-col gap-3 transition-all duration-300 ${
+            <div className={`flex flex-col gap-3 transition-all duration-300 order-3 ${
               openSections.hierarchy ? 'flex-1 min-w-0' : 'w-auto shrink-0'
             }`}>
                <button
@@ -1511,7 +1569,7 @@ export default function TaskSheet({
                          else if (primaryLabel?.name === 'Copy') SubIcon = Type;
                          else if (primaryLabel?.name === 'Tarefa') SubIcon = CheckSquare;
                          else if (primaryLabel?.name === 'Orçamento') SubIcon = DollarSign;
-                         else if (primaryLabel?.name === 'Social Mídia') SubIcon = Share2;
+                         else if (primaryLabel?.name === 'Social Media') SubIcon = Share2;
 
                          const iconColor = primaryLabel?.color?.match(/text-[a-z]+-\d+/)?.[0] || 'text-blue-500';
 
@@ -1578,6 +1636,18 @@ export default function TaskSheet({
                                   );
                                 })()}
                               </div>
+                               {!isParent && onUpdateTask && (
+                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     onUpdateTask({ ...t, parentTaskId: undefined } as unknown as Task);
+                                   }}
+                                   className="w-5 h-5 ml-1 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 flex items-center justify-center transition-colors border border-transparent hover:border-red-500/30"
+                                   title="Desvincular Sub-tarefa"
+                                 >
+                                   <X size={12} />
+                                 </button>
+                               )}
                              </div>
                            </div>
                          );
@@ -1715,7 +1785,7 @@ export default function TaskSheet({
                                                   setIsLinkDropdownOpen(false);
                                                   setLinkSearchQuery('');
                                                 }}
-                                                className="w-full text-left p-1.5 rounded hover:bg-zinc-800 text-[11px] text-zinc-300 hover:text-zinc-100 transition-colors truncate font-medium"
+                                                className="w-full shrink-0 text-left p-2 rounded hover:bg-zinc-800/80 text-[11px] text-zinc-300 hover:text-zinc-100 transition-colors truncate font-medium"
                                               >
                                                 {t.title}
                                               </button>
@@ -1737,7 +1807,7 @@ export default function TaskSheet({
               </div>
 
             {/* ═══ ATTACHMENTS — collapses to icon ═══ */}
-            <div className={`flex flex-col gap-3 transition-all duration-300 ${
+            <div className={`flex flex-col gap-3 transition-all duration-300 order-2 ${
               openSections.attachments ? 'flex-1 min-w-0' : 'w-auto shrink-0'
             }`}>
               <button
@@ -1782,7 +1852,7 @@ export default function TaskSheet({
                 Painel de Design & Aprovação
               </button>
               <div className={`animate-fade-in ${openSections.designProps ? 'block' : 'hidden'}`}>
-                <DesignProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
+                <DesignProperties task={task} allTasks={allTasks} saveChange={saveChange} themeColor={themeTextColor} />
               </div>
             </div>
           )}
@@ -1811,10 +1881,31 @@ export default function TaskSheet({
                 className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
               >
                 {openSections.budgetProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                Propostas & aprovação
+                Painel de Orçamento
               </button>
               <div className={`animate-fade-in ${openSections.budgetProps ? 'block' : 'hidden'}`}>
                 <BudgetProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Social Media Approval */}
+          {taskLabels.some(l => l.name === 'Social Media') && (
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => toggleSection('socialMediaProps')}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+              >
+                {openSections.socialMediaProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Painel de Social Media
+              </button>
+              <div className={`animate-fade-in min-h-[600px] ${openSections.socialMediaProps ? 'block' : 'hidden'}`}>
+                <SocialMediaApproval 
+                  task={task} 
+                  allTasks={allTasks || []} 
+                  saveChange={saveChange}
+                  currentUser={currentUser}
+                />
               </div>
             </div>
           )}

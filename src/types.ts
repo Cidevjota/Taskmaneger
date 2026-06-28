@@ -32,7 +32,9 @@ export interface DeliveryThreadMessage {
   action?: 'approved' | 'rejected' | 'request_review' | 'will_rework';
   content: string;
   imageUrl?: string;
+  imageUrls?: string[]; // Suporte para múltiplas imagens
   annotatedImageUrl?: string;
+  annotatedImageUrls?: string[];
   copyText?: string;
   editorName?: string;
   authorId?: string;
@@ -47,12 +49,14 @@ export interface DeliveryThreadMessage {
 export interface Delivery {
   id: string;
   imageUrl?: string; // URL do print original ou mais recente
+  imageUrls?: string[]; // Múltiplos prints do criativo
   thumbnailUrl?: string; // URL comprimida (para histórico apos 30 dias)
   figmaLink?: string;
   creativeDefense?: string; // Legacy
   status: 'pending' | 'approved' | 'rejected' | 'reworking' | 'review_requested';
   rejectedFeedback?: string; // Legacy
   annotatedImageUrl?: string; // Legacy
+  annotatedImageUrls?: string[]; // Multiple annotated images
   thread: DeliveryThreadMessage[];
   createdAt: string; // Usado para a política de retenção
   approverId?: string; // Aprovador do criativo
@@ -166,6 +170,23 @@ export interface PlanningBriefing {
   isFilled?: boolean;
 }
 
+export interface SocialMediaApprovalData {
+  selectedDesignDeliveryId?: string;
+  selectedDesignTaskId?: string;
+  selectedCopyEditorId?: string;
+  selectedCopyTaskId?: string;
+  status?: 'pending' | 'review_requested' | 'approved' | 'rejected';
+  approverId?: string;
+  requesterId?: string;
+}
+
+export interface TaskTimeTracking {
+  accumulatedMs: number;
+  lastStartedAt?: string;
+  isTimerRunning: boolean;
+  reachedImplementationAt?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -180,6 +201,7 @@ export interface Task {
   designBriefing?: DesignBriefing;
   copyBriefing?: CopyBriefing;
   planningBriefing?: PlanningBriefing;
+  socialMediaApproval?: SocialMediaApprovalData;
   proposals?: Proposal[];
   chatMessages?: ChatMessage[];
   dueDate?: string; // ISO date format like '2026-06-20'
@@ -187,6 +209,7 @@ export interface Task {
   assigneeId?: string;
   parentTaskId?: string;
   reminderDate?: string;
+  timeTracking?: TaskTimeTracking;
 }
 
 export interface Project {
@@ -197,4 +220,35 @@ export interface Project {
   status: 'active' | 'completed' | 'on_hold';
 }
 
-export type ViewType = 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings';
+export type ViewType = 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge';
+
+export type SiengeStatus = 'a_lancar' | 'aprovacao_1' | 'aprovacao_2' | 'aprovacao_3' | 'aguardando_pagamento' | 'recusados' | 'pago';
+
+export type SiengeLoteStatus = 'aberto' | 'encerrado';
+
+export interface SiengeLote {
+  id: string;
+  nome: string;
+  status: SiengeLoteStatus;
+  createdAt: string;
+  closedAt?: string;
+  vencimento?: string;      // ISO date
+  prazoPagamento?: string;  // ISO date
+}
+
+export interface SiengeTitle {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  valor: number;
+  empreendimento?: string;
+  vencimento?: string; // ISO date
+  lote?: string;       // legacy text field
+  loteId?: string;     // FK to sienge_lotes
+  assigneeId?: string; // User responsible
+  reminderDate?: string; // For bell reminders
+  attachments?: { id: string, name: string, data: string }[]; // base64 attachments
+  status: SiengeStatus;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, Subtask, DesignBriefing, CopyBriefing, AppNotification } from '../types';
+import { Task, Project, Label, Subtask, DesignBriefing, CopyBriefing, AppNotification, SiengeTitle, SiengeLote } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -49,6 +49,8 @@ export async function fetchTasks(): Promise<Task[]> {
       planningBriefing: t.planning_briefing,
       attachments: t.planning_briefing?.attachments || [],
       proposals: t.planning_briefing?.proposals || [],
+      socialMediaApproval: t.planning_briefing?.socialMediaApproval,
+      timeTracking: t.planning_briefing?.timeTracking,
       subtasks: (t.subtasks || []).map((st: any) => ({
         id: st.id,
         title: st.title,
@@ -84,10 +86,15 @@ export async function saveTask(task: Task) {
     planning_briefing: {
       ...(task.planningBriefing || {}),
       attachments: task.attachments || [],
-      proposals: task.proposals || []
+      proposals: task.proposals || [],
+      socialMediaApproval: task.socialMediaApproval,
+      timeTracking: task.timeTracking
     }
   });
-  if (taskError) throw taskError;
+  if (taskError) {
+    console.error("Error saving task:", taskError);
+    throw taskError;
+  }
 
   // 2. Sync Labels (delete existing, insert new)
   // First clear old ones
@@ -178,5 +185,90 @@ export async function deleteArchivedNotifications(userId: string) {
     .delete()
     .eq('user_id', userId)
     .eq('status', 'viewed');
+  if (error) throw error;
+}
+
+// ─── Sienge Titles ───────────────────────────────────────────────
+
+export async function fetchSiengeTitles(): Promise<SiengeTitle[]> {
+  const { data, error } = await supabase
+    .from('sienge_titles')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((r: any): SiengeTitle => ({
+    id: r.id,
+    titulo: r.titulo,
+    descricao: r.descricao,
+    valor: Number(r.valor),
+    empreendimento: r.empreendimento,
+    vencimento: r.vencimento,
+    lote: r.lote,
+    loteId: r.lote_id,
+    assigneeId: r.assignee_id,
+    reminderDate: r.reminder_date,
+    attachments: r.attachments,
+    status: r.status,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function saveSiengeTitle(title: SiengeTitle) {
+  const { error } = await supabase.from('sienge_titles').upsert({
+    id: title.id,
+    titulo: title.titulo,
+    descricao: title.descricao || null,
+    valor: title.valor,
+    empreendimento: title.empreendimento || null,
+    vencimento: title.vencimento || null,
+    lote: title.lote || null,
+    lote_id: title.loteId || null,
+    assignee_id: title.assigneeId || null,
+    reminder_date: title.reminderDate || null,
+    attachments: title.attachments || [],
+    status: title.status,
+  });
+  if (error) throw error;
+}
+
+export async function deleteSiengeTitle(id: string) {
+  const { error } = await supabase.from('sienge_titles').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Sienge Lotes ──────────────────────────────────────────────
+
+export async function fetchSiengeLotes(): Promise<SiengeLote[]> {
+  const { data, error } = await supabase
+    .from('sienge_lotes')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((r: any): SiengeLote => ({
+    id: r.id,
+    nome: r.nome,
+    status: r.status,
+    createdAt: r.created_at,
+    closedAt: r.closed_at,
+    vencimento: r.vencimento,
+    prazoPagamento: r.prazo_pagamento,
+  }));
+}
+
+export async function saveSiengeLote(lote: SiengeLote) {
+  const { error } = await supabase.from('sienge_lotes').upsert({
+    id: lote.id,
+    nome: lote.nome,
+    status: lote.status,
+    vencimento: lote.vencimento || null,
+    prazo_pagamento: lote.prazoPagamento || null,
+    closed_at: lote.closedAt || null,
+  });
+  if (error) throw error;
+}
+
+export async function deleteSiengeLote(id: string) {
+  const { error } = await supabase.from('sienge_lotes').delete().eq('id', id);
   if (error) throw error;
 }

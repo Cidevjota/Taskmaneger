@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Plus, 
   Clock, 
@@ -21,10 +21,47 @@ import {
   Tag as TagIcon,
   BellRing,
   AlignJustify,
-  LayoutGrid
+  LayoutGrid,
+  Hourglass
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
+
+const getElapsedTimeData = (tt: Task['timeTracking']): { text: string; colorClass: string } | null => {
+  if (!tt) return null;
+  let ms = tt.accumulatedMs;
+  if (tt.isTimerRunning && tt.lastStartedAt) {
+    ms += Date.now() - new Date(tt.lastStartedAt).getTime();
+  }
+  if (ms === 0) return null;
+  
+  const totalMins = Math.floor(ms / 60000);
+  const days = Math.floor(totalMins / (24 * 60));
+  const remainingHours = Math.floor((totalMins % (24 * 60)) / 60);
+  const remainingMins = totalMins % 60;
+
+  let text = '';
+  if (days >= 1) {
+    text = `${days}d e ${remainingHours}h`;
+  } else if (remainingHours >= 1) {
+    text = `${remainingHours}h${remainingMins}m`;
+  } else {
+    text = `${remainingMins}m`;
+  }
+
+  let colorClass = 'text-zinc-500'; // Default cinza
+  if (days >= 10) {
+    colorClass = 'text-red-500';
+  } else if (days >= 7) {
+    colorClass = 'text-amber-500';
+  }
+
+  return { text, colorClass };
+};
+
 import { useAuth } from '../context/AuthContext';
+import DatePicker from './DatePicker';
+import PriorityPicker from './PriorityPicker';
+import AssigneePicker from './AssigneePicker';
 
 interface KanbanViewProps {
   tasks: Task[];
@@ -34,17 +71,19 @@ interface KanbanViewProps {
   onUpdateTask: (task: Task) => void;
   onAddTask: (task: Task) => void;
   currentProjectFilter: string | null;
+  socialMediaFilter?: boolean;
+  setSocialMediaFilter?: (val: boolean) => void;
 }
 
-const COLUMNS: { id: TaskStatus; label: string; dotColor: string; icon: React.ReactNode }[] = [
-  { id: 'no_forecast', label: 'Sem previsão', dotColor: 'bg-slate-500', icon: <Inbox size={14} className="text-slate-400 shrink-0" /> },
-  { id: 'todo', label: 'A fazer', dotColor: 'bg-blue-500', icon: <HelpCircle size={14} className="text-blue-400 shrink-0" /> },
-  { id: 'in_progress', label: 'Em progresso', dotColor: 'bg-amber-500', icon: <Clock size={14} className="text-amber-400 shrink-0 animate-pulse" /> },
-  { id: 'paused', label: 'Pausado', dotColor: 'bg-red-400', icon: <AlertTriangle size={14} className="text-red-400 shrink-0" /> },
-  { id: 'approval', label: 'Aprovação', dotColor: 'bg-purple-500', icon: <HelpCircle size={14} className="text-purple-400 shrink-0" /> },
-  { id: 'rework', label: 'Refação', dotColor: 'bg-orange-500', icon: <ArrowDown size={14} className="text-orange-400 shrink-0" /> },
-  { id: 'implementation', label: 'Implementação', dotColor: 'bg-blue-500', icon: <Layers size={14} className="text-blue-400 shrink-0" /> },
-  { id: 'done', label: 'Concluído', dotColor: 'bg-emerald-500', icon: <CheckCircle2 size={14} className="text-emerald-450 shrink-0" /> },
+const COLUMNS: { id: TaskStatus; label: string; dotColor: string; icon: React.ReactNode; accentBg: string; accentBorder: string }[] = [
+  { id: 'no_forecast',    label: 'Sem previsão',  dotColor: 'bg-slate-500',   icon: <Inbox size={14} className="text-slate-400 shrink-0" />,                         accentBg: 'bg-slate-500/5',   accentBorder: 'border-slate-500/30' },
+  { id: 'todo',           label: 'A fazer',       dotColor: 'bg-blue-500',    icon: <HelpCircle size={14} className="text-blue-400 shrink-0" />,                     accentBg: 'bg-blue-500/5',    accentBorder: 'border-blue-500/30' },
+  { id: 'in_progress',   label: 'Em progresso',  dotColor: 'bg-amber-500',   icon: <Clock size={14} className="text-amber-400 shrink-0 animate-pulse" />,            accentBg: 'bg-amber-500/5',   accentBorder: 'border-amber-500/30' },
+  { id: 'paused',         label: 'Pausado',       dotColor: 'bg-red-400',     icon: <AlertTriangle size={14} className="text-red-400 shrink-0" />,                   accentBg: 'bg-red-500/5',     accentBorder: 'border-red-500/30' },
+  { id: 'approval',       label: 'Aprovação',     dotColor: 'bg-purple-500',  icon: <HelpCircle size={14} className="text-purple-400 shrink-0" />,                   accentBg: 'bg-purple-500/5',  accentBorder: 'border-purple-500/30' },
+  { id: 'rework',         label: 'Refação',       dotColor: 'bg-orange-500',  icon: <ArrowDown size={14} className="text-orange-400 shrink-0" />,                    accentBg: 'bg-orange-500/5',  accentBorder: 'border-orange-500/30' },
+  { id: 'implementation', label: 'Implementação', dotColor: 'bg-blue-500',    icon: <Layers size={14} className="text-blue-400 shrink-0" />,                         accentBg: 'bg-blue-500/5',    accentBorder: 'border-blue-500/30' },
+  { id: 'done',           label: 'Concluído',     dotColor: 'bg-emerald-500', icon: <CheckCircle2 size={14} className="text-emerald-450 shrink-0" />,                accentBg: 'bg-emerald-500/5', accentBorder: 'border-emerald-500/30' },
 ];
 
 export default function KanbanView({
@@ -54,7 +93,9 @@ export default function KanbanView({
   onSelectTask,
   onUpdateTask,
   onAddTask,
-  currentProjectFilter
+  currentProjectFilter,
+  socialMediaFilter,
+  setSocialMediaFilter
 }: KanbanViewProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -63,9 +104,26 @@ export default function KanbanView({
   
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  // dropIndex: index in column where the indicator is shown, -1 = end of list
+  const [dropIndicator, setDropIndicator] = useState<{ colId: TaskStatus; index: number } | null>(null);
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
+  const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
+  const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('none');
   const hasInitialized = useRef(!!currentUser);
   const [isCompact, setIsCompact] = useState(false);
+
+  // Ghost card refs
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const draggingCardRef = useRef<string | null>(null);
+
+  // Drag to pan state
+  const [isPanning, setIsPanning] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (!hasInitialized.current && currentUser) {
@@ -74,9 +132,202 @@ export default function KanbanView({
     }
   }, [currentUser]);
   
-  // Track open state of inline quick-add box per column
-  const [inlineQuickAdd, setInlineQuickAdd] = useState<{columnId: string, title: string} | null>(null);
+  const [quickAddColId, setQuickAddColId] = useState<TaskStatus | null>(null);
+  const [quickAddTitle, setQuickAddTitle] = useState('');
 
+  // Filter tasks
+  let filteredTasks = tasks.filter(task => {
+    if (currentProjectFilter && task.projectId !== currentProjectFilter) return false;
+    if (filterAssigneeId !== 'all' && task.assigneeId !== filterAssigneeId) return false;
+    if (filterPriority !== 'all' && task.priority !== filterPriority) return false;
+    return true;
+  });
+
+  // Sort tasks
+  if (sortPriority !== 'none' || sortDue !== 'none') {
+    const priorityWeight: Record<TaskPriority, number> = {
+      urgent: 4, high: 3, medium: 2, low: 1, no_priority: 0
+    };
+    filteredTasks = [...filteredTasks].sort((a, b) => {
+      if (sortPriority !== 'none') {
+        const pA = priorityWeight[a.priority];
+        const pB = priorityWeight[b.priority];
+        if (pA !== pB) return sortPriority === 'asc' ? pA - pB : pB - pA;
+      }
+      if (sortDue !== 'none') {
+        const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+        const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+        if (!a.dueDate && b.dueDate) return 1;
+        if (a.dueDate && !b.dueDate) return -1;
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (dateA !== dateB) return sortDue === 'asc' ? dateA - dateB : dateB - dateA;
+      }
+      return 0;
+    });
+  }
+
+  const getColTasks = (colId: TaskStatus) => filteredTasks.filter(t => t.status === colId);
+
+  // ─────────────────────────────────────────────────
+  // GHOST CARD LOGIC
+  // ─────────────────────────────────────────────────
+  const createGhost = useCallback((sourceEl: HTMLElement, clientX: number, clientY: number) => {
+    // Remove any stale ghost
+    if (ghostRef.current) {
+      document.body.removeChild(ghostRef.current);
+      ghostRef.current = null;
+    }
+
+    const rect = sourceEl.getBoundingClientRect();
+    dragOffsetRef.current = {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+
+    const ghost = sourceEl.cloneNode(true) as HTMLDivElement;
+    ghost.style.position = 'fixed';
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = '9999';
+    ghost.style.opacity = '0.95';
+    ghost.style.transform = 'rotate(1.5deg) scale(1.03)';
+    ghost.style.boxShadow = '0 24px 48px rgba(0,0,0,0.7), 0 8px 24px rgba(0,0,0,0.4)';
+    ghost.style.transition = 'transform 0.1s ease, opacity 0.1s ease';
+    ghost.style.borderRadius = '10px';
+    document.body.appendChild(ghost);
+    ghostRef.current = ghost;
+  }, []);
+
+  const moveGhost = useCallback((clientX: number, clientY: number) => {
+    if (!ghostRef.current) return;
+    ghostRef.current.style.left = `${clientX - dragOffsetRef.current.x}px`;
+    ghostRef.current.style.top = `${clientY - dragOffsetRef.current.y}px`;
+  }, []);
+
+  const removeGhost = useCallback(() => {
+    draggingCardRef.current = null;
+    const ghost = ghostRef.current;
+    if (!ghost) return;
+    ghostRef.current = null; // clear ref immediately so mousemove stops
+    ghost.style.opacity = '0';
+    ghost.style.transform = 'rotate(1.5deg) scale(0.97)';
+    ghost.style.transition = 'opacity 0.13s ease, transform 0.13s ease';
+    setTimeout(() => {
+      if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    }, 140);
+  }, []);
+
+  // Safety-net: catch any dragend that slips through (e.g. Escape key, drop outside)
+  useEffect(() => {
+    const onDragEnd = () => {
+      if (ghostRef.current || draggingCardRef.current) {
+        removeGhost();
+        setDraggingCardId(null);
+        setDragOverColumn(null);
+        setDropIndicator(null);
+      }
+    };
+    document.addEventListener('dragend', onDragEnd);
+    return () => document.removeEventListener('dragend', onDragEnd);
+  }, [removeGhost]);
+
+  // ─────────────────────────────────────────────────
+  // DRAG HANDLERS
+  // ─────────────────────────────────────────────────
+  const handleDragStart = useCallback((e: React.DragEvent, taskId: string, sourceEl: HTMLElement) => {
+    e.dataTransfer.setData('text/plain', taskId);
+    // Neutralize browser ghost
+    const empty = new Image();
+    e.dataTransfer.setDragImage(empty, 0, 0);
+
+    draggingCardRef.current = taskId;
+    setDraggingCardId(taskId);
+
+    // Create ghost after a micro-delay so the original renders as transparent first
+    const cx = e.clientX;
+    const cy = e.clientY;
+    requestAnimationFrame(() => createGhost(sourceEl, cx, cy));
+  }, [createGhost]);
+
+  const handleDragEnd = useCallback(() => {
+    removeGhost();
+    setDraggingCardId(null);
+    setDragOverColumn(null);
+    setDropIndicator(null);
+  }, [removeGhost]);
+
+  const calcDropIndex = (e: React.DragEvent, colId: TaskStatus): number => {
+    const colTasks = getColTasks(colId);
+    const cardEls = document.querySelectorAll(`[data-col="${colId}"] [data-card]`);
+    let insertAt = colTasks.length; // default: end
+    for (let i = 0; i < cardEls.length; i++) {
+      const rect = cardEls[i].getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (e.clientY < mid) {
+        insertAt = i;
+        break;
+      }
+    }
+    return insertAt;
+  };
+
+  const handleDragOver = useCallback((e: React.DragEvent, colId: TaskStatus) => {
+    e.preventDefault();
+    setDragOverColumn(colId);
+    const idx = calcDropIndex(e, colId);
+    setDropIndicator({ colId, index: idx });
+    // Move ghost on dragover (reliable cross-browser alternative to mousemove)
+    if (ghostRef.current) moveGhost(e.clientX, e.clientY);
+  }, [moveGhost]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent, colId: TaskStatus) => {
+    // Only clear if leaving the column entirely (not just moving between children)
+    const rel = e.relatedTarget as HTMLElement | null;
+    if (rel && (e.currentTarget as HTMLElement).contains(rel)) return;
+    setDragOverColumn(prev => prev === colId ? null : prev);
+    setDropIndicator(prev => prev?.colId === colId ? null : prev);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetStatus: TaskStatus) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain');
+
+    // Always clean ghost immediately on drop
+    removeGhost();
+    setDraggingCardId(null);
+    setDragOverColumn(null);
+    setDropIndicator(null);
+
+    if (!taskId) return;
+    const matchedTask = tasks.find(t => t.id === taskId);
+    if (!matchedTask) return;
+
+    onUpdateTask({ ...matchedTask, status: targetStatus });
+
+    // Snap animation — apply after React re-renders the card in its new column
+    setTimeout(() => {
+      const cardEl = document.querySelector(`[data-card="${taskId}"]`) as HTMLElement | null;
+      if (!cardEl) return;
+      cardEl.style.opacity = '0';
+      cardEl.style.transform = 'translateY(-8px)';
+      requestAnimationFrame(() => {
+        cardEl.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+        cardEl.style.opacity = '1';
+        cardEl.style.transform = 'translateY(0)';
+        setTimeout(() => {
+          cardEl.style.transition = '';
+          cardEl.style.opacity = '';
+          cardEl.style.transform = '';
+        }, 220);
+      });
+    }, 40);
+  }, [tasks, onUpdateTask, removeGhost]);
+
+  // ─────────────────────────────────────────────────
+  // MISC HANDLERS
+  // ─────────────────────────────────────────────────
   const handleAddNewTaskInColumn = (statusId: TaskStatus) => {
     const idNum = 100 + tasks.length + 1;
     const newTask: Task = {
@@ -94,60 +345,7 @@ export default function KanbanView({
     onAddTask(newTask);
     onSelectTask(newTask);
   };
-  const [quickAddColId, setQuickAddColId] = useState<TaskStatus | null>(null);
-  const [quickAddTitle, setQuickAddTitle] = useState('');
 
-  // Wheel-scroll state
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // Filter tasks based on project selection and assignee
-  const filteredTasks = tasks.filter(task => {
-    if (currentProjectFilter && task.projectId !== currentProjectFilter) return false;
-    if (filterAssigneeId !== 'all' && task.assigneeId !== filterAssigneeId) return false;
-    return true;
-  });
-
-  // Get tasks for a specific column
-  const getColTasks = (colId: TaskStatus) => {
-    return filteredTasks.filter(t => t.status === colId);
-  };
-
-  // Drag and Drop callbacks
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    e.dataTransfer.setData('text/plain', taskId);
-    setDraggingCardId(taskId);
-  };
-
-  const handleDragEnd = () => {
-    setDraggingCardId(null);
-    setDragOverColumn(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent, colId: TaskStatus) => {
-    e.preventDefault();
-    if (dragOverColumn !== colId) {
-      setDragOverColumn(colId);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent, targetStatus: TaskStatus) => {
-    e.preventDefault();
-    const taskId = e.dataTransfer.getData('text/plain');
-    if (!taskId) return;
-
-    const matchedTask = tasks.find(t => t.id === taskId);
-    if (matchedTask && matchedTask.status !== targetStatus) {
-      onUpdateTask({
-        ...matchedTask,
-        status: targetStatus
-      });
-    }
-
-    setDraggingCardId(null);
-    setDragOverColumn(null);
-  };
-
-  // Quick Task Addition inside column
   const triggerQuickAdd = (status: TaskStatus) => {
     setQuickAddColId(status);
     setQuickAddTitle('');
@@ -155,16 +353,12 @@ export default function KanbanView({
 
   const submitQuickAdd = (e: React.FormEvent, status: TaskStatus) => {
     e.preventDefault();
-    if (!quickAddTitle.trim()) {
-      setQuickAddColId(null);
-      return;
-    }
-
+    if (!quickAddTitle.trim()) { setQuickAddColId(null); return; }
     const newTask: Task = {
       id: `TSK-${100 + tasks.length + 1}`,
       title: quickAddTitle.trim(),
       description: 'Criada via Adição Rápida de Coluna.',
-      status: status,
+      status,
       priority: 'medium',
       projectId: currentProjectFilter || (projects[0]?.id || 'p1'),
       labels: [labels.find(l => l.name === 'Tarefa') || labels[0]].filter(Boolean) as Label[],
@@ -172,101 +366,176 @@ export default function KanbanView({
       createdAt: new Date().toISOString().split('T')[0],
       assigneeId: currentUser?.id,
     };
-
     onAddTask(newTask);
     setQuickAddTitle('');
     setQuickAddColId(null);
   };
 
-  // Scroll handlers
   const handleWheel = (e: React.WheelEvent) => {
     const target = e.target as HTMLElement;
-    const closestScrollable = target.closest('.overflow-y-auto');
-    
-    if (closestScrollable) {
-      const { scrollHeight, clientHeight } = closestScrollable;
-      const isScrollable = scrollHeight > clientHeight;
-      // If the column can scroll vertically, let the native vertical scroll happen
-      if (isScrollable && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        return;
-      }
-    }
-    
-    // Translate vertical wheel to horizontal scrolling
-    if (scrollContainerRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      scrollContainerRef.current.scrollLeft += e.deltaY;
+    if (target.closest('.kanban-column')) return;
+    if (e.deltaY !== 0) {
+      document.querySelectorAll('.kanban-column').forEach(col => { (col as HTMLElement).scrollTop += e.deltaY; });
     }
   };
 
-  // Build helpers for priority style allocations
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('[draggable]')) return;
+    setIsPanning(true);
+    setStartX(e.pageX - (scrollContainerRef.current?.offsetLeft || 0));
+    setScrollLeft(scrollContainerRef.current?.scrollLeft || 0);
+  };
+
+  const handleMouseLeave = () => setIsPanning(false);
+  const handleMouseUp = () => setIsPanning(false);
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollContainerRef.current.offsetLeft;
+    scrollContainerRef.current.scrollLeft = scrollLeft - (x - startX) * 1.5;
+  };
+
+  // Sync column heights
+  useEffect(() => {
+    const inners = document.querySelectorAll('.kanban-column-inner') as NodeListOf<HTMLElement>;
+    let max = 0;
+    inners.forEach(el => el.style.minHeight = '0px');
+    inners.forEach(el => { if (el.scrollHeight > max) max = el.scrollHeight; });
+    inners.forEach(el => el.style.minHeight = `${max}px`);
+  }, [tasks, isCompact, filterAssigneeId, filterPriority]);
+
+  // ─────────────────────────────────────────────────
+  // PRIORITY BADGE
+  // ─────────────────────────────────────────────────
   const getPriorityBadge = (prio: TaskPriority) => {
-    const baseBadgeCls = "inline-flex items-center gap-1 text-[10px] font-sans font-medium px-1.5 py-0.5 rounded border select-none";
+    const base = "inline-flex items-center justify-center h-[20px] gap-1 text-[10px] font-sans font-medium px-1.5 rounded border select-none";
     switch (prio) {
-      case 'urgent':
-        return <span className={`${baseBadgeCls} text-red-400 bg-red-500/10 border-red-500/15`}><AlertTriangle size={10} className="shrink-0" /> Urgente</span>;
-      case 'high':
-        return <span className={`${baseBadgeCls} text-orange-400 bg-orange-500/10 border-orange-500/15`}><ArrowUp size={10} className="shrink-0" /> Alta</span>;
-      case 'medium':
-        return <span className={`${baseBadgeCls} text-blue-400 bg-blue-500/10 border-blue-500/15`}>Média</span>;
-      case 'low':
-        return <span className={`${baseBadgeCls} text-emerald-400 bg-emerald-500/10 border-emerald-500/15`}><ArrowDown size={10} className="shrink-0" /> Baixa</span>;
-      default:
-        return <span className={`${baseBadgeCls} text-zinc-600 bg-zinc-900/5 border-transparent`}>Sem prioridade</span>;
+      case 'urgent': return <span className={`${base} text-red-400 bg-red-500/10 border-red-500/15`}><AlertTriangle size={10} className="shrink-0" /> Urgente</span>;
+      case 'high':   return <span className={`${base} text-orange-400 bg-orange-500/10 border-orange-500/15`}><ArrowUp size={10} className="shrink-0" /> Alta</span>;
+      case 'medium': return <span className={`${base} text-blue-400 bg-blue-500/10 border-blue-500/15`}>Média</span>;
+      case 'low':    return <span className={`${base} text-emerald-400 bg-emerald-500/10 border-emerald-500/15`}><ArrowDown size={10} className="shrink-0" /> Baixa</span>;
+      default:       return <span className={`${base} text-zinc-600 bg-zinc-900/5 border-transparent`}>Sem prioridade</span>;
     }
   };
 
+  // ─────────────────────────────────────────────────
+  // DROP INDICATOR COMPONENT
+  // ─────────────────────────────────────────────────
+  const DropLine = ({ visible }: { visible: boolean }) => (
+    <div
+      style={{
+        height: visible ? '3px' : '0px',
+        transition: 'height 0.12s ease',
+        borderRadius: '4px',
+        background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+        boxShadow: '0 0 8px rgba(99,102,241,0.6)',
+        marginBottom: visible ? '4px' : '0px',
+        overflow: 'hidden',
+      }}
+    />
+  );
+
+  // ─────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#08080a]">
       {/* Filters Bar */}
       <div className="px-6 py-3 border-b border-zinc-900/60 flex items-center shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
-          
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-            <button
-              onClick={() => setFilterAssigneeId('all')}
-              className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${
-                filterAssigneeId === 'all' 
-                  ? 'bg-zinc-800 text-white shadow-sm' 
-                  : 'bg-transparent text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              Todos
-            </button>
-            <div className="w-[1px] h-4 bg-zinc-800 mx-0.5"></div>
+            <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
+            <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
             <div className="flex items-center pl-1 pr-1 gap-1">
               {sortedUsers.map(u => (
-                <button
-                  key={u.id}
-                  onClick={() => setFilterAssigneeId(u.id)}
-                  title={u.name}
-                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                    filterAssigneeId === u.id 
-                      ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' 
-                      : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'
-                  }`}
+                <button key={u.id} onClick={() => setFilterAssigneeId(u.id)} title={u.name}
+                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'}`}
                   style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
                 >
-                  {u.avatarUrl ? (
-                    <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-zinc-400">{u.initials}</span>
-                  )}
+                  {u.avatarUrl ? <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" /> : <span className="text-zinc-400">{u.initials}</span>}
                 </button>
               ))}
             </div>
           </div>
         </div>
+
+        {/* Priority Filter */}
+        <div className="flex items-center gap-3 ml-6">
+          <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
+          <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+            <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
+            <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+            <div className="flex items-center pl-1 pr-1 gap-1">
+              {[
+                { id: 'urgent',      label: 'U', icon: <AlertTriangle size={10} />, color: 'text-red-400 border-red-500 bg-red-500/10',       title: 'Urgente' },
+                { id: 'high',        label: 'A', icon: <ArrowUp size={10} />,       color: 'text-orange-400 border-orange-500 bg-orange-500/10', title: 'Alta' },
+                { id: 'medium',      label: 'M', icon: null,                        color: 'text-blue-400 border-blue-500 bg-blue-500/10',     title: 'Média' },
+                { id: 'low',         label: 'B', icon: <ArrowDown size={10} />,     color: 'text-emerald-400 border-emerald-500 bg-emerald-500/10', title: 'Baixa' },
+                { id: 'no_priority', label: '-', icon: null,                        color: 'text-zinc-500 border-zinc-500 bg-zinc-900/10',      title: 'Sem prioridade' },
+              ].map(p => (
+                <button key={p.id} onClick={() => setFilterPriority(p.id as TaskPriority)} title={p.title}
+                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 flex items-center justify-center text-[10px] font-bold shrink-0 ${filterPriority === p.id ? `${p.color} scale-110 shadow-lg shadow-black/20` : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Sort Filter */}
+        <div className="flex items-center gap-3 ml-6">
+          <span className="text-xs text-zinc-500 font-medium">Ordenar:</span>
+          <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+            <button
+              onClick={() => { if (sortPriority === 'asc') setSortPriority('desc'); else if (sortPriority === 'desc') setSortPriority('none'); else setSortPriority('asc'); }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortPriority !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Prioridade
+              <div className="flex flex-col gap-[1px]">
+                <ArrowUp size={9} className={sortPriority === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                <ArrowDown size={9} className={sortPriority === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+              </div>
+            </button>
+            <button
+              onClick={() => { if (sortDue === 'asc') setSortDue('desc'); else if (sortDue === 'desc') setSortDue('none'); else setSortDue('asc'); }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortDue !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Prazo
+              <div className="flex flex-col gap-[1px]">
+                <ArrowUp size={9} className={sortDue === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                <ArrowDown size={9} className={sortDue === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Social Media Filter */}
+        {setSocialMediaFilter && (
+          <div className="flex items-center gap-3 ml-6">
+            <span className="text-xs text-zinc-500 font-medium hidden lg:inline">Acesso Rápido:</span>
+            <button
+              onClick={() => setSocialMediaFilter(!socialMediaFilter)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                socialMediaFilter 
+                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
+                  : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+              }`}
+            >
+              <Share2 size={12} className={socialMediaFilter ? 'text-purple-400' : 'text-zinc-500'} />
+              Rede Social
+            </button>
+          </div>
+        )}
+
         {/* Compact mode toggle */}
         <div className="ml-auto flex items-center">
           <button
             onClick={() => setIsCompact(v => !v)}
             title={isCompact ? 'Modo Normal' : 'Modo Ultra-Compacto'}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
-              isCompact
-                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
-                : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'
-            }`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${isCompact ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
           >
             {isCompact ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
             <span>{isCompact ? 'Normal' : 'Compacto'}</span>
@@ -274,288 +543,282 @@ export default function KanbanView({
         </div>
       </div>
 
-      <div 
+      {/* Board */}
+      <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
-        className="flex-1 flex overflow-x-auto min-h-0 p-6 gap-6 select-none scrollbar-thin"
+        onMouseDown={handleMouseDown}
+        onMouseLeave={handleMouseLeave}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        className={`flex-1 flex overflow-x-auto min-h-0 p-6 gap-6 select-none scrollbar-minimal ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
-      {COLUMNS.map(column => {
-        const colTasks = getColTasks(column.id);
-        const isTarget = dragOverColumn === column.id;
-        const isQuickAddOpen = quickAddColId === column.id;
+        {COLUMNS.map(column => {
+          const colTasks = getColTasks(column.id);
+          const isTarget = dragOverColumn === column.id;
+          const isQuickAddOpen = quickAddColId === column.id;
+          // count cards that are NOT dragging
+          const visibleCount = colTasks.filter(t => t.id !== draggingCardId).length + (draggingCardId && colTasks.find(t => t.id === draggingCardId) ? 1 : 0);
 
-        return (
-          <div
-            key={column.id}
-            onDragOver={(e) => handleDragOver(e, column.id)}
-            onDrop={(e) => handleDrop(e, column.id)}
-            className={`group/column flex-1 bg-transparent rounded-xl flex flex-col p-2 border border-transparent transition-all duration-200 scrollbar-none min-w-[320px] max-w-[380px]`}
-          >
-            {/* Column Title header */}
-            <div className="flex items-center justify-between mb-4 px-1 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full ${column.dotColor}`} />
-                {column.icon}
-                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider font-sans">
-                  {column.label}
-                </span>
-                <span className="text-[10px] font-mono text-zinc-500 bg-zinc-950 px-1.5 py-0.2 rounded border border-zinc-900/60 font-medium">
-                  {colTasks.length}
-                </span>
-              </div>
-
-              <button 
-                onClick={() => triggerQuickAdd(column.id)}
-                className="opacity-0 group-hover/column:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-white hover:bg-zinc-900 transition-all duration-150"
-                title="Adicionar Tarefa na Coluna"
-              >
-                <Plus size={13} />
-              </button>
-            </div>
-
-            {/* Quick Add block */}
-            {isQuickAddOpen && (
-              <form 
-                onSubmit={(e) => submitQuickAdd(e, column.id)}
-                className="mb-3 p-3 bg-zinc-950 border border-zinc-900 rounded-lg animate-fade-in shrink-0"
-              >
-                <input
-                  type="text"
-                  autoFocus
-                  required
-                  placeholder="Nome do cartão..."
-                  value={quickAddTitle}
-                  onChange={(e) => setQuickAddTitle(e.target.value)}
-                  className="w-full bg-[#08080a] border border-zinc-800 p-2 text-xs rounded-md text-zinc-150 outline-none focus:border-zinc-700/60 mb-2"
-                />
-                <div className="flex justify-end gap-1.5 text-[10px]">
-                  <button
-                    type="button"
-                    onClick={() => setQuickAddColId(null)}
-                    className="px-2 py-1 text-zinc-500 hover:text-zinc-300 font-sans font-medium"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-white rounded font-medium transition-colors"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Scrollable list of cards inside column */}
-            <div className="flex-1 overflow-y-auto space-y-3 pr-0.5 no-scrollbar">
-              {colTasks.length === 0 ? (
-                <div className="h-24 border border-dashed border-zinc-900 rounded-xl flex flex-col items-center justify-center text-xs text-zinc-650 italic bg-transparent">
-                  <Layers size={13} className="mb-1 text-zinc-750" />
-                  <span>Sem cards</span>
-                </div>
-              ) : (
-                colTasks.map(task => {
-                const project = projects.find(p => p.id === task.projectId);
-                
-                // Calculate subtask ratio
-                const totalSub = task.subtasks.length;
-                const completedSub = task.subtasks.filter(s => s.completed).length;
-                const isDragging = draggingCardId === task.id;
-
-                const primaryLabelId = task.labels.length > 0 ? task.labels[0]?.id : null;
-                const primaryLabelData = primaryLabelId ? labels.find(l => l.id === primaryLabelId) : null;
-                const themeTextColor = primaryLabelData ? (primaryLabelData.color.match(/text-[a-z]+-\d+/) || ['text-zinc-500'])[0] : '';
-
-                let ThemeIcon: any = null;
-                if (primaryLabelData?.name === 'Design') ThemeIcon = PenTool;
-                else if (primaryLabelData?.name === 'Copy') ThemeIcon = Type;
-                else if (primaryLabelData?.name === 'Tarefa') ThemeIcon = CheckSquare;
-                else if (primaryLabelData?.name === 'Orçamento') ThemeIcon = DollarSign;
-                else if (primaryLabelData?.name === 'Social Mídia') ThemeIcon = Share2;
-                else if (primaryLabelData) ThemeIcon = TagIcon;
-
-                return isCompact ? (
-                  /* ── COMPACT CARD ── */
-                  <div
-                    key={task.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, task.id)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => onSelectTask(task)}
-                    className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${
-                      isDragging ? 'opacity-30 scale-[0.98]' : ''
-                    }`}
-                  >
-                    {/* Theme Icon */}
-                    {ThemeIcon && (
-                      <div className={`shrink-0 ${themeTextColor}`}>
-                        <ThemeIcon size={12} />
-                      </div>
-                    )}
-
-                    {/* Title — 35 char cap */}
-                    <span className="flex-1 text-[11px] font-medium text-zinc-200 truncate min-w-0" title={task.title}>
-                      {task.title.length > 35 ? task.title.slice(0, 35) + '…' : task.title}
+          return (
+            <div
+              key={column.id}
+              data-col={column.id}
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDragLeave={(e) => handleDragLeave(e, column.id)}
+              onDrop={(e) => handleDrop(e, column.id)}
+              className={`group/column kanban-column flex-1 rounded-xl p-2 border transition-all duration-200 no-scrollbar min-w-[320px] max-w-[380px] overflow-y-auto ${
+                isTarget
+                  ? `${column.accentBg} ${column.accentBorder}`
+                  : 'bg-transparent border-transparent'
+              }`}
+            >
+              <div className="kanban-column-inner flex flex-col">
+                {/* Column header */}
+                <div className="flex items-center justify-between mb-3 px-1 shrink-0 sticky top-0 z-10 bg-[#08080a] py-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full ${column.dotColor}`} />
+                    {column.icon}
+                    <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider font-sans">{column.label}</span>
+                    <span className="text-[10px] font-mono text-zinc-500 bg-zinc-950 px-1.5 py-0.2 rounded border border-zinc-900/60 font-medium">
+                      {colTasks.filter(t => t.id !== draggingCardId).length}
                     </span>
-
-                    {/* Priority — single letter badge */}
-                    {(() => {
-                      const map: Record<string, { letter: string; cls: string }> = {
-                        urgent: { letter: 'U', cls: 'text-red-400 bg-red-500/10' },
-                        high:   { letter: 'A', cls: 'text-orange-400 bg-orange-500/10' },
-                        medium: { letter: 'M', cls: 'text-blue-400 bg-blue-500/10' },
-                        low:    { letter: 'B', cls: 'text-emerald-400 bg-emerald-500/10' },
-                      };
-                      const p = map[task.priority];
-                      return p ? (
-                        <span className={`text-[9px] font-bold px-1 rounded shrink-0 ${p.cls}`}>{p.letter}</span>
-                      ) : null;
-                    })()}
-
-                    {/* Due date DD/MM */}
-                    {task.dueDate && (() => {
-                      const [, m, d] = task.dueDate.split('-');
-                      const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
-                      return (
-                        <span className={`text-[9px] font-mono shrink-0 ${
-                          isOverdue ? 'text-red-400' : 'text-zinc-500'
-                        }`}>{d}/{m}</span>
-                      );
-                    })()}
-
-                    {/* Reminder bell */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (task.reminderDate) {
-                          onUpdateTask({ ...task, reminderDate: undefined });
-                        } else {
-                          const tomorrow = new Date();
-                          tomorrow.setDate(tomorrow.getDate() + 1);
-                          onUpdateTask({ ...task, reminderDate: `${tomorrow.toISOString().split('T')[0]}T09:00` });
-                        }
-                      }}
-                      className={`shrink-0 transition-colors ${
-                        task.reminderDate ? 'text-amber-400' : 'text-zinc-700 hover:text-zinc-500'
-                      }`}
-                      title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}
-                    >
-                      <BellRing size={10} />
-                    </button>
                   </div>
-                ) : (
-                  <div
-                    key={task.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, task.id)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => onSelectTask(task)}
-                    className={`group relative bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-lg p-3 transition-all duration-200 cursor-grab active:cursor-grabbing hover:shadow-xl hover:shadow-black/50 ${
-                      isDragging ? 'opacity-30 border-dashed border-zinc-700 scale-[0.98]' : ''
-                    }`}
+                  <button
+                    onClick={() => triggerQuickAdd(column.id)}
+                    className="opacity-0 group-hover/column:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-white hover:bg-zinc-900 transition-all duration-150"
+                    title="Adicionar Tarefa na Coluna"
                   >
-                    {/* Linha Superior (ID & Assignee) */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] text-zinc-500 font-mono font-semibold tracking-tight uppercase flex items-center gap-1.5">
-                        <span>{task.id.split('-')[0]}</span>
-                        {project && (
-                          <>
-                            <span className="text-zinc-700 font-sans font-light">|</span>
-                            <span className="truncate max-w-[120px]">
-                              {project.name}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                      {task.assigneeId && USERS.find(u => u.id === task.assigneeId) ? (
-                        <div 
-                          className="w-5 h-5 rounded-full border border-zinc-800 shrink-0 overflow-hidden"
-                          title={USERS.find(u => u.id === task.assigneeId)?.name}
-                        >
-                          <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all" />
-                        </div>
-                      ) : (
-                        <div className="w-5 h-5 rounded-full border border-dashed border-zinc-900 flex items-center justify-center text-[10px] text-zinc-600 shrink-0" title="Sem responsável">
-                          -
+                    <Plus size={13} />
+                  </button>
+                </div>
+
+                {/* Quick Add */}
+                {isQuickAddOpen && (
+                  <form onSubmit={(e) => submitQuickAdd(e, column.id)} className="mb-3 p-3 bg-zinc-950 border border-zinc-900 rounded-lg animate-fade-in shrink-0">
+                    <input
+                      type="text" autoFocus required
+                      placeholder="Nome do cartão..."
+                      value={quickAddTitle}
+                      onChange={(e) => setQuickAddTitle(e.target.value)}
+                      className="w-full bg-[#08080a] border border-zinc-800 p-2 text-xs rounded-md text-zinc-150 outline-none focus:border-zinc-700/60 mb-2"
+                    />
+                    <div className="flex justify-end gap-1.5 text-[10px]">
+                      <button type="button" onClick={() => setQuickAddColId(null)} className="px-2 py-1 text-zinc-500 hover:text-zinc-300 font-sans font-medium">Cancelar</button>
+                      <button type="submit" className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-white rounded font-medium transition-colors">Adicionar</button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Cards list */}
+                <div className={`flex flex-col pr-0.5 ${isCompact ? 'space-y-1' : 'space-y-3'}`}>
+                  {colTasks.length === 0 && !isTarget ? (
+                    <div className="h-24 border border-dashed border-zinc-900 rounded-xl flex flex-col items-center justify-center text-xs text-zinc-650 italic bg-transparent">
+                      <Layers size={13} className="mb-1 text-zinc-750" />
+                      <span>Sem cards</span>
+                    </div>
+                  ) : (
+                    <>
+                      {colTasks.map((task, cardIndex) => {
+                        const project = projects.find(p => p.id === task.projectId);
+                        const totalSub = task.subtasks.length;
+                        const completedSub = task.subtasks.filter(s => s.completed).length;
+                        const isDragging = draggingCardId === task.id;
+
+                        const primaryLabelId = task.labels.length > 0 ? task.labels[0]?.id : null;
+                        const primaryLabelData = primaryLabelId ? labels.find(l => l.id === primaryLabelId) : null;
+                        const themeTextColor = primaryLabelData ? (primaryLabelData.color.match(/text-[a-z]+-\d+/) || ['text-zinc-500'])[0] : '';
+
+                        let ThemeIcon: any = null;
+                        if (primaryLabelData?.name === 'Design') ThemeIcon = PenTool;
+                        else if (primaryLabelData?.name === 'Copy') ThemeIcon = Type;
+                        else if (primaryLabelData?.name === 'Tarefa') ThemeIcon = CheckSquare;
+                        else if (primaryLabelData?.name === 'Orçamento') ThemeIcon = DollarSign;
+                        else if (primaryLabelData?.name === 'Social Media') ThemeIcon = Share2;
+                        else if (primaryLabelData) ThemeIcon = TagIcon;
+
+                        // Show drop line BEFORE this card
+                        const showLineHere = dropIndicator?.colId === column.id && dropIndicator.index === cardIndex;
+                        // Show drop line at END of list
+                        const showLineAtEnd = dropIndicator?.colId === column.id && dropIndicator.index >= colTasks.length && cardIndex === colTasks.length - 1;
+
+                        return (
+                          <React.Fragment key={task.id}>
+                            <DropLine visible={showLineHere} />
+
+                            {isCompact ? (
+                              /* ── COMPACT CARD ── */
+                              <div
+                                data-card={task.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
+                                onDragEnd={handleDragEnd}
+                                onClick={() => onSelectTask(task)}
+                                className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0' : ''}`}
+                              >
+                                {ThemeIcon && <div className={`shrink-0 ${themeTextColor}`}><ThemeIcon size={12} /></div>}
+                                <span className="flex-1 text-[11px] font-medium text-zinc-200 truncate min-w-0" title={task.title}>
+                                  {task.title.length > 35 ? task.title.slice(0, 35) + '…' : task.title}
+                                </span>
+                                {(() => {
+                                  const map: Record<string, { letter: string; cls: string }> = {
+                                    urgent: { letter: 'U', cls: 'text-red-400 bg-red-500/10' },
+                                    high:   { letter: 'A', cls: 'text-orange-400 bg-orange-500/10' },
+                                    medium: { letter: 'M', cls: 'text-blue-400 bg-blue-500/10' },
+                                    low:    { letter: 'B', cls: 'text-emerald-400 bg-emerald-500/10' },
+                                  };
+                                  const p = map[task.priority];
+                                  return p ? <span className={`text-[9px] font-bold px-1 rounded shrink-0 ${p.cls}`}>{p.letter}</span> : null;
+                                })()}
+                                {task.dueDate && (() => {
+                                  const [, m, d] = task.dueDate.split('-');
+                                  const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
+                                  return <span className={`text-[9px] font-mono shrink-0 ${isOverdue ? 'text-red-400' : 'text-zinc-300'}`}>{d}/{m}</span>;
+                                })()}
+                                {task.timeTracking && getElapsedTimeData(task.timeTracking) && (() => {
+                                  const data = getElapsedTimeData(task.timeTracking)!;
+                                  return (
+                                    <div className={`flex items-center gap-1 text-[9px] font-mono font-medium ${data.colorClass}`} title={task.timeTracking.isTimerRunning ? 'Tempo rodando...' : 'Tempo pausado'}>
+                                      <Hourglass size={8} className={task.timeTracking.isTimerRunning ? 'animate-pulse' : ''} />
+                                      <span>{data.text}</span>
+                                    </div>
+                                  );
+                                })()}
+                                <DatePicker
+                                  value={task.reminderDate || ''}
+                                  align="right"
+                                  disableAutoScroll
+                                  onChange={(date) => { onUpdateTask({ ...task, reminderDate: date || undefined }); }}
+                                  enableTime={true}
+                                  onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTask({ ...task, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
+                                  trigger={
+                                    <button type="button" className={`shrink-0 transition-colors ${task.reminderDate ? 'text-amber-400' : 'text-zinc-700 hover:text-zinc-500'}`} title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}>
+                                      <BellRing size={10} />
+                                    </button>
+                                  }
+                                />
+                              </div>
+                            ) : (
+                              /* ── NORMAL CARD ── */
+                              <div
+                                data-card={task.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
+                                onDragEnd={handleDragEnd}
+                                onClick={() => onSelectTask(task)}
+                                className={`group relative bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-lg p-2.5 transition-all duration-200 cursor-grab active:cursor-grabbing hover:shadow-xl hover:shadow-black/50 ${isDragging ? 'opacity-0' : ''}`}
+                              >
+                                {/* ID & Assignee */}
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] text-zinc-500 font-mono font-semibold tracking-tight uppercase flex items-center gap-1.5">
+                                    <span>{task.id.split('-')[0]}</span>
+                                    {project && (
+                                      <>
+                                        <span className="text-zinc-700 font-sans font-light">|</span>
+                                        <span className="truncate max-w-[120px]">{project.name}</span>
+                                      </>
+                                    )}
+                                  </span>
+                                  <AssigneePicker
+                                    value={task.assigneeId}
+                                    onChange={(val) => onUpdateTask({ ...task, assigneeId: val })}
+                                    trigger={
+                                      <button type="button" className="w-5 h-5 rounded-full border border-zinc-800 shrink-0 overflow-hidden hover:border-zinc-500 transition-colors bg-zinc-900 flex items-center justify-center"
+                                        title={task.assigneeId && USERS.find(u => u.id === task.assigneeId)?.name || 'Sem responsável'}>
+                                        {task.assigneeId && USERS.find(u => u.id === task.assigneeId)
+                                          ? <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all" />
+                                          : <span className="text-[10px] text-zinc-500 font-bold">+</span>}
+                                      </button>
+                                    }
+                                  />
+                                </div>
+
+                                {/* Title */}
+                                <div className="mb-1.5 flex items-start gap-1.5">
+                                  {ThemeIcon && <div className={`shrink-0 mt-[1px] ${themeTextColor}`}><ThemeIcon size={14} /></div>}
+                                  <h4 className="text-xs font-semibold text-zinc-100 group-hover:text-white leading-snug tracking-normal break-words w-full">{task.title}</h4>
+                                </div>
+
+
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-between pt-1.5 border-t border-zinc-900/40">
+                                  <div className="flex items-center gap-1.5 flex-wrap w-full">
+                                    <PriorityPicker
+                                      value={task.priority}
+                                      onChange={(val) => onUpdateTask({ ...task, priority: val })}
+                                      trigger={
+                                        <button type="button" className="flex items-center h-[20px] hover:scale-105 transition-transform active:scale-95">
+                                          {getPriorityBadge(task.priority)}
+                                        </button>
+                                      }
+                                    />
+                                    {task.dueDate && (() => {
+                                      const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
+                                      return (
+                                        <div className={`flex items-center justify-center h-[20px] gap-1 text-[10px] font-mono px-1.5 rounded border ${isOverdue ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-zinc-300 bg-zinc-800/50 border-zinc-700/50'}`}>
+                                          <Calendar size={9} className="shrink-0" />
+                                          <span>{task.dueDate.split('-').reverse().join('/')}</span>
+                                        </div>
+                                      );
+                                    })()}
+                                    <div className="ml-auto flex items-center h-[20px] gap-2">
+                                      {task.timeTracking && getElapsedTimeData(task.timeTracking) && (() => {
+                                        const data = getElapsedTimeData(task.timeTracking)!;
+                                        return (
+                                          <div className={`flex items-center h-full gap-1.5 text-[11px] font-mono font-medium transition-colors ${data.colorClass}`} title={task.timeTracking.isTimerRunning ? 'Tempo rodando...' : 'Tempo pausado/concluído'}>
+                                            <Hourglass size={11} className={task.timeTracking.isTimerRunning ? 'animate-pulse' : ''} />
+                                            <span className="pt-[1px]">{data.text}</span>
+                                          </div>
+                                        );
+                                      })()}
+                                      <DatePicker
+                                        value={task.reminderDate || ''}
+                                        align="right"
+                                        disableAutoScroll
+                                        onChange={(date) => { onUpdateTask({ ...task, reminderDate: date || undefined }); }}
+                                        enableTime={true}
+                                        onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTask({ ...task, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
+                                        trigger={
+                                          <button type="button" className={`flex items-center justify-center h-full transition-colors ${task.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'}`} title={task.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}>
+                                            <BellRing size={13} />
+                                          </button>
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Drop line AFTER last card */}
+                            {showLineAtEnd && <DropLine visible={true} />}
+                          </React.Fragment>
+                        );
+                      })}
+
+                      {/* Drop line when column is empty and being dragged over */}
+                      {colTasks.length === 0 && isTarget && (
+                        <div className="h-16 border border-dashed border-blue-500/30 rounded-xl flex flex-col items-center justify-center text-xs text-blue-400/50 bg-blue-500/5 transition-all duration-150">
+                          <span>Soltar aqui</span>
                         </div>
                       )}
-                    </div>
+                    </>
+                  )}
 
-                    {/* Centro (Título) */}
-                    <div className="mb-2 flex items-start gap-1.5">
-                      {ThemeIcon && (
-                        <div className={`shrink-0 mt-[1px] ${themeTextColor}`}>
-                          <ThemeIcon size={14} />
-                        </div>
-                      )}
-                      <h4 className="text-xs font-semibold text-zinc-100 group-hover:text-white leading-snug tracking-normal break-words w-full">
-                        {task.title}
-                      </h4>
-                    </div>
-
-                    {/* Barra de progresso discreta de 2px (se houver subtasks) */}
-                    {totalSub > 0 && (
-                      <div className="w-full h-[2px] bg-zinc-950 rounded-full overflow-hidden mb-2">
-                        <div 
-                          className="h-full bg-zinc-700 transition-all duration-300" 
-                          style={{ width: `${(completedSub / totalSub) * 100}%` }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Footer: Prioridade e Prazo */}
-                    <div className="flex items-center justify-between pt-2 border-t border-zinc-900/40">
-                      <div className="flex items-center gap-1.5 flex-wrap w-full">
-                        {getPriorityBadge(task.priority)}
-                        {task.dueDate && (() => {
-                          const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
-                          return (
-                            <div className={`flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${isOverdue ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800/50'}`}>
-                              <Calendar size={9} />
-                              <span>{task.dueDate.split('-').reverse().join('/')}</span>
-                            </div>
-                          );
-                        })()}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (task.reminderDate) {
-                              onUpdateTask({ ...task, reminderDate: undefined });
-                            } else {
-                              const tomorrow = new Date();
-                              tomorrow.setDate(tomorrow.getDate() + 1);
-                              const baseDate = tomorrow.toISOString().split('T')[0];
-                              onUpdateTask({ ...task, reminderDate: `${baseDate}T09:00` });
-                            }
-                          }}
-                          className={`ml-auto flex items-center justify-center transition-colors ${
-                            task.reminderDate 
-                              ? 'text-amber-400 hover:text-amber-300' 
-                              : 'text-zinc-600 hover:text-zinc-400'
-                          }`}
-                          title={task.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}
-                        >
-                          <BellRing size={12} />
-                        </button>
-                      </div>
-                    </div>
-                    </div>
-                ); // end normal card
-              })
-              )}
-              
-              {/* Discreet New Task Button */}
-              <button 
-                onClick={() => handleAddNewTaskInColumn(column.id)}
-                className="w-full mt-2 py-2 flex items-center justify-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 rounded-lg transition-colors border border-transparent border-dashed hover:border-zinc-700/50"
-              >
-                <Plus size={12} />
-                Nova Tarefa
-              </button>
+                  {/* New Task Button */}
+                  <button
+                    onClick={() => handleAddNewTaskInColumn(column.id)}
+                    className="w-full mt-2 py-2 flex items-center justify-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 rounded-lg transition-colors border border-transparent border-dashed hover:border-zinc-700/50"
+                  >
+                    <Plus size={12} />
+                    Nova Tarefa
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
       </div>
     </div>
   );

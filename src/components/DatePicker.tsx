@@ -6,12 +6,17 @@ interface DatePickerProps {
   onChange: (date: string) => void;
   trigger?: React.ReactNode;
   enableTime?: boolean;
+  onQuickAdd?: () => void;
+  fullWidth?: boolean;
+  suggestedDate?: string;
+  align?: 'left' | 'right';
+  disableAutoScroll?: boolean;
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
-export default function DatePicker({ value, onChange, trigger, enableTime }: DatePickerProps) {
+export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   
   // Parse initial date or default to today
@@ -35,15 +40,16 @@ export default function DatePicker({ value, onChange, trigger, enableTime }: Dat
 
   // Auto-scroll to ensure popover visibility with comfortable space
   useEffect(() => {
-    if (isOpen && popoverRef.current) {
+    if (isOpen && popoverRef.current && !disableAutoScroll) {
       setTimeout(() => {
         popoverRef.current?.scrollIntoView({
           behavior: 'smooth',
-          block: 'center'
+          block: 'nearest',
+          inline: 'nearest'
         });
       }, 50);
     }
-  }, [isOpen]);
+  }, [isOpen, disableAutoScroll]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -59,7 +65,13 @@ export default function DatePicker({ value, onChange, trigger, enableTime }: Dat
   // Update view when opening
   const handleOpen = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const d = value ? new Date(value.split('T')[0] + 'T00:00:00') : new Date();
+    if (!value && onQuickAdd) {
+      onQuickAdd();
+      return;
+    }
+    const d = value 
+      ? new Date(value.split('T')[0] + 'T00:00:00') 
+      : (suggestedDate ? new Date(suggestedDate.split('T')[0] + 'T00:00:00') : new Date());
     setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
     setIsOpen(!isOpen);
   };
@@ -134,10 +146,10 @@ export default function DatePicker({ value, onChange, trigger, enableTime }: Dat
   }
 
   return (
-    <div className="relative w-full" ref={containerRef}>
+    <div className={`relative ${trigger && !fullWidth ? 'inline-block' : 'w-full'}`} ref={containerRef}>
       {/* Trigger */}
       {trigger ? (
-        <div onClick={handleOpen} className="cursor-pointer inline-flex">
+        <div onClick={handleOpen} className={`cursor-pointer ${fullWidth ? 'w-full' : 'inline-flex'}`}>
           {trigger}
         </div>
       ) : (
@@ -153,7 +165,7 @@ export default function DatePicker({ value, onChange, trigger, enableTime }: Dat
 
       {/* Popover */}
       {isOpen && (
-        <div ref={popoverRef} className="absolute top-full left-0 mt-1.5 w-[230px] bg-[#121214] border border-zinc-800/80 rounded-[8px] shadow-2xl p-3 z-50 animate-fade-in">
+        <div ref={popoverRef} className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1.5 w-[230px] bg-[#121214] border border-zinc-800/80 rounded-[8px] shadow-2xl p-3 z-50 animate-fade-in`}>
           
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
@@ -192,17 +204,20 @@ export default function DatePicker({ value, onChange, trigger, enableTime }: Dat
               const formattedDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
               const isSelected = formattedDate === currentDatePart;
               const isToday = new Date().toDateString() === targetDate.toDateString();
+              const isSuggested = suggestedDate && formattedDate === suggestedDate.split('T')[0] && !isSelected;
 
               return (
                 <button
                   key={i}
                   type="button"
+                  title={isSuggested ? 'Data sugerida' : undefined}
                   onClick={(e) => handleSelectDay(slot.day, slot.monthOffset, e)}
                   className={`
                     w-6 h-6 flex items-center justify-center text-[10px] rounded-full transition-all mx-auto
                     ${!slot.isCurrentMonth ? 'opacity-35 text-zinc-400' : 'text-zinc-300'}
-                    ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md' : 'hover:bg-zinc-800/80'}
-                    ${isToday && !isSelected ? 'ring-1 ring-blue-500/50 text-blue-400' : ''}
+                    ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md' : 
+                      isSuggested ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'hover:bg-zinc-800/80'}
+                    ${isToday && !isSelected && !isSuggested ? 'ring-1 ring-blue-500/50 text-blue-400' : ''}
                   `}
                 >
                   {slot.day}
