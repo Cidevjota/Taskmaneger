@@ -2,6 +2,12 @@ export type TaskStatus = 'no_forecast' | 'todo' | 'in_progress' | 'paused' | 'ap
 
 export type TaskPriority = 'no_priority' | 'low' | 'medium' | 'high' | 'urgent';
 
+export interface StatusHistoryEntry {
+  status: TaskStatus;
+  enteredAt: string; // ISO date
+  leftAt?: string; // ISO date
+}
+
 export interface Label {
   id: string;
   name: string;
@@ -205,11 +211,15 @@ export interface Task {
   proposals?: Proposal[];
   chatMessages?: ChatMessage[];
   dueDate?: string; // ISO date format like '2026-06-20'
+  plannedDate?: string; // Weekly Planner allocation date (YYYY-MM-DD)
   createdAt: string;
   assigneeId?: string;
   parentTaskId?: string;
   reminderDate?: string;
   timeTracking?: TaskTimeTracking;
+  reworkCount?: number;
+  statusHistory?: StatusHistoryEntry[];
+  updatedAt?: string;
 }
 
 export interface Project {
@@ -220,7 +230,7 @@ export interface Project {
   status: 'active' | 'completed' | 'on_hold';
 }
 
-export type ViewType = 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge';
+export type ViewType = 'home' | 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge' | 'dashboard';
 
 export type SiengeStatus = 'a_lancar' | 'aprovacao_1' | 'aprovacao_2' | 'aprovacao_3' | 'aguardando_pagamento' | 'recusados' | 'pago';
 

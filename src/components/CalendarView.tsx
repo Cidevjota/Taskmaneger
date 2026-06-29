@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Inbox, Plus, Calendar as CalendarIcon, Clock, PenTool, Type, CheckSquare, DollarSign, Share2, Tag as TagIcon, AlertTriangle, ArrowUp, ArrowDown, BellRing } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Inbox, Plus, Calendar as CalendarIcon, Clock, PenTool, Type, CheckSquare, DollarSign, Share2, Tag as TagIcon, AlertTriangle, ArrowUp, ArrowDown, Bell, ChevronsUp, ChevronUp, Minus, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Task, Project, Label, TaskPriority, TaskStatus } from '../types';
 import DatePicker from './DatePicker';
 import { useAuth } from '../context/AuthContext';
@@ -63,24 +63,44 @@ export default function CalendarView({
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
   
+  const [isPlanningMode, setIsPlanningMode] = useState(false);
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
   const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
   const hasInitialized = useRef(!!currentUser);
-
-  React.useEffect(() => {
-    if (!hasInitialized.current && currentUser) {
-      setFilterAssigneeId(currentUser.id);
-      hasInitialized.current = true;
-    }
-  }, [currentUser]);
 
   // Filter tasks
   let filteredTasks = tasks.filter(t => {
     if (currentProjectFilter && t.projectId !== currentProjectFilter) return false;
     if (filterAssigneeId !== 'all' && t.assigneeId !== filterAssigneeId) return false;
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
-    return !!t.dueDate;
+    return !!t.dueDate || !!t.plannedDate;
+  });
+
+  const unplannedTasks = tasks.filter(t => {
+    if (currentProjectFilter && t.projectId !== currentProjectFilter) return false;
+    if (filterAssigneeId !== 'all' && t.assigneeId !== filterAssigneeId) return false;
+    if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
+    
+    // Check if task is unplanned and its dueDate matches the currently viewed calendar month
+    // OR if it's within the first 15 days of the next month.
+    if (t.plannedDate) return false;
+    if (!t.dueDate) return false;
+    
+    const [tYear, tMonth, tDay] = t.dueDate.split('-').map(Number);
+    const isCurrentMonth = (tYear === year && tMonth === month + 1);
+    
+    let nextMonth = month + 2;
+    let nextYear = year;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear++;
+    }
+    const isNextMonthFirstHalf = (tYear === nextYear && tMonth === nextMonth && tDay <= 15);
+    
+    if (!isCurrentMonth && !isNextMonthFirstHalf) return false;
+
+    return true;
   });
 
   // Sort tasks by priority
@@ -95,6 +115,15 @@ export default function CalendarView({
       return 0;
     });
   }
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!hasInitialized.current && currentUser) {
+      setFilterAssigneeId(currentUser.id);
+      hasInitialized.current = true;
+    }
+  }, [currentUser]);
 
   // Helper to build range of days
   const gridCells: { type: 'day'; dayNum: number; dateStr: string; isOtherMonth: boolean }[] = [];
@@ -129,13 +158,31 @@ export default function CalendarView({
     });
   }
 
-  // Next month days
-  const totalCells = Math.ceil(gridCells.length / 7) * 7;
-  const remainingCells = totalCells - gridCells.length;
-  for (let i = 1; i <= remainingCells; i++) {
+  // Next month days (All of them to allow scrolling 2 months)
+  const nextMonthDate = new Date(year, month + 1, 1);
+  const nextMonthDays = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
+  for (let i = 1; i <= nextMonthDays; i++) {
     const nextDate = new Date(year, month + 1, i);
     const m = nextDate.getMonth() + 1;
     const y = nextDate.getFullYear();
+    const formattedMonth = m < 10 ? `0${m}` : `${m}`;
+    const formattedDay = i < 10 ? `0${i}` : `${i}`;
+    
+    gridCells.push({
+      type: 'day',
+      dayNum: i,
+      dateStr: `${y}-${formattedMonth}-${formattedDay}`,
+      isOtherMonth: true
+    });
+  }
+
+  // Next-next month trailing days to complete the last row
+  const totalCells = Math.ceil(gridCells.length / 7) * 7;
+  const remainingCells = totalCells - gridCells.length;
+  for (let i = 1; i <= remainingCells; i++) {
+    const nextNextDate = new Date(year, month + 2, i);
+    const m = nextNextDate.getMonth() + 1;
+    const y = nextNextDate.getFullYear();
     const formattedMonth = m < 10 ? `0${m}` : `${m}`;
     const formattedDay = i < 10 ? `0${i}` : `${i}`;
     
@@ -151,6 +198,7 @@ export default function CalendarView({
   // DRAG AND DROP (GHOST) LOGIC
   // ─────────────────────────────────────────────────
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [hoveredUnplannedTaskId, setHoveredUnplannedTaskId] = useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -257,28 +305,34 @@ export default function CalendarView({
     const matchedTask = tasks.find(t => t.id === taskId);
     if (!matchedTask) return;
 
-    if (matchedTask.dueDate !== targetDateStr) {
-      onUpdateTask({ ...matchedTask, dueDate: targetDateStr });
-
-      // Snap animation
-      setTimeout(() => {
-        const cardEl = document.querySelector(`[data-card="${taskId}"]`) as HTMLElement | null;
-        if (!cardEl) return;
-        cardEl.style.opacity = '0';
-        cardEl.style.transform = 'translateY(-8px)';
-        requestAnimationFrame(() => {
-          cardEl.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
-          cardEl.style.opacity = '1';
-          cardEl.style.transform = 'translateY(0)';
-          setTimeout(() => {
-            cardEl.style.transition = '';
-            cardEl.style.opacity = '';
-            cardEl.style.transform = '';
-          }, 220);
-        });
-      }, 40);
+    if (isPlanningMode) {
+      if (matchedTask.plannedDate !== targetDateStr) {
+        onUpdateTask({ ...matchedTask, plannedDate: targetDateStr });
+      }
+    } else {
+      if (matchedTask.dueDate !== targetDateStr) {
+        onUpdateTask({ ...matchedTask, dueDate: targetDateStr });
+      }
     }
-  }, [tasks, onUpdateTask, removeGhost]);
+
+    // Snap animation
+    setTimeout(() => {
+      const cardEl = document.querySelector(`[data-card="${taskId}"]`) as HTMLElement | null;
+      if (!cardEl) return;
+      cardEl.style.opacity = '0';
+      cardEl.style.transform = 'translateY(-8px)';
+      requestAnimationFrame(() => {
+        cardEl.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+        cardEl.style.opacity = '1';
+        cardEl.style.transform = 'translateY(0)';
+        setTimeout(() => {
+          cardEl.style.transition = '';
+          cardEl.style.opacity = '';
+          cardEl.style.transform = '';
+        }, 220);
+      });
+    }, 40);
+  }, [tasks, onUpdateTask, removeGhost, isPlanningMode]);
 
   // ─────────────────────────────────────────────────
 
@@ -304,8 +358,15 @@ export default function CalendarView({
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#08080a]">
       {/* Filters Bar */}
-      <div className="px-6 py-3 border-b border-zinc-900/60 flex items-center shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="group relative shrink-0 border-b border-zinc-900/60 bg-[#08080a] z-20">
+        {/* Trigger Handle */}
+        <div className="h-3 w-full flex items-center justify-center cursor-pointer bg-zinc-950/20 hover:bg-zinc-900/30 transition-colors" title="Filtros">
+          <div className="w-12 h-1 rounded-full bg-zinc-800 group-hover:bg-zinc-600 transition-colors" />
+        </div>
+        
+        <div className="max-h-0 overflow-hidden opacity-0 group-hover:max-h-[80px] group-hover:opacity-100 transition-all duration-300 ease-in-out">
+          <div className="px-6 pb-3 pt-1 flex items-center">
+            <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
             <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
@@ -331,11 +392,11 @@ export default function CalendarView({
             <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
             <div className="flex items-center pl-1 pr-1 gap-1">
               {[
-                { id: 'urgent',      label: 'U', icon: <AlertTriangle size={10} />, color: 'text-red-400 border-red-500 bg-red-500/10',       title: 'Urgente' },
-                { id: 'high',        label: 'A', icon: <ArrowUp size={10} />,       color: 'text-orange-400 border-orange-500 bg-orange-500/10', title: 'Alta' },
-                { id: 'medium',      label: 'M', icon: null,                        color: 'text-blue-400 border-blue-500 bg-blue-500/10',     title: 'Média' },
-                { id: 'low',         label: 'B', icon: <ArrowDown size={10} />,     color: 'text-emerald-400 border-emerald-500 bg-emerald-500/10', title: 'Baixa' },
-                { id: 'no_priority', label: '-', icon: null,                        color: 'text-zinc-500 border-zinc-500 bg-zinc-900/10',      title: 'Sem prioridade' },
+                { id: 'urgent',      label: <ChevronsUp size={12} />, color: 'text-red-400 border-red-500 bg-red-500/10',       title: 'Urgente' },
+                { id: 'high',        label: <ChevronUp size={12} />,  color: 'text-orange-400 border-orange-500 bg-orange-500/10', title: 'Alta' },
+                { id: 'medium',      label: <Minus size={12} />,      color: 'text-blue-400 border-blue-500 bg-blue-500/10',     title: 'Média' },
+                { id: 'low',         label: <ChevronDown size={12} />,color: 'text-emerald-400 border-emerald-500 bg-emerald-500/10', title: 'Baixa' },
+                { id: 'no_priority', label: '-',                      color: 'text-zinc-500 border-zinc-500 bg-zinc-900/10',      title: 'Sem prioridade' },
               ].map(p => (
                 <button key={p.id} onClick={() => setFilterPriority(p.id as TaskPriority)} title={p.title}
                   className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 flex items-center justify-center text-[10px] font-bold shrink-0 ${filterPriority === p.id ? `${p.color} scale-110 shadow-lg shadow-black/20` : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
@@ -381,6 +442,8 @@ export default function CalendarView({
             </button>
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col p-6 overflow-y-auto select-none space-y-4">
@@ -391,6 +454,12 @@ export default function CalendarView({
           <h2 className="text-xs font-semibold text-zinc-350 uppercase tracking-widest font-mono">
             {MONTH_NAMES[month]} {year}
           </h2>
+          <button
+            onClick={() => setIsPlanningMode(!isPlanningMode)}
+            className={`ml-4 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${isPlanningMode ? 'bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-zinc-900/40 text-zinc-500 border-zinc-800/50 hover:text-zinc-300'}`}
+          >
+            Modo Planejamento
+          </button>
         </div>
 
         <div className="flex items-center gap-1">
@@ -400,23 +469,96 @@ export default function CalendarView({
         </div>
       </div>
 
-      <div className="flex-1 border border-zinc-900 rounded-lg overflow-hidden bg-[#121214]/30 flex flex-col min-h-[460px]">
-        {/* Days of the week header - sticky */}
-        <div className="grid grid-cols-7 h-10 border-b border-zinc-900 text-center items-center font-mono text-[9px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-950 select-none shrink-0 z-10">
-          {daysHeader.map(d => (
-            <div key={d}>{d}</div>
-          ))}
-        </div>
+      <div className="flex-1 flex gap-4 min-h-[460px] overflow-hidden">
+        {isPlanningMode && (
+          <div className="w-[260px] flex flex-col border border-zinc-900 rounded-lg bg-[#121214]/30 overflow-hidden shrink-0">
+             <div className="h-10 border-b border-zinc-900 flex items-center px-4 bg-zinc-950 shrink-0">
+               <span className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">Aguardando Planejamento</span>
+               <span className="ml-auto text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-full">{unplannedTasks.length}</span>
+             </div>
+             <div className="flex-1 overflow-y-auto p-3 space-y-2.5 scrollbar-thin">
+                {unplannedTasks.length === 0 ? (
+                  <div className="text-center p-4 text-xs text-zinc-600">Nenhuma tarefa pendente.</div>
+                ) : (
+                  unplannedTasks.map(task => {
+                    const primaryLabelId = task.labels.length > 0 ? task.labels[0]?.id : null;
+                    const primaryLabelData = primaryLabelId ? labels.find(l => l.id === primaryLabelId) : null;
+                    
+                    return (
+                      <div
+                        key={`unplanned-${task.id}`}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
+                        onDragEnd={handleDragEnd}
+                        onMouseEnter={() => setHoveredUnplannedTaskId(task.id)}
+                        onMouseLeave={() => setHoveredUnplannedTaskId(null)}
+                        onClick={() => onSelectTask(task)}
+                        className="group flex items-center justify-between bg-[#121214] hover:bg-[#161619] rounded-lg transition-all duration-150 cursor-grab active:cursor-grabbing shadow-sm px-3 py-2.5 border border-transparent hover:border-zinc-800"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {(() => {
+                            if (task.priority === 'urgent') return <ChevronsUp size={12} className="text-red-500 shrink-0" />;
+                            if (task.priority === 'high') return <ChevronUp size={12} className="text-orange-500 shrink-0" />;
+                            if (task.priority === 'medium') return <Minus size={12} className="text-blue-500 shrink-0" />;
+                            if (task.priority === 'low') return <ChevronDown size={12} className="text-emerald-500 shrink-0" />;
+                            return null;
+                          })()}
+                          <h4 className="text-[11.5px] font-semibold text-zinc-200 truncate">{task.title}</h4>
+                        </div>
+                        {task.dueDate && (
+                          <span className="text-[10px] text-[#3b82f6]/80 font-mono font-medium shrink-0 ml-3">
+                            {task.dueDate.split('-')[2]}/{task.dueDate.split('-')[1]}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+             </div>
+          </div>
+        )}
+
+        <div className="flex-1 border border-zinc-900 rounded-lg overflow-hidden bg-[#121214]/30 flex flex-col min-w-0">
+          {/* Days of the week header - sticky */}
+          <div className="grid grid-cols-7 h-10 border-b border-zinc-900 text-center items-center font-mono text-[9px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-950 select-none shrink-0 z-10">
+            {daysHeader.map(d => (
+              <div key={d}>{d}</div>
+            ))}
+          </div>
 
         {/* Days grid cells - scrollable */}
-        <div className="grid grid-cols-7 flex-1 divide-x divide-y divide-zinc-900/60 bg-transparent overflow-y-auto scrollbar-thin auto-rows-max">
+        <div ref={scrollContainerRef} className="relative flex-1 overflow-y-auto scrollbar-thin">
+          <div className="grid grid-cols-7 min-h-full divide-x divide-y divide-zinc-900/60 bg-transparent auto-rows-max relative z-10">
           {gridCells.map((cell, idx) => {
             const dayNum = cell.dayNum;
             const dateStr = cell.dateStr;
             const isToday = isCurrentMonth && dayNum === currentDayNum && !cell.isOtherMonth;
             const isTarget = dragOverDate === dateStr;
+            
+            const getHighlightedDate = () => {
+              if (draggingCardId) {
+                const draggingTask = tasks.find(t => t.id === draggingCardId);
+                if (draggingTask && !draggingTask.plannedDate) return draggingTask.dueDate;
+              }
+              if (hoveredUnplannedTaskId) {
+                const hoveredTask = tasks.find(t => t.id === hoveredUnplannedTaskId);
+                if (hoveredTask && !hoveredTask.plannedDate) return hoveredTask.dueDate;
+              }
+              return null;
+            };
+            const highlightedDueDate = getHighlightedDate();
+            const isHighlightedDue = isPlanningMode && highlightedDueDate === dateStr;
 
-            const dayTasks = filteredTasks.filter(t => t.dueDate === dateStr);
+            const dayTasks = filteredTasks.flatMap(t => {
+              const occurrences = [];
+              if (!isPlanningMode && t.dueDate === dateStr) {
+                occurrences.push(t);
+              }
+              if (isPlanningMode && t.plannedDate === dateStr) {
+                occurrences.push(t);
+              }
+              return occurrences;
+            });
 
             return (
               <div 
@@ -426,7 +568,7 @@ export default function CalendarView({
                 onDrop={(e) => handleDrop(e, dateStr)}
                 className={`p-1.5 min-h-[150px] hover:bg-zinc-900/40 flex flex-col transition-colors group relative ${
                   isTarget ? 'bg-blue-500/10' : isToday ? 'bg-zinc-900/10' : ''
-                }`}
+                } ${isHighlightedDue ? 'ring-2 ring-blue-500/50 bg-blue-500/5' : ''}`}
               >
                 {/* Cell title header */}
                 <div className="flex items-center justify-between mb-1 shrink-0">
@@ -438,7 +580,7 @@ export default function CalendarView({
                           ? 'text-zinc-700'
                           : 'text-zinc-500 group-hover:text-zinc-300'
                     }`}>
-                      {dayNum}
+                      {dayNum === 1 && cell.isOtherMonth ? `1 ${MONTH_NAMES[parseInt(dateStr.split('-')[1], 10) - 1].slice(0,3)}` : dayNum}
                     </span>
                     
                     {/* Holiday Indicator */}
@@ -497,6 +639,29 @@ export default function CalendarView({
                     };
                     const progress = getProgress(task.status);
 
+                    let alertType = null;
+                    let alertBgClass = '';
+                    let AlertIcon: any = null;
+                    
+                    if (isPlanningMode) {
+                      const todayISO = new Date().toISOString().split('T')[0];
+                      const dueStr = task.dueDate ? task.dueDate.split('T')[0] : null;
+                      
+                      if (task.status === 'done' || task.status === 'implementation') {
+                        alertType = 'completo';
+                        alertBgClass = 'bg-[#1a7a4c]'; // Dark green
+                        AlertIcon = CheckCircle2;
+                      } else if (dueStr && dueStr < todayISO) {
+                        alertType = 'alerta';
+                        alertBgClass = 'bg-[#7b1919]'; // Dark red
+                        AlertIcon = AlertTriangle;
+                      } else if (todayISO > dateStr) {
+                        alertType = 'atencao';
+                        alertBgClass = 'bg-[#9a7b1b]'; // Dark gold/amber
+                        AlertIcon = AlertCircle;
+                      }
+                    }
+
                     return (
                       <div
                         key={task.id}
@@ -505,76 +670,78 @@ export default function CalendarView({
                         onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
                         onDragEnd={handleDragEnd}
                         onClick={() => onSelectTask(task)}
-                        className={`group flex flex-col gap-1.5 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing shadow-sm ${
-                          isDragging ? 'opacity-0' : ''
-                        } ${task.status === 'done' && !isDragging ? 'opacity-60 grayscale' : ''}`}
+                        className={`group flex items-stretch ${alertBgClass || 'bg-[#121214]'} hover:${alertBgClass || 'bg-[#161619]'} rounded-md transition-all duration-300 cursor-grab active:cursor-grabbing shadow-sm overflow-hidden border ${alertBgClass ? 'border-transparent' : 'border-zinc-900/60 hover:border-zinc-800'} ${isDragging ? 'opacity-30' : ''} ${task.status === 'done' && !isDragging ? 'opacity-60 grayscale' : ''}`}
                       >
-                        <div className="flex items-center gap-2 w-full">
-                          {/* Theme Icon */}
-                          {ThemeIcon && (
-                            <div className={`shrink-0 ${themeTextColor}`}>
-                              <ThemeIcon size={12} />
+                          {alertType && AlertIcon && (
+                            <div className={`${isPlanningMode ? 'w-5' : 'w-8'} shrink-0 flex items-center justify-center transition-all duration-500 animate-slide-in-right`}>
+                              <AlertIcon size={isPlanningMode ? 11 : 14} className="text-white" />
                             </div>
                           )}
+                          <div className={`flex flex-col ${isPlanningMode ? 'gap-1 px-1.5 py-1' : 'gap-1.5 px-2 py-1.5'} w-full bg-[#121214] group-hover:bg-[#161619] transition-colors ${alertType ? 'rounded-l-md border-l border-zinc-900/80' : ''}`}>
+                            <div className="flex items-center gap-2 w-full">
+                            {/* Theme Icon */}
+                            {ThemeIcon && (
+                              <div className={`shrink-0 ${themeTextColor}`}>
+                                <ThemeIcon size={isPlanningMode ? 10 : 12} />
+                              </div>
+                            )}
 
-                          {/* Title */}
-                          <span className={`flex-1 text-[11px] font-medium truncate min-w-0 ${task.status === 'done' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`} title={task.title}>
-                            {task.title}
-                          </span>
+                            {/* Title */}
+                            <span className={`flex-1 ${isPlanningMode ? 'text-[9.5px]' : 'text-[11px]'} font-medium truncate min-w-0 ${task.status === 'done' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`} title={task.title}>
+                              {task.title}
+                            </span>
 
-                          {/* Priority */}
-                          {(() => {
-                            const map: Record<string, { letter: string; cls: string }> = {
-                              urgent: { letter: 'U', cls: 'text-red-400 bg-red-500/10' },
-                              high:   { letter: 'A', cls: 'text-orange-400 bg-orange-500/10' },
-                              medium: { letter: 'M', cls: 'text-blue-400 bg-blue-500/10' },
-                              low:    { letter: 'B', cls: 'text-emerald-400 bg-emerald-500/10' },
-                            };
-                            const p = map[task.priority];
-                            return p ? (
-                              <span className={`text-[9px] font-bold px-1 rounded shrink-0 ${p.cls}`}>{p.letter}</span>
-                            ) : null;
-                          })()}
+                            {/* Priority */}
+                            {(() => {
+                              const pSize = isPlanningMode ? 10 : 13;
+                              const map: Record<string, { icon: React.ReactNode; cls: string }> = {
+                                urgent: { icon: <ChevronsUp size={pSize} />, cls: 'text-red-400' },
+                                high:   { icon: <ChevronUp size={pSize} />, cls: 'text-orange-400' },
+                                medium: { icon: <Minus size={pSize} />, cls: 'text-blue-400' },
+                                low:    { icon: <ChevronDown size={pSize} />, cls: 'text-emerald-400' },
+                              };
+                              const p = map[task.priority];
+                              return p ? (
+                                <span className={`flex items-center justify-center shrink-0 ${p.cls}`}>{p.icon}</span>
+                              ) : null;
+                            })()}
 
-                          {/* Reminder bell */}
-                          <div onClick={(e) => e.stopPropagation()}>
-                            <DatePicker
-                              value={task.reminderDate || ''}
-                              onChange={(date) => {
-                                onUpdateTask({ ...task, reminderDate: date || undefined });
-                              }}
-                              enableTime={true}
-                              onQuickAdd={() => {
-                                const tomorrow = new Date();
-                                tomorrow.setDate(tomorrow.getDate() + 1);
-                                onUpdateTask({ ...task, reminderDate: `${tomorrow.toISOString().split('T')[0]}T09:00` });
-                              }}
-                              trigger={
-                                <button
-                                  type="button"
-                                  className={`shrink-0 transition-colors flex items-center justify-center h-full ${
-                                    task.reminderDate ? 'text-amber-400' : 'text-zinc-700 hover:text-zinc-500'
-                                  }`}
-                                  title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}
-                                >
-                                  <BellRing size={10} />
-                                </button>
-                              }
-                            />
+                            {/* Reminder bell */}
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <DatePicker
+                                  value={task.reminderDate || ''}
+                                  onChange={(date) => {
+                                    onUpdateTask({ ...task, reminderDate: date || undefined });
+                                  }}
+                                  enableTime={true}
+                                  onQuickAdd={() => {
+                                    const tomorrow = new Date();
+                                    tomorrow.setDate(tomorrow.getDate() + 1);
+                                    onUpdateTask({ ...task, reminderDate: `${tomorrow.toISOString().split('T')[0]}T09:00` });
+                                  }}
+                                  trigger={
+                                    <button type="button" className={`flex items-center justify-center transition-colors ${task.reminderDate ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`} title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}>
+                                      <Bell size={isPlanningMode ? 10 : 12} className={task.reminderDate ? 'fill-amber-400' : ''} />
+                                    </button>
+                                  }
+                                />
+                              </div>
                           </div>
-                        </div>
-                        {/* Status Progress Bar */}
-                        <div className="w-full pt-1.5 pb-0.5 relative px-1">
-                          <div className="w-full h-[2px] bg-zinc-900 rounded-full" />
-                          <div 
-                            className="absolute top-[6px] left-1 h-[2px] bg-zinc-600 rounded-full transition-all duration-300" 
-                            style={{ width: `calc(${progress}% - 8px)` }}
-                          />
-                          <div 
-                            className="absolute top-[6px] -mt-[3px] w-[8px] h-[8px] bg-zinc-600 rounded-full flex items-center justify-center transition-all duration-300"
-                            style={{ left: `calc(${progress}% - 4px)` }}
-                          />
-                        </div>
+                          {/* Status Progress Bar */}
+                          {!isPlanningMode && (
+                            <div className="w-full pt-1.5 pb-0.5 relative px-1">
+                              <div className="w-full h-[2px] bg-zinc-900 rounded-full" />
+                              <div 
+                                className="absolute top-[6px] left-1 h-[2px] bg-zinc-600 rounded-full transition-all duration-300" 
+                                style={{ width: `calc(${progress}% - 8px)` }}
+                              />
+                              <div 
+                                className="absolute top-[6px] -mt-[3px] w-[8px] h-[8px] bg-zinc-600 rounded-full flex items-center justify-center transition-all duration-300"
+                                style={{ left: `calc(${progress}% - 4px)` }}
+                              />
+                            </div>
+                          )}
+                          </div>
                       </div>
                     );
                   })}
@@ -582,6 +749,8 @@ export default function CalendarView({
               </div>
             );
           })}
+          </div>
+          </div>
         </div>
       </div>
     </div>

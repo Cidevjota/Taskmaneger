@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { X, Camera, Save, User as UserIcon, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -19,6 +19,25 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
   
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Basic size validation (e.g. max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('A imagem deve ter no máximo 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarUrl(reader.result as string);
+        setError(null);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   if (!currentUser) return null;
 
@@ -80,17 +99,24 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
                 </div>
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider mb-1 block">URL da Foto</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full bg-[#08080a] border border-zinc-800 rounded-md py-1.5 pl-8 pr-3 text-xs text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-colors placeholder:text-zinc-600"
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              <label className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider mb-2 block">Foto de Perfil</label>
+              <div>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange} 
+                  className="hidden" 
                 />
-                <Camera size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-md border border-zinc-700/50 transition-colors shadow-sm"
+                >
+                  <Camera size={13} />
+                  Escolher Imagem...
+                </button>
               </div>
             </div>
           </div>

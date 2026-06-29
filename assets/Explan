@@ -1,0 +1,86 @@
+## Visão geral do time ##
+
+
+Throughput semanal e mensal — tarefas entregues no período, com comparativo ao período anterior.
+
+Completion rate — das tarefas que tinham prazo no período, qual % e quantidade que foi entregue dentro do prazo. Separe por prioridade.
+
+Cycle time médio — Tempo médio de "Em progresso até "implementação", com mediana e percentil 75. e o total de "A fazer" até "concluído"
+
+Overdue rate atual — % e quantidade de tarefas abertas que já passaram do prazo agora, em tempo real.
+
+Taxa de criação vs "implementação" por semana.
+
+First pass rate geral — % de tarefas aprovadas(que foram direto para "implementação" sem refação).
+
+Mapa de tempo por etapa agregado — tempo médio gasto em cada status para todas as tarefas do período. Essa é a visão de processo mais estratégica do dashboard: mostra onde o tempo vai de verdade.
+
+
+## Detalhamento por membro ##
+Essa seção existe para distribuição de carga, não para ranking ou pressão. O objetivo é identificar desequilíbrio antes que vire problema.
+
+
+Tarefas abertas por pessoa — quantas tarefas cada membro tem atribuídas hoje, separadas por status
+
+WIP por pessoa — especificamente quantas tarefas estão "em andamento" simultaneamente.
+
+Throughput individual por semana — gráfico de tendência para cada membro.
+
+Cycle time por pessoa — algumas pessoas têm cycle time maior porque pegam tarefas mais complexas.
+
+Taxa de refação por responsável — quantidade de tarefas por pessoa que voltaram pelo menos uma vez. Importante: apresentar com cuidado, sempre contextualizado com volume de tarefas, não como ranking.
+
+Número médio de ciclos de refação por tarefa, por responsável — vai além da taxa e mostra a severidade do retrabalho.
+
+Tarefas pausadas por responsável — quantas tarefas de cada pessoa estão em estado pausado e há quanto tempo.
+
+Tarefas pausadas por responsável com tempo em cada status de espera.
+
+
+## Análise de fluxo ##
+
+
+
+Tempo médio em cada status — quanto tempo as tarefas ficam em cada estágio do fluxo com média e mediana.
+
+Taxa de retrabalho — tarefas que voltaram para um status anterior depois de chegarem em "Aprovação" ou "implementação".
+
+Lead time vs cycle time — os dois juntos revelam quanto tempo as tarefas ficam esperando antes de alguém começar. Se o lead time é 10 dias e o cycle time é 3, as tarefas ficam 7 dias paradas no "a fazer" antes de entrar em "Em progresso".
+
+
+
+## Qualidade e saúde do fluxo ##
+
+
+
+Tarefas sem prazo — quantidade de tarefas sem data de entrega definida em "Sem previsão"
+
+Tarefas antigas sem movimentação — abertas há mais de 14 dias(prioridade urgente) e 25 dias (outras prioridades) sem nenhuma atualização de status, Checklist, comentário.
+
+Taxa de criação vs fechamento — por semana, quantas tarefas foram criadas e quantas foram concluídas.
+
+
+
+## Tendências e alertas ##
+
+
+
+Essa seção não mostra números estáticos, mostra movimentos que precisam de atenção.
+
+Variação de cycle time semana a semana — se o cycle time está subindo progressivamente, algo mudou: o time está sobrecarregado, as tarefas estão ficando maiores ou o processo está mais burocrático.
+
+Pico de overdue — se o overdue rate dobrou em relação à semana anterior, algo aconteceu (férias, prioridade mudou, dependência externa surgiu). O dashboard precisa destacar isso, não deixar passar despercebido.
+
+Membros sem atividade recente — pessoas que não atualizaram nenhuma tarefa nos últimos X dias. Pode ser férias, afastamento ou simplesmente alguém que parou de usar o app — em qualquer caso, vale saber.
+
+Projetos com prazo próximo e baixo progresso — projetos com menos de 50% de conclusão e prazo em menos de 2 semanas. Esse é o tipo de alerta que, num dashboard bem feito, aparece em destaque logo de manhã.
+
+
+
+## Filtros que precisam existir no dashboard ##
+
+
+Período customizável (últimos 7, 14, 30 dias, ou range livre), 
+filtro por membro, por empreendimento, por classe de tarefa, e por prioridade. 
+
+O ideal é que todos os filtros sejam compostos — você consegue ver "tarefas críticas da Ana no empreendimento X nas últimas 2 semanas" sem navegar para outra página.

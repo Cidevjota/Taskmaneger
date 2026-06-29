@@ -126,7 +126,7 @@
 }
 
 .rte-content p {
-  @apply mb-3 last:mb-0;
+  @apply mb-0;
 }
 
 /* TipTap Placeholder */

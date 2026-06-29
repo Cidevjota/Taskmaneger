@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Inbox, Bell, CheckCircle, Clock, AlertCircle, Eye, Star, Trash2, AlertTriangle, BellRing, Calendar, X, Check, Archive, Activity, Timer, ChevronRight, Filter, Undo2 } from 'lucide-react';
+import { Inbox, Bell, CheckCircle, Clock, AlertCircle, Eye, Star, Trash2, AlertTriangle, Calendar, X, Check, Archive, Activity, Timer, ChevronRight, Filter, Undo2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { Task, Project } from '../types';
@@ -42,7 +42,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
       case 'review_requested': return <AlertTriangle {...props} />;
       case 'approval_pending': return <AlertTriangle {...props} />;
       case 'approved': return <Check {...props} />;
-      case 'reminder': return <BellRing {...props} />;
+      case 'reminder': return <Bell {...props} className="text-zinc-500 shrink-0 fill-zinc-500" />;
       case 'deadline': return <Calendar {...props} />;
       case 'deadline_changed': return <Calendar {...props} />;
       default: return <Bell {...props} />;
@@ -54,7 +54,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
   const notificationTypes = [
     { value: 'all', label: 'Todos os tipos', icon: Inbox },
     { value: 'deadline', label: 'Prazos', icon: Calendar },
-    { value: 'reminder', label: 'Lembretes', icon: BellRing },
+    { value: 'reminder', label: 'Lembretes', icon: Bell },
     { value: 'status_changed', label: 'Status Alterado', icon: Bell },
     { value: 'review_requested', label: 'Revisão Solicitada', icon: AlertTriangle },
     { value: 'approved', label: 'Aprovados', icon: CheckCircle },

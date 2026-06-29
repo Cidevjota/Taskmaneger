@@ -5,8 +5,13 @@ import {
   CheckCircle2, 
   HelpCircle, 
   AlertTriangle, 
-  ArrowUp, 
+  ArrowUp,
   ArrowDown, 
+  ChevronDown,
+  ChevronRight,
+  ChevronsUp,
+  ChevronUp,
+  Minus,
   Layers, 
   Bookmark,
   Sparkles,
@@ -19,7 +24,7 @@ import {
   Share2,
   LayoutTemplate,
   Tag as TagIcon,
-  BellRing,
+  Bell,
   AlignJustify,
   LayoutGrid,
   Hourglass
@@ -73,6 +78,10 @@ interface KanbanViewProps {
   currentProjectFilter: string | null;
   socialMediaFilter?: boolean;
   setSocialMediaFilter?: (val: boolean) => void;
+  hideFilters?: boolean;
+  maxCardsPerColumn?: number;
+  defaultCompact?: boolean;
+  hideNewTaskButton?: boolean;
 }
 
 const COLUMNS: { id: TaskStatus; label: string; dotColor: string; icon: React.ReactNode; accentBg: string; accentBorder: string }[] = [
@@ -95,7 +104,11 @@ export default function KanbanView({
   onAddTask,
   currentProjectFilter,
   socialMediaFilter,
-  setSocialMediaFilter
+  setSocialMediaFilter,
+  hideFilters = false,
+  maxCardsPerColumn,
+  defaultCompact = false,
+  hideNewTaskButton = false
 }: KanbanViewProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -108,10 +121,10 @@ export default function KanbanView({
   const [dropIndicator, setDropIndicator] = useState<{ colId: TaskStatus; index: number } | null>(null);
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
-  const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
-  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('desc');
+  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('asc');
   const hasInitialized = useRef(!!currentUser);
-  const [isCompact, setIsCompact] = useState(false);
+  const [isCompact, setIsCompact] = useState(defaultCompact);
 
   // Ghost card refs
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -398,12 +411,13 @@ export default function KanbanView({
 
   // Sync column heights
   useEffect(() => {
+    if (hideFilters) return; // Do not force huge heights in the constrained planner view
     const inners = document.querySelectorAll('.kanban-column-inner') as NodeListOf<HTMLElement>;
     let max = 0;
     inners.forEach(el => el.style.minHeight = '0px');
     inners.forEach(el => { if (el.scrollHeight > max) max = el.scrollHeight; });
     inners.forEach(el => el.style.minHeight = `${max}px`);
-  }, [tasks, isCompact, filterAssigneeId, filterPriority]);
+  }, [tasks, isCompact, filterAssigneeId, filterPriority, hideFilters]);
 
   // ─────────────────────────────────────────────────
   // PRIORITY BADGE
@@ -411,10 +425,10 @@ export default function KanbanView({
   const getPriorityBadge = (prio: TaskPriority) => {
     const base = "inline-flex items-center justify-center h-[20px] gap-1 text-[10px] font-sans font-medium px-1.5 rounded border select-none";
     switch (prio) {
-      case 'urgent': return <span className={`${base} text-red-400 bg-red-500/10 border-red-500/15`}><AlertTriangle size={10} className="shrink-0" /> Urgente</span>;
-      case 'high':   return <span className={`${base} text-orange-400 bg-orange-500/10 border-orange-500/15`}><ArrowUp size={10} className="shrink-0" /> Alta</span>;
-      case 'medium': return <span className={`${base} text-blue-400 bg-blue-500/10 border-blue-500/15`}>Média</span>;
-      case 'low':    return <span className={`${base} text-emerald-400 bg-emerald-500/10 border-emerald-500/15`}><ArrowDown size={10} className="shrink-0" /> Baixa</span>;
+      case 'urgent': return <span className={`${base} text-red-400 bg-red-500/10 border-red-500/15`}><ChevronsUp size={10} className="shrink-0" /> Urgente</span>;
+      case 'high':   return <span className={`${base} text-orange-400 bg-orange-500/10 border-orange-500/15`}><ChevronUp size={10} className="shrink-0" /> Alta</span>;
+      case 'medium': return <span className={`${base} text-blue-400 bg-blue-500/10 border-blue-500/15`}><Minus size={10} className="shrink-0" /> Média</span>;
+      case 'low':    return <span className={`${base} text-emerald-400 bg-emerald-500/10 border-emerald-500/15`}><ChevronDown size={10} className="shrink-0" /> Baixa</span>;
       default:       return <span className={`${base} text-zinc-600 bg-zinc-900/5 border-transparent`}>Sem prioridade</span>;
     }
   };
@@ -442,140 +456,137 @@ export default function KanbanView({
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#08080a]">
       {/* Filters Bar */}
-      <div className="px-6 py-3 border-b border-zinc-900/60 flex items-center shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
-          <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-            <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
-            <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
-            <div className="flex items-center pl-1 pr-1 gap-1">
-              {sortedUsers.map(u => (
-                <button key={u.id} onClick={() => setFilterAssigneeId(u.id)} title={u.name}
-                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'}`}
-                  style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
-                >
-                  {u.avatarUrl ? <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" /> : <span className="text-zinc-400">{u.initials}</span>}
-                </button>
-              ))}
+      {!hideFilters && (
+        <div className="px-6 py-3 border-b border-zinc-900/60 flex items-center shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
+            <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+              <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
+              <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+              <div className="flex items-center pl-1 pr-1 gap-1">
+                {sortedUsers.map(u => (
+                  <button key={u.id} onClick={() => setFilterAssigneeId(u.id)} title={u.name}
+                    className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'}`}
+                    style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
+                  >
+                    {u.avatarUrl ? <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" /> : <span className="text-zinc-400">{u.initials}</span>}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Priority Filter */}
-        <div className="flex items-center gap-3 ml-6">
-          <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
-          <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-            <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
-            <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
-            <div className="flex items-center pl-1 pr-1 gap-1">
-              {[
-                { id: 'urgent',      label: 'U', icon: <AlertTriangle size={10} />, color: 'text-red-400 border-red-500 bg-red-500/10',       title: 'Urgente' },
-                { id: 'high',        label: 'A', icon: <ArrowUp size={10} />,       color: 'text-orange-400 border-orange-500 bg-orange-500/10', title: 'Alta' },
-                { id: 'medium',      label: 'M', icon: null,                        color: 'text-blue-400 border-blue-500 bg-blue-500/10',     title: 'Média' },
-                { id: 'low',         label: 'B', icon: <ArrowDown size={10} />,     color: 'text-emerald-400 border-emerald-500 bg-emerald-500/10', title: 'Baixa' },
-                { id: 'no_priority', label: '-', icon: null,                        color: 'text-zinc-500 border-zinc-500 bg-zinc-900/10',      title: 'Sem prioridade' },
-              ].map(p => (
-                <button key={p.id} onClick={() => setFilterPriority(p.id as TaskPriority)} title={p.title}
-                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 flex items-center justify-center text-[10px] font-bold shrink-0 ${filterPriority === p.id ? `${p.color} scale-110 shadow-lg shadow-black/20` : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Sort Filter */}
-        <div className="flex items-center gap-3 ml-6">
-          <span className="text-xs text-zinc-500 font-medium">Ordenar:</span>
-          <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-            <button
-              onClick={() => { if (sortPriority === 'asc') setSortPriority('desc'); else if (sortPriority === 'desc') setSortPriority('none'); else setSortPriority('asc'); }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortPriority !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
-            >
-              Prioridade
-              <div className="flex flex-col gap-[1px]">
-                <ArrowUp size={9} className={sortPriority === 'asc' ? 'text-blue-400' : 'opacity-40'} />
-                <ArrowDown size={9} className={sortPriority === 'desc' ? 'text-blue-400' : 'opacity-40'} />
-              </div>
-            </button>
-            <button
-              onClick={() => { if (sortDue === 'asc') setSortDue('desc'); else if (sortDue === 'desc') setSortDue('none'); else setSortDue('asc'); }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortDue !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
-            >
-              Prazo
-              <div className="flex flex-col gap-[1px]">
-                <ArrowUp size={9} className={sortDue === 'asc' ? 'text-blue-400' : 'opacity-40'} />
-                <ArrowDown size={9} className={sortDue === 'desc' ? 'text-blue-400' : 'opacity-40'} />
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Social Media Filter */}
-        {setSocialMediaFilter && (
+          {/* Priority Filter */}
           <div className="flex items-center gap-3 ml-6">
-            <span className="text-xs text-zinc-500 font-medium hidden lg:inline">Acesso Rápido:</span>
+            <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
+            <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+              <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
+              <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
+              <div className="flex items-center pl-1 pr-1 gap-1">
+                {[
+                  { id: 'urgent',      label: 'U', icon: <AlertTriangle size={10} />, color: 'text-red-400 border-red-500 bg-red-500/10',       title: 'Urgente' },
+                  { id: 'high',        label: 'A', icon: <ArrowUp size={10} />,       color: 'text-orange-400 border-orange-500 bg-orange-500/10', title: 'Alta' },
+                  { id: 'medium',      label: 'M', icon: null,                        color: 'text-blue-400 border-blue-500 bg-blue-500/10',     title: 'Média' },
+                  { id: 'low',         label: 'B', icon: <ArrowDown size={10} />,     color: 'text-emerald-400 border-emerald-500 bg-emerald-500/10', title: 'Baixa' },
+                  { id: 'no_priority', label: '-', icon: null,                        color: 'text-zinc-500 border-zinc-500 bg-zinc-900/10',      title: 'Sem prioridade' },
+                ].map(p => (
+                  <button key={p.id} onClick={() => setFilterPriority(p.id as TaskPriority)} title={p.title}
+                    className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 flex items-center justify-center text-[10px] font-bold shrink-0 ${filterPriority === p.id ? `${p.color} scale-110 shadow-lg shadow-black/20` : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Sort Filter */}
+          <div className="flex items-center gap-3 ml-6">
+            <span className="text-xs text-zinc-500 font-medium">Ordenar:</span>
+            <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
+              <button
+                onClick={() => { if (sortPriority === 'asc') setSortPriority('desc'); else if (sortPriority === 'desc') setSortPriority('none'); else setSortPriority('asc'); }}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortPriority !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
+              >
+                Prioridade
+                <div className="flex flex-col gap-[1px]">
+                  <ArrowUp size={9} className={sortPriority === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                  <ArrowDown size={9} className={sortPriority === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+                </div>
+              </button>
+              <button
+                onClick={() => { if (sortDue === 'asc') setSortDue('desc'); else if (sortDue === 'desc') setSortDue('none'); else setSortDue('asc'); }}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortDue !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
+              >
+                Prazo
+                <div className="flex flex-col gap-[1px]">
+                  <ArrowUp size={9} className={sortDue === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                  <ArrowDown size={9} className={sortDue === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Social Media Filter */}
+          {setSocialMediaFilter && (
+            <div className="flex items-center gap-3 ml-6">
+              <span className="text-xs text-zinc-500 font-medium hidden lg:inline">Acesso Rápido:</span>
+              <button
+                onClick={() => setSocialMediaFilter(!socialMediaFilter)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                  socialMediaFilter 
+                    ? 'bg-purple-500/15 border-purple-500/40 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
+                    : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+              >
+                <Share2 size={12} className={socialMediaFilter ? 'text-purple-400' : 'text-zinc-500'} />
+                Rede Social
+              </button>
+            </div>
+          )}
+
+          {/* Compact mode toggle */}
+          <div className="ml-auto flex items-center">
             <button
-              onClick={() => setSocialMediaFilter(!socialMediaFilter)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                socialMediaFilter 
-                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
-                  : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-              }`}
+              onClick={() => setIsCompact(v => !v)}
+              title={isCompact ? 'Modo Normal' : 'Modo Ultra-Compacto'}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${isCompact ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
             >
-              <Share2 size={12} className={socialMediaFilter ? 'text-purple-400' : 'text-zinc-500'} />
-              Rede Social
+              {isCompact ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
+              <span>{isCompact ? 'Normal' : 'Compacto'}</span>
             </button>
           </div>
-        )}
-
-        {/* Compact mode toggle */}
-        <div className="ml-auto flex items-center">
-          <button
-            onClick={() => setIsCompact(v => !v)}
-            title={isCompact ? 'Modo Normal' : 'Modo Ultra-Compacto'}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${isCompact ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
-          >
-            {isCompact ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
-            <span>{isCompact ? 'Normal' : 'Compacto'}</span>
-          </button>
         </div>
-      </div>
+      )}
 
       {/* Board */}
-      <div
-        ref={scrollContainerRef}
+      <div className="relative flex-1 flex min-h-0">
+        <div
+          ref={scrollContainerRef}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseLeave={handleMouseLeave}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
-        className={`flex-1 flex overflow-x-auto min-h-0 p-6 gap-6 select-none scrollbar-minimal ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 flex overflow-x-auto min-h-0 gap-6 select-none ${hideFilters ? 'no-scrollbar p-0 pt-1' : 'scrollbar-minimal p-6'} ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
         {COLUMNS.map(column => {
           const colTasks = getColTasks(column.id);
           const isTarget = dragOverColumn === column.id;
           const isQuickAddOpen = quickAddColId === column.id;
-          // count cards that are NOT dragging
-          const visibleCount = colTasks.filter(t => t.id !== draggingCardId).length + (draggingCardId && colTasks.find(t => t.id === draggingCardId) ? 1 : 0);
 
           return (
-            <div
-              key={column.id}
-              data-col={column.id}
-              onDragOver={(e) => handleDragOver(e, column.id)}
-              onDragLeave={(e) => handleDragLeave(e, column.id)}
-              onDrop={(e) => handleDrop(e, column.id)}
-              className={`group/column kanban-column flex-1 rounded-xl p-2 border transition-all duration-200 no-scrollbar min-w-[320px] max-w-[380px] overflow-y-auto ${
-                isTarget
-                  ? `${column.accentBg} ${column.accentBorder}`
-                  : 'bg-transparent border-transparent'
-              }`}
-            >
-              <div className="kanban-column-inner flex flex-col">
-                {/* Column header */}
-                <div className="flex items-center justify-between mb-3 px-1 shrink-0 sticky top-0 z-10 bg-[#08080a] py-2">
+            <div key={column.id} className="relative flex-1 min-w-[320px] max-w-[380px] h-full flex flex-col">
+              <div
+                data-col={column.id}
+                className={`group/column kanban-column w-full h-full rounded-xl border transition-all duration-200 flex flex-col ${
+                  isTarget
+                    ? `${column.accentBg} ${column.accentBorder}`
+                    : 'bg-transparent border-transparent'
+                }`}
+              >
+                {/* Column header - Static */}
+                <div className="flex items-center justify-between mb-2 px-3 shrink-0 py-2">
                   <div className="flex items-center gap-2">
                     <span className={`w-1.5 h-1.5 rounded-full ${column.dotColor}`} />
                     {column.icon}
@@ -595,23 +606,31 @@ export default function KanbanView({
 
                 {/* Quick Add */}
                 {isQuickAddOpen && (
-                  <form onSubmit={(e) => submitQuickAdd(e, column.id)} className="mb-3 p-3 bg-zinc-950 border border-zinc-900 rounded-lg animate-fade-in shrink-0">
-                    <input
-                      type="text" autoFocus required
-                      placeholder="Nome do cartão..."
-                      value={quickAddTitle}
-                      onChange={(e) => setQuickAddTitle(e.target.value)}
-                      className="w-full bg-[#08080a] border border-zinc-800 p-2 text-xs rounded-md text-zinc-150 outline-none focus:border-zinc-700/60 mb-2"
-                    />
-                    <div className="flex justify-end gap-1.5 text-[10px]">
-                      <button type="button" onClick={() => setQuickAddColId(null)} className="px-2 py-1 text-zinc-500 hover:text-zinc-300 font-sans font-medium">Cancelar</button>
-                      <button type="submit" className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-white rounded font-medium transition-colors">Adicionar</button>
+                  <form onSubmit={(e) => submitQuickAdd(e, column.id)} className="mb-3 px-3 shrink-0 animate-fade-in">
+                    <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg">
+                      <input
+                        type="text" autoFocus required
+                        placeholder="Nome do cartão..."
+                        value={quickAddTitle}
+                        onChange={(e) => setQuickAddTitle(e.target.value)}
+                        className="w-full bg-[#08080a] border border-zinc-800 p-2 text-xs rounded-md text-zinc-150 outline-none focus:border-zinc-700/60 mb-2"
+                      />
+                      <div className="flex justify-end gap-1.5 text-[10px]">
+                        <button type="button" onClick={() => setQuickAddColId(null)} className="px-2 py-1 text-zinc-500 hover:text-zinc-300 font-sans font-medium">Cancelar</button>
+                        <button type="submit" className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-white rounded font-medium transition-colors">Adicionar</button>
+                      </div>
                     </div>
                   </form>
                 )}
 
-                {/* Cards list */}
-                <div className={`flex flex-col pr-0.5 ${isCompact ? 'space-y-1' : 'space-y-3'}`}>
+                {/* Scrollable Task List */}
+                <div 
+                  className="flex-1 overflow-y-auto no-scrollbar relative px-2 pb-8"
+                  onDragOver={(e) => handleDragOver(e, column.id)}
+                  onDragLeave={(e) => handleDragLeave(e, column.id)}
+                  onDrop={(e) => handleDrop(e, column.id)}
+                >
+                  <div className={`flex flex-col min-h-[150px] ${isCompact ? 'space-y-1' : 'space-y-3'}`}>
                   {colTasks.length === 0 && !isTarget ? (
                     <div className="h-24 border border-dashed border-zinc-900 rounded-xl flex flex-col items-center justify-center text-xs text-zinc-650 italic bg-transparent">
                       <Layers size={13} className="mb-1 text-zinc-750" />
@@ -652,6 +671,7 @@ export default function KanbanView({
                                 data-card={task.id}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
+                                onDrag={(e) => { if (e.clientX || e.clientY) moveGhost(e.clientX, e.clientY); }}
                                 onDragEnd={handleDragEnd}
                                 onClick={() => onSelectTask(task)}
                                 className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0' : ''}`}
@@ -660,20 +680,23 @@ export default function KanbanView({
                                 <span className="flex-1 text-[11px] font-medium text-zinc-200 truncate min-w-0" title={task.title}>
                                   {task.title.length > 35 ? task.title.slice(0, 35) + '…' : task.title}
                                 </span>
-                                {(() => {
-                                  const map: Record<string, { letter: string; cls: string }> = {
-                                    urgent: { letter: 'U', cls: 'text-red-400 bg-red-500/10' },
-                                    high:   { letter: 'A', cls: 'text-orange-400 bg-orange-500/10' },
-                                    medium: { letter: 'M', cls: 'text-blue-400 bg-blue-500/10' },
-                                    low:    { letter: 'B', cls: 'text-emerald-400 bg-emerald-500/10' },
-                                  };
-                                  const p = map[task.priority];
-                                  return p ? <span className={`text-[9px] font-bold px-1 rounded shrink-0 ${p.cls}`}>{p.letter}</span> : null;
-                                })()}
+                                <div className="shrink-0 flex items-center justify-center">
+                                  {task.priority === 'urgent' && <ChevronsUp size={14} className="text-red-500" />}
+                                  {task.priority === 'high' && <ChevronUp size={14} className="text-orange-400" />}
+                                  {task.priority === 'medium' && <Minus size={14} className="text-blue-500" />}
+                                  {task.priority === 'low' && <ChevronDown size={14} className="text-emerald-500" />}
+                                </div>
                                 {task.dueDate && (() => {
                                   const [, m, d] = task.dueDate.split('-');
-                                  const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
-                                  return <span className={`text-[9px] font-mono shrink-0 ${isOverdue ? 'text-red-400' : 'text-zinc-300'}`}>{d}/{m}</span>;
+                                  const isOverdue = task.dueDate < new Date().toISOString().split('T')[0];
+                                  const isDone = task.status === 'done';
+                                  let textColor = 'text-zinc-300';
+                                  if (isDone) {
+                                    textColor = 'text-emerald-500';
+                                  } else if (isOverdue) {
+                                    textColor = 'text-red-400';
+                                  }
+                                  return <span className={`text-[10px] font-mono shrink-0 ${textColor}`}>{d}/{m}</span>;
                                 })()}
                                 {task.timeTracking && getElapsedTimeData(task.timeTracking) && (() => {
                                   const data = getElapsedTimeData(task.timeTracking)!;
@@ -692,8 +715,8 @@ export default function KanbanView({
                                   enableTime={true}
                                   onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTask({ ...task, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
                                   trigger={
-                                    <button type="button" className={`shrink-0 transition-colors ${task.reminderDate ? 'text-amber-400' : 'text-zinc-700 hover:text-zinc-500'}`} title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}>
-                                      <BellRing size={10} />
+                                    <button type="button" className={`shrink-0 transition-colors ${task.reminderDate ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-400'}`} title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}>
+                                      <Bell size={10} className={task.reminderDate ? 'fill-amber-400' : ''} />
                                     </button>
                                   }
                                 />
@@ -704,6 +727,7 @@ export default function KanbanView({
                                 data-card={task.id}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
+                                onDrag={(e) => { if (e.clientX || e.clientY) moveGhost(e.clientX, e.clientY); }}
                                 onDragEnd={handleDragEnd}
                                 onClick={() => onSelectTask(task)}
                                 className={`group relative bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-lg p-2.5 transition-all duration-200 cursor-grab active:cursor-grabbing hover:shadow-xl hover:shadow-black/50 ${isDragging ? 'opacity-0' : ''}`}
@@ -754,9 +778,16 @@ export default function KanbanView({
                                       }
                                     />
                                     {task.dueDate && (() => {
-                                      const isOverdue = task.status !== 'done' && task.dueDate < new Date().toISOString().split('T')[0];
+                                      const isOverdue = task.dueDate < new Date().toISOString().split('T')[0];
+                                      const isDone = task.status === 'done';
+                                      let colorClasses = 'text-zinc-300 bg-zinc-800/50 border-zinc-700/50';
+                                      if (isDone) {
+                                        colorClasses = 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+                                      } else if (isOverdue) {
+                                        colorClasses = 'text-red-400 bg-red-500/10 border-red-500/20';
+                                      }
                                       return (
-                                        <div className={`flex items-center justify-center h-[20px] gap-1 text-[10px] font-mono px-1.5 rounded border ${isOverdue ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-zinc-300 bg-zinc-800/50 border-zinc-700/50'}`}>
+                                        <div className={`flex items-center justify-center h-[20px] gap-1 text-[10px] font-mono px-1.5 rounded border ${colorClasses}`}>
                                           <Calendar size={9} className="shrink-0" />
                                           <span>{task.dueDate.split('-').reverse().join('/')}</span>
                                         </div>
@@ -781,7 +812,7 @@ export default function KanbanView({
                                         onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTask({ ...task, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
                                         trigger={
                                           <button type="button" className={`flex items-center justify-center h-full transition-colors ${task.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'}`} title={task.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}>
-                                            <BellRing size={13} />
+                                            <Bell size={13} className={task.reminderDate ? 'fill-amber-400' : ''} />
                                           </button>
                                         }
                                       />
@@ -807,18 +838,33 @@ export default function KanbanView({
                   )}
 
                   {/* New Task Button */}
-                  <button
-                    onClick={() => handleAddNewTaskInColumn(column.id)}
-                    className="w-full mt-2 py-2 flex items-center justify-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 rounded-lg transition-colors border border-transparent border-dashed hover:border-zinc-700/50"
-                  >
-                    <Plus size={12} />
-                    Nova Tarefa
-                  </button>
+                  {!hideNewTaskButton && (
+                    <button
+                      onClick={() => handleAddNewTaskInColumn(column.id)}
+                      className="w-full mt-2 py-2 flex items-center justify-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 rounded-lg transition-colors border border-transparent border-dashed hover:border-zinc-700/50"
+                    >
+                      <Plus size={12} />
+                      Nova Tarefa
+                    </button>
+                  )}
+                  </div>
                 </div>
               </div>
-            </div>
+
+            {maxCardsPerColumn && colTasks.length > maxCardsPerColumn && (
+              <div className="absolute bottom-0 left-0 w-full flex justify-center pb-2 pt-16 pointer-events-none z-20 bg-gradient-to-t from-[#08080a] via-[#08080a]/90 to-transparent rounded-b-xl">
+                <ChevronDown size={20} className="animate-bounce text-zinc-500 opacity-70 drop-shadow-md mt-6" />
+              </div>
+            )}
+          </div>
           );
         })}
+        </div>
+        
+        {/* Indicador de rolagem à direita (Fade) */}
+        <div className="absolute right-0 top-0 h-full w-32 flex items-center justify-end pr-4 pointer-events-none z-20 bg-gradient-to-l from-[#08080a] via-[#08080a]/80 to-transparent">
+          <ChevronRight size={24} className="text-zinc-500 opacity-50 animate-pulse" />
+        </div>
       </div>
     </div>
   );

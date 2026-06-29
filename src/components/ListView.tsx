@@ -24,7 +24,10 @@ import {
   CheckSquare,
   DollarSign,
   Share2,
-  Tag as TagIcon
+  Tag as TagIcon,
+  Eye,
+  EyeOff,
+  Minus
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -77,11 +80,21 @@ export default function ListView({
   const { currentUser, updateProfile, allUsers: USERS } = useAuth();
   
   const [search, setSearch] = useState('');
-  const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>('all');
+  const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
-  const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
-  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('desc');
+  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('asc');
+  
+  const hasInitializedUserFilter = useRef(!!currentUser);
+
+  useEffect(() => {
+    if (!hasInitializedUserFilter.current && currentUser) {
+      setFilterAssigneeId(currentUser.id);
+      hasInitializedUserFilter.current = true;
+    }
+  }, [currentUser]);
   const [groupBy, setGroupBy] = useState<GroupByOption>('status');
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [inlineNewTaskText, setInlineNewTaskText] = useState('');
   const [showColToggle, setShowColToggle] = useState(false);
 
@@ -299,7 +312,7 @@ export default function ListView({
       case 'high':
         return <span className={`${baseBadgeCls} text-orange-400 bg-orange-500/10 border-orange-500/15`}><ArrowUp size={10} className="shrink-0" /> Alta</span>;
       case 'medium':
-        return <span className={`${baseBadgeCls} text-blue-400 bg-blue-500/10 border-blue-500/15`}>Média</span>;
+        return <span className={`${baseBadgeCls} text-blue-400 bg-blue-500/10 border-blue-500/15`}><Minus size={10} className="shrink-0" /> Média</span>;
       case 'low':
         return <span className={`${baseBadgeCls} text-emerald-400 bg-emerald-500/10 border-emerald-500/15`}><ArrowDown size={10} className="shrink-0" /> Baixa</span>;
       default:
@@ -536,7 +549,7 @@ export default function ListView({
                 title={task.reminderDate ? "Alterar lembrete" : "Adicionar lembrete"}
               >
                 <div className="flex items-center gap-1.5 truncate">
-                  <Bell size={10} className={task.reminderDate ? 'opacity-100' : 'opacity-60'} />
+                  <Bell size={10} className={task.reminderDate ? 'fill-amber-400 opacity-100' : 'opacity-60'} />
                   {task.reminderDate ? (
                     task.reminderDate.includes('T')
                       ? `${task.reminderDate.split('T')[0].split('-').reverse().join('/').substring(0, 5)} ${task.reminderDate.split('T')[1]}`
@@ -556,7 +569,7 @@ export default function ListView({
     <div className="border border-zinc-900 rounded-lg bg-[#121214]/40 flex flex-col select-none relative w-max min-w-full">
       
       {/* Table Header Row */}
-      <div className="flex items-stretch bg-zinc-950/80 border-b border-zinc-900 sticky top-0 z-10 text-[10px] uppercase font-mono tracking-wider text-zinc-500 font-semibold rounded-t-lg">
+      <div className="flex items-stretch bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 sticky top-0 z-10 text-[10px] uppercase font-mono tracking-wider text-zinc-500 font-semibold rounded-t-lg">
         {columns.filter(c => c.visible !== false).map((col) => (
           <div 
             key={col.id}
@@ -638,16 +651,23 @@ export default function ListView({
           {statusesList.map(statusData => {
             const statusTasks = filteredTasks.filter(t => t.status === statusData.id);
             if (statusTasks.length === 0) return null;
+            const isCollapsed = collapsedGroups.includes(statusData.id);
             return (
               <div key={statusData.id} className="space-y-2">
                 <div className="flex items-center gap-2 px-1 sticky left-0 z-10 w-fit">
+                  <button 
+                    onClick={() => setCollapsedGroups(prev => isCollapsed ? prev.filter(g => g !== statusData.id) : [...prev, statusData.id])} 
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors p-1 -ml-1 rounded hover:bg-zinc-800/50"
+                  >
+                    {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
                   <span className={`w-1.5 h-1.5 rounded-full ${statusData.color}`} />
                   <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest font-mono">{statusData.label}</span>
                   <span className="text-[10px] font-mono text-gray-500 bg-[#161b22] px-1.5 rounded-md border border-[#30363d]/45">
                     {statusTasks.length}
                   </span>
                 </div>
-                {renderList(statusTasks)}
+                {!isCollapsed && renderList(statusTasks)}
               </div>
             );
           })}
@@ -669,16 +689,23 @@ export default function ListView({
           {prioritiesList.map(prioData => {
             const prioTasks = filteredTasks.filter(t => t.priority === prioData.id);
             if (prioTasks.length === 0) return null;
+            const isCollapsed = collapsedGroups.includes(prioData.id);
             return (
               <div key={prioData.id} className="space-y-2">
                 <div className="flex items-center gap-2 px-1 sticky left-0 z-10 w-fit">
+                  <button 
+                    onClick={() => setCollapsedGroups(prev => isCollapsed ? prev.filter(g => g !== prioData.id) : [...prev, prioData.id])} 
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors p-1 -ml-1 rounded hover:bg-zinc-800/50"
+                  >
+                    {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
                   <span className={`w-1.5 h-1.5 rounded-full ${prioData.color}`} />
                   <span className="text-xs font-semibold text-gray-300 uppercase tracking-widest font-mono">{prioData.label}</span>
                   <span className="text-[10px] font-mono text-gray-500 bg-[#161b22] px-1.5 rounded-md border border-[#30363d]/45">
                     {prioTasks.length}
                   </span>
                 </div>
-                {renderList(prioTasks)}
+                {!isCollapsed && renderList(prioTasks)}
               </div>
             );
           })}

@@ -21,12 +21,13 @@ import {
   Trash2,
   AlertCircle,
   AlertTriangle,
-  BellRing,
   X,
   Check,
   MessageSquare,
   Search,
-  Receipt
+  Receipt,
+  BarChart2,
+  Home
 } from 'lucide-react';
 import { ViewType, Project, Task } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -92,7 +93,7 @@ export default function Sidebar({
       case 'review_requested': return <AlertTriangle size={size} className="text-zinc-400 shrink-0" />;
       case 'approval_pending': return <AlertTriangle size={size} className="text-zinc-400 shrink-0" />;
       case 'approved': return <Check size={size} className="text-zinc-400 shrink-0" />;
-      case 'reminder': return <BellRing size={size} className="text-zinc-400 shrink-0" />;
+      case 'reminder': return <Bell size={size} className="text-zinc-400 shrink-0 fill-zinc-400" />;
       case 'deadline': return <Calendar size={size} className="text-zinc-400 shrink-0" />;
       case 'deadline_changed': return <Calendar size={size} className="text-zinc-400 shrink-0" />;
       case 'chat_mention': return <MessageSquare size={size} className="text-blue-400 shrink-0" />;
@@ -126,14 +127,14 @@ export default function Sidebar({
         {!collapsed ? (
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-200 text-[10px] font-bold font-sans border border-zinc-700/55">
-              W
+              O
             </div>
-            <span className="font-semibold text-xs text-zinc-200 tracking-tight font-sans">Workspace Acme</span>
+            <span className="font-semibold text-xs text-zinc-200 tracking-tight font-sans">Orbit Workspace</span>
             <span className="text-[9px] bg-zinc-900 text-zinc-500 py-0.2 px-1 rounded font-mono">v1.2</span>
           </div>
         ) : (
           <div className="mx-auto w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-200 text-[10px] font-bold font-sans border border-zinc-700/55">
-            W
+            O
           </div>
         )}
 
@@ -331,6 +332,83 @@ export default function Sidebar({
             <div className="space-y-0.5 mt-1">
               <button
                 onClick={() => {
+                  setActiveView('home');
+                  setCurrentProjectFilter(null);
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  activeView === 'home'
+                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                <Home size={14} className={activeView === 'home' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {!collapsed && <span>Início</span>}
+              </button>
+
+              <button
+                onClick={() => navigateToTasks('board')}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  activeView === 'tasks_board' && activeTaskViewType === 'board'
+                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                <Columns3 size={14} className={activeView === 'tasks_board' && activeTaskViewType === 'board' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {!collapsed && (
+                  <div className="flex-1 flex items-center justify-between">
+                    <span>Quadro Kanban</span>
+                    <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">{activeTasksCount}</span>
+                  </div>
+                )}
+              </button>
+
+              <button
+                onClick={() => navigateToTasks('list')}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  activeView === 'tasks_board' && activeTaskViewType === 'list'
+                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                <List size={14} className={activeView === 'tasks_board' && activeTaskViewType === 'list' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {!collapsed && (
+                  <div className="flex-1 flex items-center justify-between">
+                    <span>Lista Compacta</span>
+                    <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">{tasks.length}</span>
+                  </div>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveView('calendar')}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  activeView === 'calendar'
+                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                <Calendar size={14} className={activeView === 'calendar' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {!collapsed && <span>Calendário</span>}
+              </button>
+
+              {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
+
+              <button
+                onClick={() => setActiveView('sienge')}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  activeView === 'sienge'
+                    ? 'bg-blue-500/10 text-blue-300 border border-blue-500/20'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                <Receipt size={14} className={activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'} />
+                {!collapsed && <span>Títulos Sienge</span>}
+              </button>
+
+              {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
+
+              <button
+                onClick={() => {
                   setActiveView('inbox');
                   setCurrentProjectFilter(null);
                 }}
@@ -351,98 +429,45 @@ export default function Sidebar({
                 )}
               </button>
 
+              {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
+
               <button
-              onClick={() => navigateToTasks('board')}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeView === 'tasks_board' && activeTaskViewType === 'board'
-                  ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
-                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-              }`}
-            >
-              <Columns3 size={14} className={activeView === 'tasks_board' && activeTaskViewType === 'board' ? 'text-zinc-200' : 'text-zinc-550'} />
-              {!collapsed && (
-                <div className="flex-1 flex items-center justify-between">
-                  <span>Quadro Kanban</span>
-                  <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">{activeTasksCount}</span>
-                </div>
+                onClick={() => {
+                  setActiveView('projects');
+                  setCurrentProjectFilter(null);
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  activeView === 'projects'
+                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                <FolderKanban size={14} className={activeView === 'projects' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {!collapsed && (
+                  <div className="flex-1 flex items-center justify-between text-left">
+                    <span className="truncate pr-2">Empreendimentos</span>
+                    <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30 shrink-0">{projects.length}</span>
+                  </div>
+                )}
+              </button>
+
+              {currentUser?.permissionLevel === 1 && (
+                <button
+                  onClick={() => {
+                    setActiveView('dashboard');
+                    setCurrentProjectFilter(null);
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    activeView === 'dashboard'
+                      ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                      : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                  }`}
+                >
+                  <BarChart2 size={14} className={activeView === 'dashboard' ? 'text-zinc-200' : 'text-zinc-550'} />
+                  {!collapsed && <span>Analytics</span>}
+                </button>
               )}
-            </button>
 
-            <button
-              onClick={() => navigateToTasks('list')}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeView === 'tasks_board' && activeTaskViewType === 'list'
-                  ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
-                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-              }`}
-            >
-              <List size={14} className={activeView === 'tasks_board' && activeTaskViewType === 'list' ? 'text-zinc-200' : 'text-zinc-550'} />
-              {!collapsed && (
-                <div className="flex-1 flex items-center justify-between">
-                  <span>Lista Compacta</span>
-                  <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">{tasks.length}</span>
-                </div>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveView('projects');
-                setCurrentProjectFilter(null);
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeView === 'projects'
-                  ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
-                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-              }`}
-            >
-              <FolderKanban size={14} className={activeView === 'projects' ? 'text-zinc-200' : 'text-zinc-550'} />
-              {!collapsed && (
-                <div className="flex-1 flex items-center justify-between text-left">
-                  <span className="truncate pr-2">Empreendimentos</span>
-                  <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30 shrink-0">{projects.length}</span>
-                </div>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveView('calendar')}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeView === 'calendar'
-                  ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
-                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-              }`}
-            >
-              <Calendar size={14} className={activeView === 'calendar' ? 'text-zinc-200' : 'text-zinc-550'} />
-              {!collapsed && <span>Calendário</span>}
-            </button>
-
-            {/* Divider */}
-            {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
-
-            <button
-              onClick={() => setActiveView('sienge')}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeView === 'sienge'
-                  ? 'bg-blue-500/10 text-blue-300 border border-blue-500/20'
-                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-              }`}
-            >
-              <Receipt size={14} className={activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'} />
-              {!collapsed && <span>Títulos Sienge</span>}
-            </button>
-
-            <button
-              onClick={() => setActiveView('settings')}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeView === 'settings'
-                  ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
-                  : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-              }`}
-            >
-              <SettingsIcon size={14} className={activeView === 'settings' ? 'text-zinc-200' : 'text-zinc-550'} />
-              {!collapsed && <span>Ajustes</span>}
-            </button>
           </div>
           )}
         </div>
@@ -469,7 +494,7 @@ export default function Sidebar({
             </div>
           )}
           {!showAllNotifications && (
-            <div className="space-y-0.5 mt-1">
+            <div className="grid grid-cols-2 gap-1 mt-1 px-1">
             {projects.map(project => {
               const projectCount = tasks.filter(t => t.projectId === project.id).length;
               const isFiltered = currentProjectFilter === project.id;
@@ -484,7 +509,7 @@ export default function Sidebar({
                       setActiveView('tasks_board');
                     }
                   }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`w-full flex items-center px-1.5 py-1 rounded text-[10px] font-medium transition-all ${
                     isFiltered 
                       ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50' 
                       : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent text-zinc-400'
@@ -492,11 +517,11 @@ export default function Sidebar({
                   title={project.name}
                 >
                   {!collapsed && (
-                    <div className="flex-1 flex items-center justify-between text-left truncate">
-                      <span className="truncate">
+                    <div className="flex-1 flex items-center gap-1.5 text-left truncate">
+                      <span className="truncate flex-1">
                         {project.name}
                       </span>
-                      <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">
+                      <span className="text-[9px] text-zinc-500 font-mono bg-zinc-800/40 px-1 py-0.5 rounded border border-zinc-700/30 shrink-0">
                         {projectCount}
                       </span>
                     </div>

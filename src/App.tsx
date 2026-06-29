@@ -35,6 +35,8 @@ import SettingsView from './components/SettingsView';
 import InboxView from './components/InboxView';
 import ConfirmModal from './components/ConfirmModal';
 import SiengeView from './components/SiengeView';
+import DashboardView from './components/DashboardView';
+import HomeView from './components/HomeView';
 
 export default function App() {
   const { currentUser, loading, updateProfile } = useAuth();
@@ -44,7 +46,7 @@ export default function App() {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Navigation Routing states
-  const [activeView, setActiveView] = useState<ViewType>('tasks_board');
+  const [activeView, setActiveView] = useState<ViewType>('home');
   const [activeTaskViewType, setActiveTaskViewType] = useState<'board' | 'list'>('board');
   const [collapsed, setCollapsed] = useState(false);
 
@@ -435,18 +437,52 @@ export default function App() {
     }
   }, [isDarkMode]);
 
+  // Queue for debouncing saveTask per task ID
+  const saveTaskTimers = useRef<Record<string, NodeJS.Timeout>>({});
+
   // TASK WORKFLOWS (CRUD)
   const handleUpdateTask = (updates: Partial<Task> & { id: string }) => {
     setTasks(prev => {
       const targetTask = prev.find(t => t.id === updates.id);
       if (!targetTask) return prev;
       
-      const mergedTask = { ...targetTask, ...updates };
+      const nowISO = new Date().toISOString();
+      
+      // Automation: Se o card ficar sem prazo, force para 'sem previsão'
+      const finalDueDate = updates.hasOwnProperty('dueDate') ? updates.dueDate : targetTask.dueDate;
+      if (!finalDueDate && targetTask.status !== 'done') {
+        updates.status = 'no_forecast';
+      }
 
-      // --- Time Tracking Logic ---
+      const ignoredFields = ['id', 'description', 'designBriefing', 'copyBriefing', 'planningBriefing'];
+      const updateKeys = Object.keys(updates);
+      const isSignificantUpdate = updateKeys.some(k => !ignoredFields.includes(k));
+
+      const mergedTask = { ...targetTask, ...updates };
+      if (isSignificantUpdate) {
+        mergedTask.updatedAt = nowISO;
+      }
+
+      // --- Status History & Time Tracking Logic ---
       if (updates.status && updates.status !== targetTask.status) {
+        // Status History Update
+        const history = [...(mergedTask.statusHistory || [])];
+        if (history.length > 0) {
+          history[history.length - 1].leftAt = nowISO;
+        } else if (targetTask.status) {
+          history.push({
+            status: targetTask.status,
+            enteredAt: targetTask.createdAt || nowISO,
+            leftAt: nowISO
+          });
+        }
+        history.push({
+          status: updates.status as any,
+          enteredAt: nowISO
+        });
+        mergedTask.statusHistory = history;
+
         const tt = mergedTask.timeTracking ? { ...mergedTask.timeTracking } : { accumulatedMs: 0, isTimerRunning: false };
-        const now = new Date().toISOString();
         const nowMs = Date.now();
 
         const runStates = ['in_progress', 'rework'];
@@ -466,11 +502,11 @@ export default function App() {
         // Start logic
         if (!isRunningNow && willRun) {
           tt.isTimerRunning = true;
-          tt.lastStartedAt = now;
+          tt.lastStartedAt = nowISO;
         }
 
         if (stopStates.includes(updates.status)) {
-          if (!tt.reachedImplementationAt) tt.reachedImplementationAt = now;
+          if (!tt.reachedImplementationAt) tt.reachedImplementationAt = nowISO;
         } else {
           tt.reachedImplementationAt = undefined;
         }
@@ -480,12 +516,18 @@ export default function App() {
       // ----------------------------
       
       // Asynchronously trigger save to avoid React warnings about side-effects inside setState
-      setTimeout(() => {
+      // We debounce the save per task ID to prevent race conditions with sub-table deletes/inserts (like task_labels)
+      if (saveTaskTimers.current[mergedTask.id]) {
+        clearTimeout(saveTaskTimers.current[mergedTask.id]);
+      }
+      
+      saveTaskTimers.current[mergedTask.id] = setTimeout(() => {
         saveTask(mergedTask).catch(console.error);
         if (selectedTask?.id === updates.id) {
           setSelectedTask(mergedTask);
         }
-      }, 0);
+        delete saveTaskTimers.current[mergedTask.id];
+      }, 500);
 
       return prev.map(t => t.id === updates.id ? mergedTask : t);
     });
@@ -726,6 +768,23 @@ export default function App() {
 
         {/* Dynamic Route views rendered here */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
+          {activeView === 'home' && (
+            <HomeView
+              tasks={tasks}
+              projects={projects}
+              labels={labels}
+              currentProjectFilter={currentProjectFilter}
+              socialMediaFilter={socialMediaFilter}
+              setSocialMediaFilter={setSocialMediaFilter}
+              onUpdateTask={handleUpdateTask}
+              onAddTask={handleAddTask}
+              onSelectTask={(task) => {
+                setSelectedTask(task);
+                setIsTaskSheetOpen(true);
+              }}
+            />
+          )}
+
           {activeView === 'inbox' && (
             <InboxView 
               projects={projects}
@@ -836,6 +895,14 @@ export default function App() {
                 setSiengeLotes(prev => prev.filter(l => l.id !== id));
                 deleteSiengeLote(id).catch(console.error);
               }}
+            />
+          )}
+
+          {activeView === 'dashboard' && (
+            <DashboardView
+              tasks={tasks}
+              projects={projects}
+              labels={labels}
             />
           )}
         </div>

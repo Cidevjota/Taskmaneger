@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, Hash, DollarSign, Building2, Calendar, Tag, Receipt,
   ChevronRight, AlertTriangle, CheckCircle2, Clock, XCircle,
-  Banknote, ArrowRight, Search, SlidersHorizontal, User, BellRing,
+  Banknote, ArrowRight, Search, SlidersHorizontal, User, Bell,
   LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy
 } from 'lucide-react';
 import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
@@ -203,7 +203,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
                 className={`flex items-center justify-center transition-colors ${title.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'} hover:scale-110 active:scale-95`} 
                 title={title.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}
               >
-                <BellRing size={11} />
+                <Bell size={11} className={title.reminderDate ? 'fill-amber-400' : ''} />
               </button>
             }
           />
@@ -350,7 +350,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
                   className={`flex items-center justify-center transition-colors ${title.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'} hover:scale-110 active:scale-95 ml-1`} 
                   title={title.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}
                 >
-                  <BellRing size={13} />
+                  <Bell size={13} className={title.reminderDate ? 'fill-amber-400' : ''} />
                 </button>
               }
             />

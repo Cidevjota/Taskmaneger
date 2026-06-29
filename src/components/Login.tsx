@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Layers, Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
@@ -32,8 +32,7 @@ export default function Login() {
           <div className="w-14 h-14 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mb-4 shadow-[0_0_40px_rgba(99,102,241,0.1)]">
             <Layers className="text-blue-500" size={28} />
           </div>
-          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Task Manager</h1>
-          <p className="text-sm text-zinc-500 mt-1 font-medium">Uchoa Empreendimentos</p>
+          <h1 className="text-3xl font-bold text-zinc-100 tracking-tight">Orbit</h1>
         </div>
 
         {/* Login Card */}
@@ -66,7 +65,7 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="w-full bg-[#08080a] border border-zinc-800 rounded-lg px-4 py-3 pr-10 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all placeholder:text-zinc-600"
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="*********"
                 />
                 <button
                   type="button"
@@ -100,15 +99,6 @@ export default function Login() {
               )}
             </button>
           </form>
-        </div>
-        
-        <div className="text-center mt-8">
-          <p className="text-[11px] text-zinc-600 font-medium">
-            Sistema interno. Acesso restrito.
-          </p>
-          <p className="text-[9px] text-zinc-700 mt-2 font-mono">
-            {import.meta.env.VITE_SUPABASE_URL}
-          </p>
         </div>
 
       </div>

@@ -40,6 +40,7 @@ export async function fetchTasks(): Promise<Task[]> {
       createdAt: t.created_at,
       dueDate: t.due_date,
       reminderDate: t.reminder_date,
+      plannedDate: t.planned_date,
       assigneeId: t.assignee_id,
       parentTaskId: t.parent_task_id,
       updatedBy: t.updated_by,
@@ -47,10 +48,10 @@ export async function fetchTasks(): Promise<Task[]> {
       designBriefing: t.design_briefing,
       copyBriefing: t.copy_briefing,
       planningBriefing: t.planning_briefing,
-      attachments: t.planning_briefing?.attachments || [],
-      proposals: t.planning_briefing?.proposals || [],
-      socialMediaApproval: t.planning_briefing?.socialMediaApproval,
-      timeTracking: t.planning_briefing?.timeTracking,
+      attachments: t.attachments || [],
+      proposals: t.proposals || [],
+      socialMediaApproval: t.social_media_approval,
+      timeTracking: t.time_tracking,
       subtasks: (t.subtasks || []).map((st: any) => ({
         id: st.id,
         title: st.title,
@@ -64,32 +65,48 @@ export async function fetchTasks(): Promise<Task[]> {
   });
 }
 
+const taskSaveLocks: Record<string, Promise<void>> = {};
+
 // Write Operations
 export async function saveTask(task: Task) {
-  // 1. Upsert main task
-  const { error: taskError } = await supabase.from('tasks').upsert({
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    status: task.status,
+  // Wait for any pending save for this task
+  while (taskSaveLocks[task.id]) {
+    try {
+      await taskSaveLocks[task.id];
+    } catch (e) {
+      // ignore error from previous lock
+    }
+  }
+
+  let resolveLock: () => void;
+  taskSaveLocks[task.id] = new Promise(resolve => {
+    resolveLock = resolve;
+  });
+
+  try {
+    // 1. Upsert main task
+    const { error: taskError } = await supabase.from('tasks').upsert({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
     priority: task.priority,
     project_id: task.projectId,
     created_at: task.createdAt,
     due_date: task.dueDate || null,
     reminder_date: task.reminderDate || null,
+    planned_date: task.plannedDate || null,
     assignee_id: task.assigneeId || null,
     parent_task_id: task.parentTaskId || null,
     updated_by: task.updatedBy || null,
     chat_messages: task.chatMessages || [],
     design_briefing: task.designBriefing,
     copy_briefing: task.copyBriefing,
-    planning_briefing: {
-      ...(task.planningBriefing || {}),
-      attachments: task.attachments || [],
-      proposals: task.proposals || [],
-      socialMediaApproval: task.socialMediaApproval,
-      timeTracking: task.timeTracking
-    }
+    planning_briefing: task.planningBriefing,
+    attachments: task.attachments || [],
+    proposals: task.proposals || [],
+    social_media_approval: task.socialMediaApproval,
+    time_tracking: task.timeTracking
   });
   if (taskError) {
     console.error("Error saving task:", taskError);
@@ -98,20 +115,24 @@ export async function saveTask(task: Task) {
 
   // 2. Sync Labels (delete existing, insert new)
   // First clear old ones
-  await supabase.from('task_labels').delete().eq('task_id', task.id);
+  const { error: deleteLabelsError } = await supabase.from('task_labels').delete().eq('task_id', task.id);
+  if (deleteLabelsError) console.error("Error deleting task labels:", deleteLabelsError);
+  
   // Insert new
   if (task.labels && task.labels.length > 0) {
     const labelInserts = task.labels.map(l => ({
       task_id: task.id,
       label_id: l.id
     }));
-    await supabase.from('task_labels').insert(labelInserts);
+    const { error: insertLabelsError } = await supabase.from('task_labels').insert(labelInserts);
+    if (insertLabelsError) console.error("Error inserting task labels:", insertLabelsError);
   }
 
   // 3. Sync Subtasks
   // Supabase doesn't easily do full nested replace without deleting first.
   // We'll delete old subtasks and insert the new array
-  await supabase.from('subtasks').delete().eq('task_id', task.id);
+  const { error: deleteSubtasksError } = await supabase.from('subtasks').delete().eq('task_id', task.id);
+  if (deleteSubtasksError) console.error("Error deleting subtasks:", deleteSubtasksError);
   
   if (task.subtasks && task.subtasks.length > 0) {
     const subtaskInserts = task.subtasks.map(st => ({
@@ -123,7 +144,12 @@ export async function saveTask(task: Task) {
       reminder_date: st.reminderDate,
       level: st.level
     }));
-    await supabase.from('subtasks').insert(subtaskInserts);
+    const { error: insertSubtasksError } = await supabase.from('subtasks').insert(subtaskInserts);
+    if (insertSubtasksError) console.error("Error inserting subtasks:", insertSubtasksError);
+  }
+  } finally {
+    delete taskSaveLocks[task.id];
+    resolveLock!();
   }
 }
 
