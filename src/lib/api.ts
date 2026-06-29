@@ -153,6 +153,85 @@ export async function saveTask(task: Task) {
   }
 }
 
+export async function patchTask(taskId: string, updates: Partial<Task>) {
+  // Wait for any pending save for this task
+  while (taskSaveLocks[taskId]) {
+    try {
+      await taskSaveLocks[taskId];
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  let resolveLock: () => void;
+  taskSaveLocks[taskId] = new Promise(resolve => {
+    resolveLock = resolve;
+  });
+
+  try {
+    const dbUpdates: any = {};
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.description !== undefined) dbUpdates.description = updates.description;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
+    if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
+    if (updates.createdAt !== undefined) dbUpdates.created_at = updates.createdAt;
+    if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
+    if (updates.reminderDate !== undefined) dbUpdates.reminder_date = updates.reminderDate;
+    if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate;
+    if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
+    if (updates.parentTaskId !== undefined) dbUpdates.parent_task_id = updates.parentTaskId;
+    if (updates.updatedBy !== undefined) dbUpdates.updated_by = updates.updatedBy;
+    if (updates.chatMessages !== undefined) dbUpdates.chat_messages = updates.chatMessages;
+    if (updates.designBriefing !== undefined) dbUpdates.design_briefing = updates.designBriefing;
+    if (updates.copyBriefing !== undefined) dbUpdates.copyBriefing = updates.copyBriefing;
+    if (updates.planningBriefing !== undefined) dbUpdates.planning_briefing = updates.planningBriefing;
+    if (updates.attachments !== undefined) dbUpdates.attachments = updates.attachments;
+    if (updates.proposals !== undefined) dbUpdates.proposals = updates.proposals;
+    if (updates.socialMediaApproval !== undefined) dbUpdates.social_media_approval = updates.socialMediaApproval;
+    if (updates.timeTracking !== undefined) dbUpdates.time_tracking = updates.timeTracking;
+
+    if (Object.keys(dbUpdates).length > 0) {
+      const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
+      if (error) {
+        console.error("Error patching task:", error);
+        throw error;
+      }
+    }
+
+    if (updates.labels !== undefined) {
+      const { error: deleteError } = await supabase.from('task_labels').delete().eq('task_id', taskId);
+      if (deleteError) console.error("Error deleting task labels:", deleteError);
+      if (updates.labels && updates.labels.length > 0) {
+        const labelInserts = updates.labels.map(l => ({ task_id: taskId, label_id: l.id }));
+        const { error: insertError } = await supabase.from('task_labels').insert(labelInserts);
+        if (insertError) console.error("Error inserting task labels:", insertError);
+      }
+    }
+
+    if (updates.subtasks !== undefined) {
+      const { error: deleteError } = await supabase.from('subtasks').delete().eq('task_id', taskId);
+      if (deleteError) console.error("Error deleting subtasks:", deleteError);
+      if (updates.subtasks && updates.subtasks.length > 0) {
+        const subtaskInserts = updates.subtasks.map(st => ({
+          id: st.id,
+          task_id: taskId,
+          title: st.title,
+          completed: st.completed,
+          canceled: st.canceled,
+          reminder_date: st.reminderDate,
+          level: st.level
+        }));
+        const { error: insertError } = await supabase.from('subtasks').insert(subtaskInserts);
+        if (insertError) console.error("Error inserting subtasks:", insertError);
+      }
+    }
+  } finally {
+    delete taskSaveLocks[taskId];
+    resolveLock!();
+  }
+}
+
 export async function deleteTask(taskId: string) {
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
   if (error) throw error;

@@ -1340,8 +1340,7 @@ export default function TaskSheet({
                     onColumnsChange={(c) => setDescColumns(c)}
                     onChange={(newContent) => {
                       descriptionRef.current = newContent;
-                      if (descTimerRef.current) clearTimeout(descTimerRef.current);
-                      descTimerRef.current = setTimeout(() => saveChange({ description: newContent }), 800);
+                      saveChange({ description: newContent });
                     }}
                   />
                 </div>

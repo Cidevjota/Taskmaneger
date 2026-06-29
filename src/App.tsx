@@ -23,6 +23,8 @@ import Login from './components/Login';
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote } from './types';
 import { fetchTasks, fetchProjects, fetchLabels, saveTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
 import { supabase } from './lib/supabase';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSyncManager } from './lib/SyncManager';
 
 import Sidebar from './components/Sidebar';
 import CommandBar from './components/CommandBar';
@@ -50,12 +52,37 @@ export default function App() {
   const [activeTaskViewType, setActiveTaskViewType] = useState<'board' | 'list'>('board');
   const [collapsed, setCollapsed] = useState(false);
 
-  // Database core states
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [labels, setLabels] = useState<Label[]>([]);
-  const [siengeTitles, setSiengeTitles] = useState<SiengeTitle[]>([]);
-  const [siengeLotes, setSiengeLotes] = useState<SiengeLote[]>([]);
+  // Database core states using React Query
+  const queryClient = useQueryClient();
+  const syncManager = useSyncManager();
+
+  const queryFnTasks = async () => {
+    const freshTasks = await fetchTasks();
+    const oldTasks = queryClient.getQueryData<Task[]>(['tasks']);
+    if (!oldTasks) return freshTasks;
+
+    return freshTasks.map(freshTask => {
+      const oldTask = oldTasks.find(t => t.id === freshTask.id);
+      if (!oldTask) return freshTask;
+      
+      const preserved = { ...freshTask };
+      (Object.keys(freshTask) as (keyof Task)[]).forEach(key => {
+        if (syncManager.isFieldDirty(freshTask.id, key)) {
+            // @ts-ignore
+            preserved[key] = oldTask[key];
+        }
+      });
+      return preserved;
+    });
+  };
+
+  const { data: tasks = [], isLoading: isTasksLoading } = useQuery({ queryKey: ['tasks'], queryFn: queryFnTasks });
+  const { data: projects = [], isLoading: isProjectsLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects });
+  const { data: labels = [], isLoading: isLabelsLoading } = useQuery({ queryKey: ['labels'], queryFn: fetchLabels });
+  const { data: siengeTitles = [], isLoading: isSiengeLoading } = useQuery({ queryKey: ['siengeTitles'], queryFn: fetchSiengeTitles });
+  const { data: siengeLotes = [], isLoading: isLotesLoading } = useQuery({ queryKey: ['siengeLotes'], queryFn: fetchSiengeLotes });
+
+  const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading;
   
   // Custom Confirm Modal state for task sheet closure
   const [confirmModalData, setConfirmModalData] = useState<{
@@ -74,28 +101,9 @@ export default function App() {
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [socialMediaFilter, setSocialMediaFilter] = useState(false);
-  
-  // Custom Initial Loading State for Workspace Data
-  const [isDataLoading, setIsDataLoading] = useState(true);
 
-  // Fetch initial data and setup realtime
+  // Setup realtime
   useEffect(() => {
-    setIsDataLoading(true);
-    Promise.all([fetchTasks(), fetchProjects(), fetchLabels(), fetchSiengeTitles(), fetchSiengeLotes()])
-      .then(([t, p, l, s, lotes]) => {
-        setTasks(t);
-        setProjects(p);
-        if (l.length > 0) setLabels(l);
-        setSiengeTitles(s);
-        setSiengeLotes(lotes);
-        // Add a slight delay just for aesthetic UX feeling (optional, but requested by user if we can't make it instant)
-        setTimeout(() => setIsDataLoading(false), 800);
-      })
-      .catch(err => {
-        console.error(err);
-        setIsDataLoading(false);
-      });
-
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
@@ -103,15 +111,11 @@ export default function App() {
         // Debounce to prevent flashing UI when saveTask triggers multiple quick inserts/deletes
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = setTimeout(() => {
-          Promise.all([fetchTasks(), fetchProjects(), fetchLabels(), fetchSiengeTitles(), fetchSiengeLotes()])
-            .then(([t, p, l, s, lotes]) => {
-              setTasks(t);
-              setProjects(p);
-              if (l.length > 0) setLabels(l);
-              setSiengeTitles(s);
-              setSiengeLotes(lotes);
-            })
-            .catch(console.error);
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['projects'] });
+          queryClient.invalidateQueries({ queryKey: ['labels'] });
+          queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
+          queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
         }, 1500);
       })
       .subscribe();
@@ -119,7 +123,7 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [queryClient]);
 
   // Track task changes to generate notifications
   useEffect(() => {
@@ -442,104 +446,98 @@ export default function App() {
 
   // TASK WORKFLOWS (CRUD)
   const handleUpdateTask = (updates: Partial<Task> & { id: string }) => {
-    setTasks(prev => {
-      const targetTask = prev.find(t => t.id === updates.id);
-      if (!targetTask) return prev;
-      
-      const nowISO = new Date().toISOString();
-      
-      // Automation: Se o card ficar sem prazo, force para 'sem previsão'
-      const finalDueDate = updates.hasOwnProperty('dueDate') ? updates.dueDate : targetTask.dueDate;
-      if (!finalDueDate && targetTask.status !== 'done') {
-        updates.status = 'no_forecast';
-      }
+    const targetTask = tasks.find(t => t.id === updates.id);
+    if (!targetTask) return;
+    
+    const nowISO = new Date().toISOString();
+    
+    // Automation: Se o card ficar sem prazo, force para 'sem previsão'
+    const finalDueDate = updates.hasOwnProperty('dueDate') ? updates.dueDate : targetTask.dueDate;
+    if (!finalDueDate && targetTask.status !== 'done') {
+      updates.status = 'no_forecast';
+    }
 
-      const ignoredFields = ['id', 'description', 'designBriefing', 'copyBriefing', 'planningBriefing'];
-      const updateKeys = Object.keys(updates);
-      const isSignificantUpdate = updateKeys.some(k => !ignoredFields.includes(k));
+    const ignoredFields = ['id', 'description', 'designBriefing', 'copyBriefing', 'planningBriefing'];
+    const updateKeys = Object.keys(updates);
+    const isSignificantUpdate = updateKeys.some(k => !ignoredFields.includes(k));
 
-      const mergedTask = { ...targetTask, ...updates };
-      if (isSignificantUpdate) {
-        mergedTask.updatedAt = nowISO;
-      }
+    if (isSignificantUpdate) {
+      updates.updatedAt = nowISO;
+    }
 
-      // --- Status History & Time Tracking Logic ---
-      if (updates.status && updates.status !== targetTask.status) {
-        // Status History Update
-        const history = [...(mergedTask.statusHistory || [])];
-        if (history.length > 0) {
-          history[history.length - 1].leftAt = nowISO;
-        } else if (targetTask.status) {
-          history.push({
-            status: targetTask.status,
-            enteredAt: targetTask.createdAt || nowISO,
-            leftAt: nowISO
-          });
-        }
+    // --- Status History & Time Tracking Logic ---
+    if (updates.status && updates.status !== targetTask.status) {
+      // Status History Update
+      const history = [...(targetTask.statusHistory || [])];
+      if (history.length > 0) {
+        history[history.length - 1].leftAt = nowISO;
+      } else if (targetTask.status) {
         history.push({
-          status: updates.status as any,
-          enteredAt: nowISO
+          status: targetTask.status,
+          enteredAt: targetTask.createdAt || nowISO,
+          leftAt: nowISO
         });
-        mergedTask.statusHistory = history;
-
-        const tt = mergedTask.timeTracking ? { ...mergedTask.timeTracking } : { accumulatedMs: 0, isTimerRunning: false };
-        const nowMs = Date.now();
-
-        const runStates = ['in_progress', 'rework'];
-        const stopStates = ['implementation', 'done'];
-
-        const isRunningNow = tt.isTimerRunning;
-        const willRun = runStates.includes(updates.status);
-
-        // Pause/Stop logic
-        if (isRunningNow && !willRun) {
-          const startedAtMs = tt.lastStartedAt ? new Date(tt.lastStartedAt).getTime() : nowMs;
-          tt.accumulatedMs += Math.max(0, nowMs - startedAtMs);
-          tt.isTimerRunning = false;
-          tt.lastStartedAt = undefined;
-        }
-
-        // Start logic
-        if (!isRunningNow && willRun) {
-          tt.isTimerRunning = true;
-          tt.lastStartedAt = nowISO;
-        }
-
-        if (stopStates.includes(updates.status)) {
-          if (!tt.reachedImplementationAt) tt.reachedImplementationAt = nowISO;
-        } else {
-          tt.reachedImplementationAt = undefined;
-        }
-
-        mergedTask.timeTracking = tt;
       }
-      // ----------------------------
-      
-      // Asynchronously trigger save to avoid React warnings about side-effects inside setState
-      // We debounce the save per task ID to prevent race conditions with sub-table deletes/inserts (like task_labels)
-      if (saveTaskTimers.current[mergedTask.id]) {
-        clearTimeout(saveTaskTimers.current[mergedTask.id]);
-      }
-      
-      saveTaskTimers.current[mergedTask.id] = setTimeout(() => {
-        saveTask(mergedTask).catch(console.error);
-        if (selectedTask?.id === updates.id) {
-          setSelectedTask(mergedTask);
-        }
-        delete saveTaskTimers.current[mergedTask.id];
-      }, 500);
+      history.push({
+        status: updates.status as any,
+        enteredAt: nowISO
+      });
+      updates.statusHistory = history;
 
-      return prev.map(t => t.id === updates.id ? mergedTask : t);
-    });
+      const tt = targetTask.timeTracking ? { ...targetTask.timeTracking } : { accumulatedMs: 0, isTimerRunning: false };
+      const nowMs = Date.now();
+
+      const runStates = ['in_progress', 'rework'];
+      const stopStates = ['implementation', 'done'];
+
+      const isRunningNow = tt.isTimerRunning;
+      const willRun = runStates.includes(updates.status);
+
+      // Pause/Stop logic
+      if (isRunningNow && !willRun) {
+        const startedAtMs = tt.lastStartedAt ? new Date(tt.lastStartedAt).getTime() : nowMs;
+        tt.accumulatedMs += Math.max(0, nowMs - startedAtMs);
+        tt.isTimerRunning = false;
+        tt.lastStartedAt = undefined;
+      }
+
+      // Start logic
+      if (!isRunningNow && willRun) {
+        tt.isTimerRunning = true;
+        tt.lastStartedAt = nowISO;
+      }
+
+      if (stopStates.includes(updates.status)) {
+        if (!tt.reachedImplementationAt) tt.reachedImplementationAt = nowISO;
+      } else {
+        tt.reachedImplementationAt = undefined;
+      }
+
+      updates.timeTracking = tt;
+    }
+    // ----------------------------
+    
+    // Determine if it's a text-heavy change requiring debounce
+    const needsDebounce = Object.keys(updates).some(key => 
+      ['description', 'title', 'chatMessages', 'designBriefing', 'copyBriefing', 'planningBriefing'].includes(key)
+    );
+
+    // Queue update via SyncManager
+    syncManager.updateTask(updates.id, updates, { debounce: needsDebounce });
+
+    // Update selectedTask details live immediately
+    if (selectedTask?.id === updates.id) {
+       setSelectedTask(prev => prev ? { ...prev, ...updates } as Task : null);
+    }
   };
 
   const handleAddTask = (newTask: Task) => {
-    setTasks(prev => [newTask, ...prev]);
+    queryClient.setQueryData<Task[]>(['tasks'], prev => [newTask, ...(prev || [])]);
     saveTask(newTask).catch(console.error);
   };
 
   const handleDeleteTask = (taskId: string) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
+    queryClient.setQueryData<Task[]>(['tasks'], prev => (prev || []).filter(t => t.id !== taskId));
     deleteTask(taskId).catch(console.error);
     if (selectedTask?.id === taskId) {
       setSelectedTask(null);
@@ -606,12 +604,12 @@ export default function App() {
   };
 
   const handleAddProject = (newProject: Project) => {
-    setProjects(prev => [...prev, newProject]);
+    queryClient.setQueryData<Project[]>(['projects'], prev => [...(prev || []), newProject]);
     saveProject(newProject).catch(console.error);
   };
 
   const handleUpdateProject = (updatedProject: Project) => {
-    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+    queryClient.setQueryData<Project[]>(['projects'], prev => (prev || []).map(p => p.id === updatedProject.id ? updatedProject : p));
     saveProject(updatedProject).catch(console.error);
   };
 
@@ -870,29 +868,29 @@ export default function App() {
               projects={projects}
               currentProjectFilter={currentProjectFilter}
               onSaveTitle={async (title) => {
-                setSiengeTitles(prev => {
-                  const exists = prev.find(t => t.id === title.id);
+                queryClient.setQueryData<SiengeTitle[]>(['siengeTitles'], prev => {
+                  const exists = (prev || []).find(t => t.id === title.id);
                   return exists
-                    ? prev.map(t => t.id === title.id ? title : t)
-                    : [title, ...prev];
+                    ? (prev || []).map(t => t.id === title.id ? title : t)
+                    : [title, ...(prev || [])];
                 });
                 saveSiengeTitle(title).catch(console.error);
               }}
               onDeleteTitle={async (id) => {
-                setSiengeTitles(prev => prev.filter(t => t.id !== id));
+                queryClient.setQueryData<SiengeTitle[]>(['siengeTitles'], prev => (prev || []).filter(t => t.id !== id));
                 deleteSiengeTitle(id).catch(console.error);
               }}
               onSaveLote={async (lote) => {
-                setSiengeLotes(prev => {
-                  const exists = prev.find(l => l.id === lote.id);
+                queryClient.setQueryData<SiengeLote[]>(['siengeLotes'], prev => {
+                  const exists = (prev || []).find(l => l.id === lote.id);
                   return exists
-                    ? prev.map(l => l.id === lote.id ? lote : l)
-                    : [lote, ...prev];
+                    ? (prev || []).map(l => l.id === lote.id ? lote : l)
+                    : [lote, ...(prev || [])];
                 });
                 saveSiengeLote(lote).catch(console.error);
               }}
               onDeleteLote={async (id) => {
-                setSiengeLotes(prev => prev.filter(l => l.id !== id));
+                queryClient.setQueryData<SiengeLote[]>(['siengeLotes'], prev => (prev || []).filter(l => l.id !== id));
                 deleteSiengeLote(id).catch(console.error);
               }}
             />

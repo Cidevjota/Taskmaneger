@@ -139,10 +139,8 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme }: 
           actorId: currentUser.id,
           taskId: task.id,
           type: 'chat_mention',
-          status: 'unread',
           message: `${currentUser.name} marcou você no chat da tarefa: ${task.title}`,
-          targetId: `task-chat-${task.id}`,
-          createdAt: new Date().toISOString()
+          targetId: `task-chat-${task.id}`
         });
       }
     });

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Inbox, Bell, CheckCircle, Clock, AlertCircle, Eye, Star, Trash2, AlertTriangle, Calendar, X, Check, Archive, Activity, Timer, ChevronRight, Filter, Undo2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -119,7 +120,12 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
     }
 
     return (
-      <div 
+      <motion.div 
+        layout
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
         key={n.id}
         className={`group relative flex flex-col px-3 py-2.5 border-b border-zinc-800/40 hover:bg-[#121214] transition-colors cursor-pointer ${
           isArchived ? 'opacity-50 hover:opacity-100' : isRead ? 'opacity-70 hover:opacity-100' : ''
@@ -223,7 +229,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
             </button>
           </div>
         )}
-      </div>
+      </motion.div>
     );
   };
 
@@ -395,17 +401,21 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
                 <p className="text-center text-zinc-600 text-xs mt-10">Tudo limpo por aqui.</p>
               ) : (
                 <div className="flex flex-col">
-                  {regularActive.map(n => renderNotificationCard(n, false))}
+                  <AnimatePresence mode="popLayout">
+                    {regularActive.map(n => renderNotificationCard(n, false))}
+                  </AnimatePresence>
                   
                   {postponedActive.length > 0 && (
-                    <>
+                    <motion.div layout>
                       <div className="px-4 py-2 mt-2 mb-1 flex items-center gap-3">
                         <div className="h-px bg-zinc-800/60 flex-1"></div>
                         <span className="text-[10px] font-bold tracking-widest text-blue-500 uppercase">Adiadas</span>
                         <div className="h-px bg-zinc-800/60 flex-1"></div>
                       </div>
-                      {postponedActive.map(n => renderNotificationCard(n, false))}
-                    </>
+                      <AnimatePresence mode="popLayout">
+                        {postponedActive.map(n => renderNotificationCard(n, false))}
+                      </AnimatePresence>
+                    </motion.div>
                   )}
                 </div>
               )}
@@ -436,7 +446,9 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
                 <p className="text-center text-zinc-600 text-xs mt-10">Nenhum histórico recente.</p>
               ) : (
                 <div className="flex flex-col">
-                  {archivedNotifications.map(n => renderNotificationCard(n, true))}
+                  <AnimatePresence mode="popLayout">
+                    {archivedNotifications.map(n => renderNotificationCard(n, true))}
+                  </AnimatePresence>
                 </div>
               )}
             </div>
