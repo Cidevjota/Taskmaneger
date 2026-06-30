@@ -29,9 +29,7 @@ export default function Login() {
         
         {/* Logo / Brand */}
         <div className="flex flex-col items-center justify-center mb-10 animate-fade-in">
-          <div className="w-14 h-14 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mb-4 shadow-[0_0_40px_rgba(99,102,241,0.1)]">
-            <Layers className="text-blue-500" size={28} />
-          </div>
+          <img src="/Logo_Primaria.png" alt="Orbit Logo" className="h-14 mb-4 object-contain" />
           <h1 className="text-3xl font-bold text-zinc-100 tracking-tight">Orbit</h1>
         </div>
 

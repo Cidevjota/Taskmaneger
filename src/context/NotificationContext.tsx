@@ -18,6 +18,8 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
+import { supabase } from '../lib/supabase';
+
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -25,6 +27,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (currentUser) {
       loadNotifications(currentUser.id);
+      
+      const channel = supabase
+        .channel('notifications-db-changes')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'notifications', 
+          filter: `user_id=eq.${currentUser.id}` 
+        }, () => {
+          loadNotifications(currentUser.id);
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     } else {
       setNotifications([]);
     }

@@ -66,6 +66,7 @@ interface TaskSheetProps {
   allTasks?: Task[];
   onAddTask?: (task: Task) => void;
   onSelectTask?: (task: Task) => void;
+  isCompareChild?: boolean;
 }
 
 const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon: React.ReactNode }[] = [
@@ -426,9 +427,10 @@ export default function TaskSheet({
   allLabels,
   onUpdateTask,
   onDeleteTask,
-  allTasks,
+  allTasks = [],
   onAddTask,
-  onSelectTask
+  onSelectTask,
+  isCompareChild = false
 }: TaskSheetProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -862,10 +864,15 @@ export default function TaskSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/55 backdrop-blur-xs flex justify-end animate-fade-in">
-      <div className="flex-1" onMouseDown={handleClose} />
+    <>
+      <div className="fixed inset-0 z-40 bg-black/55 backdrop-blur-xs flex justify-end animate-fade-in pointer-events-none">
+        <div className="flex-1 pointer-events-auto" onMouseDown={handleClose} />
+      </div>
 
-      <div className={`h-full bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200 transition-all duration-300 ${compareTaskId ? 'w-full' : 'w-full md:w-[75vw]'}`}>
+      <div className={isCompareChild 
+        ? "h-full bg-[#0c0c0e] flex flex-col text-zinc-200 w-full relative z-0 overflow-hidden" 
+        : `fixed top-0 right-0 bottom-0 z-50 bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200 transition-all duration-300 ${compareTaskId ? 'w-full' : 'w-full md:w-[75vw]'}`
+      }>
         
         <div className="h-14 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a] relative">
           <div className="flex items-center gap-2">
@@ -2079,6 +2086,6 @@ export default function TaskSheet({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

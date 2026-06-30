@@ -144,72 +144,19 @@ export default function App() {
 
     const prevTasks = previousTasksRef.current;
     
+    // Skip notification logic on the very first real data load (when prevTasks is empty but tasks is populated)
+    if (prevTasks.length === 0 && tasks.length > 0) {
+      previousTasksRef.current = tasks;
+      return;
+    }
+
     // Check for deleted tasks where I was the assignee
     tasks.forEach(task => {
       const prevTask = prevTasks.find(pt => pt.id === task.id);
       
-      // New task assigned to someone else
-      if (!prevTask && task.assigneeId && task.assigneeId !== currentUser.id) {
-        addNotification({
-          userId: task.assigneeId,
-          actorId: currentUser.id,
-          taskId: task.id,
-          targetId: 'assignee',
-          type: 'task_assigned',
-          message: 'Nova Atribuição',
-          details: `Você foi designado para esta tarefa`
-        });
-        return;
-      }
-
       if (prevTask) {
-        // Was someone else, now assigned to me (wait, if currentUser assigned it to themselves? No, we check target)
-        // If the task is assigned to a NEW user, and the CURRENT USER doing it is NOT that new user
-        if (prevTask.assigneeId !== task.assigneeId && task.assigneeId && task.assigneeId !== currentUser.id) {
-          addNotification({
-            userId: task.assigneeId,
-            actorId: currentUser.id,
-            taskId: task.id,
-            targetId: 'assignee',
-            type: 'task_assigned',
-            message: 'Nova Atribuição',
-            details: `A tarefa foi atribuída a você`
-          });
-        }
-
-        // Status changed to paused or done
-        if (prevTask.status !== task.status && (task.status === 'paused' || task.status === 'done')) {
-          // Only notify if the person making the change (currentUser) is NOT the assignee
-          if (task.assigneeId && task.assigneeId !== currentUser.id) {
-            const statusMap: Record<string, string> = { no_forecast: 'Sem Previsão', todo: 'A Fazer', in_progress: 'Em Andamento', paused: 'Pausado', approval: 'Aprovação', rework: 'Refação', implementation: 'Implementação', done: 'Concluído' };
-            const oldS = statusMap[prevTask.status] || prevTask.status;
-            const newS = statusMap[task.status] || task.status;
-            
-            addNotification({
-              userId: task.assigneeId,
-              actorId: currentUser.id,
-              taskId: task.id,
-              type: 'status_changed',
-              message: 'Status Alterado',
-              details: `${oldS} > ${newS}`
-            });
-          }
-        }
-
-        // Due date changed by someone else
-        if (prevTask.dueDate !== task.dueDate) {
-          if (task.assigneeId && task.assigneeId !== currentUser.id) {
-            addNotification({
-              userId: task.assigneeId,
-              actorId: currentUser.id,
-              taskId: task.id,
-              targetId: 'deadline',
-              type: 'deadline_changed',
-              message: 'Prazo Alterado',
-              details: task.dueDate ? `O prazo da sua tarefa foi alterado para ${task.dueDate.split('-').reverse().join('/')}` : 'A tarefa agora não possui previsão'
-            });
-          }
-        }
+        // Here we removed the frontend logic for assigning, status and deadlines
+        // since this is now handled perfectly by Postgres triggers in the backend!
       }
     });
 
@@ -363,7 +310,6 @@ export default function App() {
             const diffHours = diffMs / (1000 * 60 * 60);
             
             const milestones = [
-              { id: '0h', hours: 0, label: 'Aprovação Pendente' },
               { id: '3h', hours: 3, label: 'Lembrete (3h): Aprovação Pendente' },
               { id: '1d', hours: 24, label: 'Atrasado (1 dia): Aprovação Pendente' },
               { id: '2d', hours: 48, label: 'Atrasado (2 dias): Aprovação Pendente' },
@@ -458,6 +404,11 @@ export default function App() {
     const targetTask = tasks.find(t => t.id === updates.id);
     if (!targetTask) return;
     
+    // Always set updatedBy so backend triggers know who made the change
+    if (currentUser?.id) {
+      updates.updatedBy = currentUser.id;
+    }
+
     const nowISO = new Date().toISOString();
     
     // Automation: Se o card ficar sem prazo, force para 'sem previsão'

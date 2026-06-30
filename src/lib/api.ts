@@ -185,7 +185,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.updatedBy !== undefined) dbUpdates.updated_by = updates.updatedBy;
     if (updates.chatMessages !== undefined) dbUpdates.chat_messages = updates.chatMessages;
     if (updates.designBriefing !== undefined) dbUpdates.design_briefing = updates.designBriefing;
-    if (updates.copyBriefing !== undefined) dbUpdates.copyBriefing = updates.copyBriefing;
+    if (updates.copyBriefing !== undefined) dbUpdates.copy_briefing = updates.copyBriefing;
     if (updates.planningBriefing !== undefined) dbUpdates.planning_briefing = updates.planningBriefing;
     if (updates.attachments !== undefined) dbUpdates.attachments = updates.attachments;
     if (updates.proposals !== undefined) dbUpdates.proposals = updates.proposals;
@@ -193,10 +193,13 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.timeTracking !== undefined) dbUpdates.time_tracking = updates.timeTracking;
 
     if (Object.keys(dbUpdates).length > 0) {
-      const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
+      const { data, error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId).select();
       if (error) {
         console.error("Error patching task:", error);
         throw error;
+      }
+      if (!data || data.length === 0) {
+        console.error("WARNING: patchTask matched 0 rows for task id:", taskId);
       }
     }
 
@@ -235,7 +238,10 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
 
 export async function deleteTask(taskId: string) {
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-  if (error) throw error;
+  if (error) {
+    console.error("Error deleting task from DB:", error);
+    throw error;
+  }
 }
 
 export async function saveProject(project: Project) {
@@ -247,7 +253,8 @@ export async function fetchNotifications(userId: string): Promise<AppNotificatio
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
     
   if (error) throw error;
   
