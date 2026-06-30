@@ -193,13 +193,10 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.timeTracking !== undefined) dbUpdates.time_tracking = updates.timeTracking;
 
     if (Object.keys(dbUpdates).length > 0) {
-      const { data, error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId).select();
+      const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
       if (error) {
         console.error("Error patching task:", error);
         throw error;
-      }
-      if (!data || data.length === 0) {
-        console.error("WARNING: patchTask matched 0 rows for task id:", taskId);
       }
     }
 

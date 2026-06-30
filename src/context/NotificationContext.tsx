@@ -46,7 +46,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } else {
       setNotifications([]);
     }
-  }, [currentUser]);
+  // Depend only on the user ID — not the full object — so that updateProfile()
+  // (which creates a new currentUser reference) does not destroy and recreate
+  // the Realtime channel on every preferences save.
+  }, [currentUser?.id]);
 
   const loadNotifications = async (userId: string) => {
     try {

@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     // Fetch all users
     const fetchUsers = async () => {
-      const { data, error } = await supabase.from('users_profile').select('*');
+      const { data, error } = await supabase.from('users_profile').select('id, name, email, role, preferences, avatar_url');
       if (data && !error) {
         const formattedUsers = data.map(u => ({
           id: u.id,

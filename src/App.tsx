@@ -46,6 +46,9 @@ export default function App() {
   const previousTasksRef = useRef<Task[]>([]);
   const isFirstRender = useRef(true);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Always-current ref so reminder interval reads latest user without being a dep
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
 
   // Navigation Routing states
   const [activeView, setActiveView] = useState<ViewType>('home');
@@ -111,27 +114,32 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [socialMediaFilter, setSocialMediaFilter] = useState(false);
 
-  // Setup realtime
+  // Setup realtime — per-table filters avoid the schema-wide wildcard that was
+  // driving realtime.list_changes() to ~1M calls/day.
   useEffect(() => {
+    const invalidateTasks = () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }, 1500);
+    };
+
     const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        // Re-fetch only queries relevant to the modified table
-        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = setTimeout(() => {
-          const table = payload.table;
-          if (table === 'tasks' || table === 'subtasks' || table === 'task_labels') {
-            queryClient.invalidateQueries({ queryKey: ['tasks'] });
-          } else if (table === 'projects') {
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
-          } else if (table === 'labels') {
-            queryClient.invalidateQueries({ queryKey: ['labels'] });
-          } else if (table === 'sienge_titles') {
-            queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
-          } else if (table === 'sienge_lotes') {
-            queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
-          }
-        }, 1500);
+      .channel('app-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidateTasks)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, invalidateTasks)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_labels' }, invalidateTasks)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['labels'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_titles' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_lotes' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
       })
       .subscribe();
 
@@ -169,13 +177,16 @@ export default function App() {
     previousTasksRef.current = tasks;
   }, [tasks, currentUser]);
 
-  // Deadline and reminder checks
+  // Deadline and reminder checks — currentUser is read via ref so that
+  // updateProfile() (which creates a new object) does not reset the interval.
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUserRef.current) return;
     const checkReminders = () => {
+      const currentUser = currentUserRef.current;
+      if (!currentUser) return;
       const now = new Date();
       const today = now.toISOString().split('T')[0];
-      
+
       // Read triggered reminders from user preferences (synced with Supabase)
       let triggeredReminders: string[] = currentUser.preferences?.triggeredReminders || [];
       
@@ -363,7 +374,9 @@ export default function App() {
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [tasks, siengeTitles, currentUser]);
+  // currentUser is intentionally excluded — read via currentUserRef.current
+  // to avoid resetting the interval on every updateProfile() call.
+  }, [tasks, siengeTitles]);
 
   // Bind Cmd+K and on-screen toggling listeners
   useEffect(() => {

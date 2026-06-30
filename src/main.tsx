@@ -11,7 +11,8 @@ import { SyncManagerProvider } from './lib/SyncManager';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false, // Prevents aggressive background refreshing
+      refetchOnWindowFocus: false,
+      staleTime: 30_000, // 30 s — prevents redundant refetches between Realtime events
     },
   },
 });
