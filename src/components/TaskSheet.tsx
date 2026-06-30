@@ -942,7 +942,7 @@ export default function TaskSheet({
 
             <div className="w-[1px] h-4 bg-zinc-800 mx-1"></div>
 
-            {currentUser?.permissionLevel === 1 && (
+            {Number(currentUser?.permissionLevel) === 1 && (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"

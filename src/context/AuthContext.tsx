@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: u.role,
           preferences: u.preferences || {},
           avatarUrl: u.avatar_url,
-          permissionLevel: u.preferences?.permissionLevel || (u.name.toLowerCase().includes('cidnei') ? 1 : 2),
+          permissionLevel: u.preferences?.permissionLevel ? Number(u.preferences.permissionLevel) : (u.name?.toLowerCase().includes('cidnei') ? 1 : 2),
           initials: u.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
         }));
         setAllUsers(formattedUsers);

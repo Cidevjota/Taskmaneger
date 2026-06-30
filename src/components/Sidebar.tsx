@@ -451,7 +451,7 @@ export default function Sidebar({
                 )}
               </button>
 
-              {currentUser?.permissionLevel === 1 && (
+              {Number(currentUser?.permissionLevel) === 1 && (
                 <button
                   onClick={() => {
                     setActiveView('dashboard');
