@@ -20,9 +20,12 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
   const [creativeDefense, setCreativeDefense] = useState(initialData?.creativeDefense || '');
   const [approverId, setApproverId] = useState(initialData?.approverId || '');
   const [isApproverSelectOpen, setIsApproverSelectOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    
     const validImageUrls = imageUrls.filter(url => url.trim() !== '');
     if (validImageUrls.length === 0 || !approverId) return;
 
@@ -31,6 +34,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
       finalLink = 'https://' + finalLink;
     }
 
+    setIsSubmitting(true);
     onSave({
       imageUrl: validImageUrls[0], // Backwards compatibility
       imageUrls: validImageUrls,
@@ -236,16 +240,17 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+            disabled={isSubmitting}
+            className="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="submit"
-            disabled={imageUrls.filter(u => u.trim() !== '').length === 0}
+            disabled={imageUrls.filter(u => u.trim() !== '').length === 0 || isSubmitting}
             className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <Check size={14} /> {initialData ? 'Salvar Edição' : 'Cadastrar Criativo'}
+            <Check size={14} /> {isSubmitting ? 'Salvando...' : (initialData ? 'Salvar Edição' : 'Cadastrar Criativo')}
           </button>
         </div>
       </form>
