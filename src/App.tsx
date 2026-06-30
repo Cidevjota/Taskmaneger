@@ -116,15 +116,21 @@ export default function App() {
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        // Re-fetch on any data changes to keep all clients perfectly synced
-        // Debounce to prevent flashing UI when saveTask triggers multiple quick inserts/deletes
+        // Re-fetch only queries relevant to the modified table
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['tasks'] });
-          queryClient.invalidateQueries({ queryKey: ['projects'] });
-          queryClient.invalidateQueries({ queryKey: ['labels'] });
-          queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
-          queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
+          const table = payload.table;
+          if (table === 'tasks' || table === 'subtasks' || table === 'task_labels') {
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          } else if (table === 'projects') {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+          } else if (table === 'labels') {
+            queryClient.invalidateQueries({ queryKey: ['labels'] });
+          } else if (table === 'sienge_titles') {
+            queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
+          } else if (table === 'sienge_lotes') {
+            queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
+          }
         }, 1500);
       })
       .subscribe();
