@@ -340,8 +340,8 @@ export default function CalendarView({
     const title = prompt(`Novo evento para ${dateStr.split('-').reverse().join('/')}:`);
     if (!title || !title.trim()) return;
 
-    const newTask: Task = {
-      id: `TSK-${100 + tasks.length + 1}`,
+    const newTask: any = {
+      id: crypto.randomUUID(),
       title: title.trim(),
       description: 'Criado via Calendário.',
       status: 'todo',
@@ -351,8 +351,9 @@ export default function CalendarView({
       subtasks: [],
       dueDate: dateStr,
       createdAt: new Date().toISOString().split('T')[0],
+      _isLocal: true,
     };
-    onAddTask(newTask);
+    onAddTask(newTask as Task);
   };
 
   return (

@@ -8,6 +8,7 @@ interface NotificationContextType {
   addNotification: (notification: Omit<AppNotification, 'id' | 'createdAt' | 'status'>) => void;
   markAsRead: (id: string) => void;
   markAsViewed: (id: string) => void;
+  markAllAsViewed: () => void;
   unarchive: (id: string) => void;
   postpone: (id: string) => void;
   markAsImportant: (id: string) => void;
@@ -105,6 +106,21 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const markAllAsViewed = async () => {
+    if (!currentUser) return;
+    const activeNotifs = notifications.filter(n => n.status !== 'viewed');
+    if (activeNotifs.length === 0) return;
+    
+    const now = new Date().toISOString();
+    setNotifications(prev => prev.map(n => n.status !== 'viewed' ? { ...n, status: 'viewed', viewedAt: now } : n));
+    
+    try {
+      await Promise.all(activeNotifs.map(n => saveNotification({ ...n, status: 'viewed', viewedAt: now })));
+    } catch (e) {
+      console.error("Erro ao marcar todas como vista", e);
+    }
+  };
+
   const unarchive = (id: string) => {
     const notif = notifications.find(n => n.id === id);
     if (notif && notif.status === 'viewed') {
@@ -146,7 +162,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAsViewed, unarchive, postpone, markAsImportant, clearAll, clearArchived }}>
+    <NotificationContext.Provider value={{ notifications, addNotification, markAsRead, markAsViewed, markAllAsViewed, unarchive, postpone, markAsImportant, clearAll, clearArchived }}>
       {children}
     </NotificationContext.Provider>
   );

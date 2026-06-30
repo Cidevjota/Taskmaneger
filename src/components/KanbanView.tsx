@@ -343,8 +343,8 @@ export default function KanbanView({
   // ─────────────────────────────────────────────────
   const handleAddNewTaskInColumn = (statusId: TaskStatus) => {
     const idNum = 100 + tasks.length + 1;
-    const newTask: Task = {
-      id: `TSK-${idNum}`,
+    const newTask: any = {
+      id: crypto.randomUUID(),
       title: '',
       description: '',
       status: statusId,
@@ -354,8 +354,9 @@ export default function KanbanView({
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
       assigneeId: currentUser?.id,
+      _isLocal: true,
     };
-    onAddTask(newTask);
+    onAddTask(newTask as Task);
     onSelectTask(newTask);
   };
 
@@ -367,8 +368,8 @@ export default function KanbanView({
   const submitQuickAdd = (e: React.FormEvent, status: TaskStatus) => {
     e.preventDefault();
     if (!quickAddTitle.trim()) { setQuickAddColId(null); return; }
-    const newTask: Task = {
-      id: `TSK-${100 + tasks.length + 1}`,
+    const newTask: any = {
+      id: crypto.randomUUID(),
       title: quickAddTitle.trim(),
       description: 'Criada via Adição Rápida de Coluna.',
       status,
@@ -378,8 +379,9 @@ export default function KanbanView({
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
       assigneeId: currentUser?.id,
+      _isLocal: true,
     };
-    onAddTask(newTask);
+    onAddTask(newTask as Task);
     setQuickAddTitle('');
     setQuickAddColId(null);
   };
@@ -735,7 +737,7 @@ export default function KanbanView({
                                 {/* ID & Assignee */}
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-[10px] text-zinc-500 font-mono font-semibold tracking-tight uppercase flex items-center gap-1.5">
-                                    <span>{task.id.split('-')[0]}</span>
+                                    <span>{(task.taskCode || 'NOVO').split('-')[0]}</span>
                                     {project && (
                                       <>
                                         <span className="text-zinc-700 font-sans font-light">|</span>

@@ -324,8 +324,8 @@ export default function ListView({
     e.preventDefault();
     if (!inlineNewTaskText.trim()) return;
 
-    const newTask: Task = {
-      id: `TSK-${100 + tasks.length + 1}`,
+    const newTask: any = {
+      id: crypto.randomUUID(),
       title: inlineNewTaskText.trim(),
       description: 'Criada instantaneamente via Lista Compacta.',
       status: 'todo',
@@ -335,9 +335,10 @@ export default function ListView({
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
       assigneeId: currentUser?.id,
+      _isLocal: true,
     };
 
-    onAddTask(newTask);
+    onAddTask(newTask as Task);
     setInlineNewTaskText('');
   };
 

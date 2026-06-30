@@ -32,6 +32,7 @@ export async function fetchTasks(): Promise<Task[]> {
 
     return {
       id: t.id,
+      taskCode: t.task_code,
       title: t.title,
       description: t.description,
       status: t.status,
@@ -91,7 +92,7 @@ export async function saveTask(task: Task) {
       description: task.description,
       status: task.status,
     priority: task.priority,
-    project_id: task.projectId,
+    project_id: task.projectId || null,
     created_at: task.createdAt,
     due_date: task.dueDate || null,
     reminder_date: task.reminderDate || null,
@@ -174,7 +175,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.description !== undefined) dbUpdates.description = updates.description;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
-    if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
+    if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId || null;
     if (updates.createdAt !== undefined) dbUpdates.created_at = updates.createdAt;
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
     if (updates.reminderDate !== undefined) dbUpdates.reminder_date = updates.reminderDate;

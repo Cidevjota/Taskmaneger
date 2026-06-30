@@ -194,7 +194,8 @@ export interface TaskTimeTracking {
 }
 
 export interface Task {
-  id: string;
+  id: string; // Internal UUID
+  taskCode?: string; // Visual display code (e.g., TSK-123)
   title: string;
   description: string;
   status: TaskStatus;

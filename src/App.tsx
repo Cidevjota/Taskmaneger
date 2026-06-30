@@ -61,7 +61,7 @@ export default function App() {
     const oldTasks = queryClient.getQueryData<Task[]>(['tasks']);
     if (!oldTasks) return freshTasks;
 
-    return freshTasks.map(freshTask => {
+    const merged = freshTasks.map(freshTask => {
       const oldTask = oldTasks.find(t => t.id === freshTask.id);
       if (!oldTask) return freshTask;
       
@@ -74,6 +74,15 @@ export default function App() {
       });
       return preserved;
     });
+
+    // Preserve locally created tasks that haven't appeared in the DB yet
+    oldTasks.forEach(oldTask => {
+      if ((oldTask as any)._isLocal && !freshTasks.some(ft => ft.id === oldTask.id)) {
+        merged.push(oldTask);
+      }
+    });
+
+    return merged;
   };
 
   const { data: tasks = [], isLoading: isTasksLoading } = useQuery({ queryKey: ['tasks'], queryFn: queryFnTasks });
@@ -547,9 +556,8 @@ export default function App() {
   };
 
   const handleAddNewTaskPrompt = () => {
-    const idNum = 100 + tasks.length + 1;
-    const newTask: Task = {
-      id: `TSK-${idNum}`,
+    const newTask: any = {
+      id: crypto.randomUUID(),
       title: '',
       description: '',
       status: 'no_forecast',
@@ -559,10 +567,11 @@ export default function App() {
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
       assigneeId: currentUser?.id,
+      _isLocal: true, // Flag to prevent queryFnTasks from dropping it before DB sync
     };
 
-    handleAddTask(newTask);
-    setSelectedTask(newTask);
+    handleAddTask(newTask as Task);
+    setSelectedTask(newTask as Task);
     setIsTaskSheetOpen(true);
   };
 

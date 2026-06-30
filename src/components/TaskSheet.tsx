@@ -794,8 +794,8 @@ export default function TaskSheet({
 
   const handleAddChildTask = () => {
     if (!onAddTask) return;
-    const newId = `TSK-${Date.now().toString().slice(-4)}`;
-    const newTask: Task = {
+    const newId = crypto.randomUUID();
+    const newTask: any = {
       id: newId,
       title: '',
       description: '',
@@ -806,8 +806,9 @@ export default function TaskSheet({
       subtasks: [],
       createdAt: new Date().toISOString().split('T')[0],
       parentTaskId: task.id,
+      _isLocal: true,
     };
-    onAddTask(newTask);
+    onAddTask(newTask as Task);
     if (onSelectTask) {
       onSelectTask(newTask);
     }
@@ -869,7 +870,7 @@ export default function TaskSheet({
         <div className="h-14 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a] relative">
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-zinc-900 px-2.5 py-1 rounded font-mono text-zinc-400 font-semibold border border-zinc-900">
-              {task.id}
+              {task.taskCode || 'NOVO'}
             </span>
             <span className="text-[10px] text-zinc-650 font-mono">
               Criado em {task.createdAt}
@@ -924,7 +925,7 @@ export default function TaskSheet({
                         }}
                         className="text-left px-2 py-1.5 hover:bg-zinc-800 rounded flex flex-col gap-0.5"
                       >
-                        <span className="text-[10px] font-mono text-zinc-500">{t.id}</span>
+                        <span className="text-[10px] font-mono text-zinc-500">{t.taskCode || t.id}</span>
                         <span className="text-xs font-medium text-zinc-300 truncate w-full">{t.title}</span>
                       </button>
                     ))}
@@ -934,13 +935,15 @@ export default function TaskSheet({
 
             <div className="w-[1px] h-4 bg-zinc-800 mx-1"></div>
 
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
-              title="Excluir Tarefa"
-            >
-              <Trash2 size={15} />
-            </button>
+            {currentUser?.permissionLevel === 1 && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
+                title="Excluir Tarefa"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
             <button
               onClick={handleClose}
               className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40 rounded transition-all"
