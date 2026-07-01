@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, Subtask, DesignBriefing, CopyBriefing, AppNotification, SiengeTitle, SiengeLote } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -300,13 +300,10 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-export async function fetchSiengeTitles(): Promise<SiengeTitle[]> {
-  const { data, error } = await supabase
-    .from('sienge_titles')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map((r: any): SiengeTitle => ({
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, lote, lote_id, assignee_id, reminder_date, status, created_at, updated_at';
+
+function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
+  return {
     id: r.id,
     titulo: r.titulo,
     descricao: r.descricao,
@@ -317,15 +314,37 @@ export async function fetchSiengeTitles(): Promise<SiengeTitle[]> {
     loteId: r.lote_id,
     assigneeId: r.assignee_id,
     reminderDate: r.reminder_date,
-    attachments: r.attachments,
+    attachments: attachments ?? r.attachments ?? [],
     status: r.status,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-  }));
+  };
+}
+
+export async function fetchSiengeTitles(): Promise<SiengeTitle[]> {
+  // attachments column excluded — it stores base64 PDFs that cause statement
+  // timeouts when fetched for the full list. Load them on demand via fetchSiengeTitleById.
+  const { data, error } = await supabase
+    .from('sienge_titles')
+    .select(SIENGE_TITLE_LIST_COLS)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((r: any) => mapSiengeTitle(r, []));
+}
+
+export async function fetchSiengeTitleById(id: string): Promise<SiengeTitle | null> {
+  const { data, error } = await supabase
+    .from('sienge_titles')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return mapSiengeTitle(data);
 }
 
 export async function saveSiengeTitle(title: SiengeTitle) {
-  const { error } = await supabase.from('sienge_titles').upsert({
+  const payload: any = {
     id: title.id,
     titulo: title.titulo,
     descricao: title.descricao || null,
@@ -336,9 +355,14 @@ export async function saveSiengeTitle(title: SiengeTitle) {
     lote_id: title.loteId || null,
     assignee_id: title.assigneeId || null,
     reminder_date: title.reminderDate || null,
-    attachments: title.attachments || [],
     status: title.status,
-  });
+  };
+  // Only write attachments when they were explicitly loaded (fetchSiengeTitleById),
+  // otherwise we'd overwrite real DB data with the empty list default.
+  if (title.attachments !== undefined) {
+    payload.attachments = title.attachments;
+  }
+  const { error } = await supabase.from('sienge_titles').upsert(payload);
   if (error) throw error;
 }
 

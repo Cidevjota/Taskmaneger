@@ -9,6 +9,7 @@ import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
 import SiengeTitleModal from './SiengeTitleModal';
 import DatePicker from './DatePicker';
 import { useAuth } from '../context/AuthContext';
+import { fetchSiengeTitleById } from '../lib/api';
 
 interface SiengeKanbanProps {
   titles: SiengeTitle[];
@@ -421,6 +422,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState<SiengeTitle | null>(null);
   const [modalInitialStatus, setModalInitialStatus] = useState<SiengeStatus>('a_lancar');
+  const [isLoadingTitle, setIsLoadingTitle] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<SiengeStatus | null>(null);
   const [search, setSearch] = useState('');
@@ -492,8 +494,16 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
     scrollContainerRef.current.scrollLeft = scrollLeft - (x - startX) * 1.5;
   };
 
-  const openEdit = (title: SiengeTitle) => {
-    setEditingTitle(title);
+  const openEdit = async (title: SiengeTitle) => {
+    setIsLoadingTitle(true);
+    try {
+      const full = await fetchSiengeTitleById(title.id);
+      setEditingTitle(full ?? title);
+    } catch {
+      setEditingTitle(title);
+    } finally {
+      setIsLoadingTitle(false);
+    }
     setModalOpen(true);
   };
 
@@ -641,7 +651,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
                     title={title}
                     column={col}
                     lotes={openLotes}
-                    onClick={() => { setEditingTitle(title); setModalOpen(true); }}
+                    onClick={() => openEdit(title)}
                     onDragStart={handleDragStart}
                     isDragging={dragId === title.id}
                     onUpdateTitle={onSave}
@@ -661,6 +671,12 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
           );
         })}
       </div>
+
+      {isLoadingTitle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
 
       {/* Modal */}
       <SiengeTitleModal
