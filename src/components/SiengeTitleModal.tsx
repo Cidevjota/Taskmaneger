@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, ChevronDown, Paperclip, Plus, User } from 'lucide-react';
+import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, ChevronDown, Paperclip, Plus, User, Loader2 } from 'lucide-react';
+import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
 import DatePicker from './DatePicker';
 import ConfirmModal from './ConfirmModal';
@@ -63,6 +64,8 @@ export default function SiengeTitleModal({
   const [assigneeId, setAssigneeId] = useState('');
   const [pdfFiles, setPdfFiles] = useState<{ id: string, file: File | null }[]>([{ id: Date.now().toString(), file: null }]);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -115,49 +118,59 @@ export default function SiengeTitleModal({
     return newErrors;
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = error => reject(error);
-    });
-  };
-
   const handleSave = async () => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
-    
-    // Process new attachments
-    const newAttachments = await Promise.all(
-      pdfFiles.filter(p => p.file).map(async p => {
-        const data = await fileToBase64(p.file!);
-        return { id: p.id, name: p.file!.name, data };
-      })
-    );
-    
-    // Keep existing attachments, append new ones
-    const allAttachments = [...(initialData?.attachments || []), ...newAttachments];
 
-    const title: SiengeTitle = {
-      id: initialData?.id || crypto.randomUUID(),
-      titulo: titulo.trim(),
-      descricao: descricao.trim() || undefined,
-      valor: parseCurrency(valorDisplay),
-      empreendimento: empreendimento.trim() || undefined,
-      vencimento: vencimento || undefined,
-      loteId: loteId || undefined,
-      assigneeId: assigneeId || undefined,
-      lote: initialData?.lote, // keep legacy value if present
-      attachments: allAttachments,
-      status,
-      createdAt: initialData?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    onSave(title);
+    const filesToUpload = pdfFiles.filter(p => p.file);
+    for (const p of filesToUpload) {
+      if (p.file!.size > UPLOAD_LIMITS.sienge) {
+        setUploadError(`"${p.file!.name}" excede o limite de ${UPLOAD_LIMITS.sienge / (1024 * 1024)}MB por arquivo.`);
+        return;
+      }
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      const titleId = initialData?.id || crypto.randomUUID();
+
+      const newAttachments = await Promise.all(
+        filesToUpload.map(async p => {
+          const safeName = sanitizeFileName(p.file!.name);
+          const path = `sienge/${titleId}/${p.id}_${safeName}`;
+          const url = await uploadToStorage('attachments', path, p.file!, UPLOAD_LIMITS.sienge);
+          return { id: p.id, name: p.file!.name, url };
+        })
+      );
+
+      const allAttachments = [...(initialData?.attachments || []), ...newAttachments];
+
+      const title: SiengeTitle = {
+        id: titleId,
+        titulo: titulo.trim(),
+        descricao: descricao.trim() || undefined,
+        valor: parseCurrency(valorDisplay),
+        empreendimento: empreendimento.trim() || undefined,
+        vencimento: vencimento || undefined,
+        loteId: loteId || undefined,
+        assigneeId: assigneeId || undefined,
+        lote: initialData?.lote,
+        attachments: allAttachments,
+        status,
+        createdAt: initialData?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      onSave(title);
+    } catch (err: any) {
+      setUploadError(err.message || 'Erro ao enviar arquivo.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleValorInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -510,12 +523,22 @@ export default function SiengeTitleModal({
                   <div className="flex flex-col gap-1.5">
                     {initialData.attachments.map(att => (
                       <div key={att.id} className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg border border-zinc-800/60">
-                        <Paperclip size={12} className="text-blue-400" />
+                        <Paperclip size={12} className="text-blue-400 shrink-0" />
                         <span className="truncate flex-1">{att.name}</span>
+                        {att.url && (
+                          <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 shrink-0 underline">
+                            Abrir
+                          </a>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
+              )}
+              {uploadError && (
+                <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
+                  <AlertCircle size={11} />{uploadError}
+                </p>
               )}
               <button
                 type="button"
@@ -563,10 +586,11 @@ export default function SiengeTitleModal({
             </button>
             <button
               onClick={handleSave}
-              disabled={openLotes.length === 0}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
+              disabled={openLotes.length === 0 || isUploading}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
             >
-              {isEditing ? 'Salvar Alterações' : 'Criar Título'}
+              {isUploading && <Loader2 size={12} className="animate-spin" />}
+              {isUploading ? 'Enviando...' : isEditing ? 'Salvar Alterações' : 'Criar Título'}
             </button>
           </div>
         </div>

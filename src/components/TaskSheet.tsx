@@ -54,6 +54,7 @@ import TaskChat from './TaskChat';
 import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
+import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 
 interface TaskSheetProps {
   task: Task | null;
@@ -95,29 +96,40 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
   const [docName, setDocName] = useState('');
   const [docLink, setDocLink] = useState('');
   const [approverMenuOpenFor, setApproverMenuOpenFor] = useState<string | null>(null);
-  
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
   const { addNotification } = useNotifications();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
-    const newAttachments = Array.from(files).map(file => ({
-      id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      name: docName || file.name,
-      url: URL.createObjectURL(file),
-      size: file.size,
-      isLink: false,
-      approvalStatus: 'none' as const
-    }));
-    
-    onUpdate([...attachments, ...newAttachments]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    resetAddState();
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      const uploaded = await Promise.all(
+        Array.from(files).map(async file => {
+          const attId = `att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          const safeName = sanitizeFileName(file.name);
+          const path = `tasks/${taskId}/${attId}_${safeName}`;
+          const url = await uploadToStorage('attachments', path, file, UPLOAD_LIMITS.task);
+          return { id: attId, name: docName || file.name, url, size: file.size, isLink: false, approvalStatus: 'none' as const };
+        })
+      );
+      onUpdate([...attachments, ...uploaded]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      resetAddState();
+    } catch (err: any) {
+      setUploadError(err.message || 'Erro ao enviar arquivo.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleAddLink = () => {
@@ -341,13 +353,13 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
             >
               {addMode === 'link' ? <Paperclip size={12} /> : <Link2 size={12} />}
             </button>
-            <button 
+            <button
               type="button"
               onClick={addMode === 'link' ? handleAddLink : () => fileInputRef.current?.click()}
-              disabled={!docName || (addMode === 'link' && !docLink)}
+              disabled={!docName || (addMode === 'link' && !docLink) || isUploading}
               className="px-3 h-7 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Add
+              {isUploading ? '...' : 'Add'}
             </button>
             <button type="button" onClick={resetAddState} className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors">
               <X size={13} />
@@ -356,12 +368,19 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
         </div>
       )}
 
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
+      {isUploading && (
+        <p className="text-[11px] text-blue-400 px-1">Enviando arquivo...</p>
+      )}
+      {uploadError && (
+        <p className="text-[11px] text-red-400 px-1">{uploadError}</p>
+      )}
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
         accept="*"
-        multiple 
+        multiple
         onChange={handleFileChange}
       />
     </div>

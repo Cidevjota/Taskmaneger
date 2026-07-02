@@ -258,7 +258,7 @@ export interface SiengeTitle {
   loteId?: string;     // FK to sienge_lotes
   assigneeId?: string; // User responsible
   reminderDate?: string; // For bell reminders
-  attachments?: { id: string, name: string, data: string }[]; // base64 attachments
+  attachments?: { id: string, name: string, url?: string, data?: string }[];
   status: SiengeStatus;
   createdAt: string;
   updatedAt: string;

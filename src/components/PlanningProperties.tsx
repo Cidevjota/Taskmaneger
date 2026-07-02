@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Task, PlanningBriefing, Attachment } from '../types';
 import { ChevronDown, ChevronRight, FileText, Upload, Plus, File as FileIcon, X, Trash2, Check, Edit2 } from 'lucide-react';
 import RichTextEditor from './RichTextEditor';
+import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 
 interface PlanningPropertiesProps {
   task: Task;
@@ -15,6 +16,8 @@ export default function PlanningProperties({ task, saveChange, themeColor = 'tex
   );
   const [isEditing, setIsEditing] = useState(!briefingData.isFilled);
   const [activeTab, setActiveTab] = useState<'descricao' | 'arquivos'>('descricao');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (task.planningBriefing) {
@@ -38,25 +41,37 @@ export default function PlanningProperties({ task, saveChange, themeColor = 'tex
     saveChange({ planningBriefing: newData });
   };
 
-  const handleAddSimulatedAttachment = () => {
+  const handleAddAttachment = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.onchange = (e) => {
+    input.multiple = true;
+    input.onchange = async (e) => {
       const target = e.target as HTMLInputElement;
-      if (target.files && target.files.length > 0) {
-        const file = target.files[0];
-        const newAttachment: Attachment = {
-          id: `file-${Date.now()}`,
-          name: file.name,
-          url: URL.createObjectURL(file), // Visual placeholder
-          size: file.size
-        };
-        const newData = { 
-          ...briefingData, 
-          attachments: [...(briefingData.attachments || []), newAttachment] 
+      if (!target.files || target.files.length === 0) return;
+
+      setIsUploading(true);
+      setUploadError(null);
+
+      try {
+        const uploaded = await Promise.all(
+          Array.from(target.files).map(async file => {
+            const attId = `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            const safeName = sanitizeFileName(file.name);
+            const path = `planning/${task.id}/${attId}_${safeName}`;
+            const url = await uploadToStorage('attachments', path, file, UPLOAD_LIMITS.task);
+            return { id: attId, name: file.name, url, size: file.size } as Attachment;
+          })
+        );
+        const newData = {
+          ...briefingData,
+          attachments: [...(briefingData.attachments || []), ...uploaded],
         };
         setBriefingData(newData);
         saveChange({ planningBriefing: newData });
+      } catch (err: any) {
+        setUploadError(err.message || 'Erro ao enviar arquivo.');
+      } finally {
+        setIsUploading(false);
       }
     };
     input.click();
@@ -301,16 +316,21 @@ export default function PlanningProperties({ task, saveChange, themeColor = 'tex
 
         {activeTab === 'arquivos' && (
           <div className="flex flex-col gap-4 animate-fade-in">
-            <div 
-              onClick={handleAddSimulatedAttachment}
-              className="border-2 border-dashed border-zinc-700/50 hover:border-zinc-500 hover:bg-zinc-800/30 transition-colors rounded-lg flex flex-col items-center justify-center p-8 cursor-pointer group max-w-2xl"
+            <div
+              onClick={isUploading ? undefined : handleAddAttachment}
+              className={`border-2 border-dashed border-zinc-700/50 hover:border-zinc-500 hover:bg-zinc-800/30 transition-colors rounded-lg flex flex-col items-center justify-center p-8 cursor-pointer group max-w-2xl ${isUploading ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mb-3 group-hover:bg-zinc-700 transition-colors">
                 <Upload size={20} className="text-zinc-400" />
               </div>
-              <span className="text-sm font-medium text-zinc-300">Clique para anexar arquivo</span>
-              <span className="text-xs text-zinc-500 mt-1">Simulação de upload em memória</span>
+              <span className="text-sm font-medium text-zinc-300">
+                {isUploading ? 'Enviando...' : 'Clique para anexar arquivo'}
+              </span>
+              <span className="text-xs text-zinc-500 mt-1">Limite: {UPLOAD_LIMITS.task / (1024 * 1024)}MB por arquivo</span>
             </div>
+            {uploadError && (
+              <p className="text-xs text-red-400">{uploadError}</p>
+            )}
 
             {/* Attachments List */}
             {briefingData.attachments && briefingData.attachments.length > 0 && (

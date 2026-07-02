@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Task, Proposal } from '../types';
-import { Plus, X, Building2, DollarSign, Handshake, Link2, AlignLeft, Check, Edit2, Upload, ExternalLink, UserPlus, Clock, CheckCircle2, XCircle, MessageCircle, Send, Tag, Grid } from 'lucide-react';
+import { Plus, X, Building2, DollarSign, Handshake, Link2, AlignLeft, Check, Edit2, Upload, ExternalLink, UserPlus, Clock, CheckCircle2, XCircle, MessageCircle, Send, Tag, Grid, Loader2 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 
 interface BudgetPropertiesProps {
   task: Task;
@@ -98,10 +99,22 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
     saveChange({ proposals: updated }); // Salva imediatamente ao deletar
   };
 
-  const handleFileUpload = (id: string, file: File) => {
-    // Simulação de upload em memória
-    const url = URL.createObjectURL(file);
-    handleUpdateProposal(id, { documento: url });
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleFileUpload = async (id: string, file: File) => {
+    setUploadingFor(id);
+    setUploadError(null);
+    try {
+      const safeName = sanitizeFileName(file.name);
+      const path = `proposals/${task.id}/${id}_${safeName}`;
+      const url = await uploadToStorage('attachments', path, file, UPLOAD_LIMITS.proposal);
+      handleUpdateProposal(id, { documento: url });
+    } catch (err: any) {
+      setUploadError(err.message || 'Erro ao enviar arquivo.');
+    } finally {
+      setUploadingFor(null);
+    }
   };
 
   const handleAddComment = (proposalId: string) => {
@@ -434,12 +447,12 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                           placeholder="Link (https://...)" 
                           className="bg-zinc-950/50 border border-zinc-800/80 rounded p-1.5 text-[11px] text-zinc-300 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder-zinc-700 transition-all flex-1 min-w-0" 
                         />
-                        <label className="flex items-center gap-1.5 px-2 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors shrink-0">
-                          <Upload size={10} />
-                          Upload
-                          <input 
-                            type="file" 
-                            className="hidden" 
+                        <label className={`flex items-center gap-1.5 px-2 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors shrink-0 ${uploadingFor === p.id ? 'opacity-60 pointer-events-none' : ''}`}>
+                          {uploadingFor === p.id ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                          {uploadingFor === p.id ? '...' : 'Upload'}
+                          <input
+                            type="file"
+                            className="hidden"
                             onChange={(e) => {
                               if (e.target.files && e.target.files[0]) {
                                 handleFileUpload(p.id, e.target.files[0]);
@@ -468,6 +481,9 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                           <span className="text-[11px] text-zinc-600">-</span>
                         )}
                       </div>
+                    )}
+                    {uploadError && uploadingFor === null && editingId === p.id && (
+                      <p className="text-[10px] text-red-400 mt-0.5">{uploadError}</p>
                     )}
                   </div>
 

@@ -50,11 +50,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function loadAllUsers(): Promise<void> {
-    // avatar_url excluded — base64 images cause statement timeouts when
-    // fetched for all users at once. Each user's avatar is loaded at login.
     const { data } = await supabase
       .from('users_profile')
-      .select('id, name, email, role, preferences');
+      .select('id, name, email, role, preferences, avatar_url');
     if (data) setAllUsers(data.map(formatUser));
   }
 

@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { X, Camera, Save, User as UserIcon, Loader2 } from 'lucide-react';
+import { X, Camera, Save, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { uploadToStorage, UPLOAD_LIMITS } from '../lib/storage';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -15,28 +16,24 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
   const [email, setEmail] = useState(currentUser?.email || '');
   const [role, setRole] = useState(currentUser?.role || '');
   const [password, setPassword] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || '');
-  
+  const [avatarPreview, setAvatarPreview] = useState(currentUser?.avatarUrl || '');
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Basic size validation (e.g. max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('A imagem deve ter no máximo 5MB.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarUrl(reader.result as string);
-        setError(null);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    if (file.size > UPLOAD_LIMITS.avatar) {
+      setError(`A imagem deve ter no máximo ${UPLOAD_LIMITS.avatar / (1024 * 1024)}MB.`);
+      return;
     }
+    setPendingAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setError(null);
   };
 
   if (!currentUser) return null;
@@ -46,26 +43,35 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
     setIsSaving(true);
     setError(null);
 
-    const updates: any = {};
-    if (name !== currentUser.name) updates.name = name;
-    if (email !== currentUser.email) updates.email = email;
-    if (role !== currentUser.role) updates.role = role;
-    if (avatarUrl !== currentUser.avatarUrl) updates.avatarUrl = avatarUrl;
+    try {
+      const updates: any = {};
+      if (name !== currentUser.name) updates.name = name;
+      if (email !== currentUser.email) updates.email = email;
+      if (role !== currentUser.role) updates.role = role;
 
-    const res = await updateProfile(updates, password || undefined);
-    
-    if (res.success) {
-      addNotification({
-        userId: currentUser.id,
-        actorId: 'system',
-        taskId: 'system',
-        type: 'properties_changed',
-        message: 'Perfil atualizado',
-        details: 'Seus dados foram salvos com sucesso.'
-      });
-      onClose();
-    } else {
-      setError(res.error || 'Erro ao salvar o perfil.');
+      if (pendingAvatarFile) {
+        const url = await uploadToStorage('avatars', currentUser.id, pendingAvatarFile, UPLOAD_LIMITS.avatar);
+        updates.avatarPreview = url;
+      }
+
+      const res = await updateProfile(updates, password || undefined);
+
+      if (res.success) {
+        addNotification({
+          userId: currentUser.id,
+          actorId: 'system',
+          taskId: 'system',
+          type: 'properties_changed',
+          message: 'Perfil atualizado',
+          details: 'Seus dados foram salvos com sucesso.'
+        });
+        onClose();
+      } else {
+        setError(res.error || 'Erro ao salvar o perfil.');
+        setIsSaving(false);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erro ao enviar imagem.');
       setIsSaving(false);
     }
   };
@@ -91,8 +97,8 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
           {/* Avatar Section */}
           <div className="flex items-center gap-4 mb-2">
             <div className="relative group shrink-0">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={name} className="w-16 h-16 rounded-full object-cover border border-zinc-700" />
+              {avatarPreview ? (
+                <img src={avatarPreview} alt={name} className="w-16 h-16 rounded-full object-cover border border-zinc-700" />
               ) : (
                 <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-purple-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold border border-zinc-700">
                   {currentUser.initials || 'US'}
