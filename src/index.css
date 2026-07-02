@@ -242,7 +242,8 @@
 
 /* Inline Elements */
 .rte-content strong {
-  @apply font-bold text-zinc-100;
+  @apply font-bold;
+  color: inherit;
 }
 
 .rte-content em {
@@ -250,7 +251,7 @@
 }
 
 .rte-content s {
-  @apply text-zinc-500 line-through;
+  @apply line-through opacity-50;
 }
 
 .rte-content hr {

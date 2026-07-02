@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
+import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
@@ -16,11 +17,31 @@ import {
   Strikethrough,
   List,
   ListOrdered,
-  CheckSquare,
   Palette,
   Minus,
   Table as TableIcon,
 } from 'lucide-react';
+
+// Inline font-size extension — teaches TextStyle to carry a `fontSize` attribute.
+// Works exactly like the Color extension: applies to selection or stored mark at cursor.
+const FontSize = Extension.create({
+  name: 'fontSize',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['textStyle'],
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: (el: HTMLElement) => el.style.fontSize || null,
+            renderHTML: (attrs: Record<string, any>) =>
+              attrs.fontSize ? { style: `font-size: ${attrs.fontSize}` } : {},
+          },
+        },
+      },
+    ];
+  },
+});
 
 interface RichTextEditorProps {
   taskId: string;
@@ -42,6 +63,13 @@ const COLORS = [
   { hex: '#a1a1aa', label: 'Cinza' },
 ];
 
+// Font sizes: H1 = default (remove mark), H2 = medium, H3 = large
+const FONT_SIZES = [
+  { label: 'H1', size: null,   title: 'Normal (padrão)' },
+  { label: 'H2', size: '18px', title: 'Subtítulo (18px)' },
+  { label: 'H3', size: '24px', title: 'Título (24px)' },
+] as const;
+
 type ToolbarButton = {
   icon: React.ReactNode;
   title: string;
@@ -62,7 +90,6 @@ function toggleMarkKeepingColor(editor: Editor, toggle: (e: Editor) => void) {
   }
 }
 
-// SVG icons for column layouts
 const Col1Icon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
     <rect x="2" y="2" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.2"/>
@@ -102,27 +129,20 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
     </div>
   );
 
+  const currentFontSize = editor.getAttributes('textStyle').fontSize as string | null | undefined;
+
+  // H1/H2/H3 — inline font size. Clicking applies to selection or sets the stored mark at cursor.
+  const applyFontSize = (size: string | null) => {
+    if (size === null) {
+      // H1 = reset to default
+      editor.chain().focus().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run();
+    } else {
+      editor.chain().focus().setMark('textStyle', { fontSize: size }).run();
+    }
+  };
+
   const groups: ToolbarButton[][] = [
-    [
-      {
-        icon: <span style={{ fontWeight: 800, fontSize: 12, fontFamily: 'inherit', lineHeight: 1 }}>H1</span>,
-        title: 'Título 1 (22px)',
-        action: () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
-        isActive: () => editor.isActive('heading', { level: 1 }),
-      },
-      {
-        icon: <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'inherit', lineHeight: 1 }}>H2</span>,
-        title: 'Título 2 (18px)',
-        action: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
-        isActive: () => editor.isActive('heading', { level: 2 }),
-      },
-      {
-        icon: <span style={{ fontWeight: 600, fontSize: 11, fontFamily: 'inherit', lineHeight: 1 }}>H3</span>,
-        title: 'Título 3 (label pequeno)',
-        action: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
-        isActive: () => editor.isActive('heading', { level: 3 }),
-      },
-    ],
+    // Group: inline formatting
     [
       {
         icon: <Bold size={14} />,
@@ -146,6 +166,7 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
         disabled: () => !editor.can().chain().focus().toggleStrike().run(),
       },
     ],
+    // Group: lists
     [
       {
         icon: <List size={14} />,
@@ -160,18 +181,13 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
         isActive: () => editor.isActive('orderedList'),
       },
       {
-        icon: <CheckSquare size={14} />,
-        title: 'Checklist',
-        action: () => editor.chain().focus().toggleTaskList().run(),
-        isActive: () => editor.isActive('taskList'),
-      },
-      {
         icon: <TableIcon size={14} />,
         title: 'Inserir Tabela (3x3)',
         action: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
         isActive: () => editor.isActive('table'),
       },
     ],
+    // Group: separator
     [
       {
         icon: <Minus size={14} />,
@@ -183,6 +199,36 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
 
   return (
     <div className="rte-toolbar">
+      {/* Font size — H1/H2/H3 como marcas inline */}
+      <div className="flex items-center gap-0.5">
+        {FONT_SIZES.map(({ label, size, title }) => {
+          const isActive = size === null
+            ? !currentFontSize
+            : currentFontSize === size;
+          return (
+            <button
+              key={label}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); applyFontSize(size); }}
+              title={title}
+              className={`rte-btn ${isActive ? 'rte-btn--active' : ''}`}
+            >
+              <span style={{
+                fontWeight: label === 'H1' ? 600 : label === 'H2' ? 700 : 800,
+                fontSize: label === 'H1' ? 11 : 12,
+                fontFamily: 'inherit',
+                lineHeight: 1,
+              }}>
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rte-divider" />
+
+      {/* Formatting marks */}
       {groups.map((group, gi) => (
         <React.Fragment key={gi}>
           {gi > 0 && <div className="rte-divider" />}
@@ -190,10 +236,7 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
             <button
               key={bi}
               type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                btn.action();
-              }}
+              onMouseDown={(e) => { e.preventDefault(); btn.action(); }}
               disabled={btn.disabled ? btn.disabled() : false}
               title={btn.title}
               className={`rte-btn ${btn.isActive && btn.isActive() ? 'rte-btn--active' : ''}`}
@@ -204,21 +247,18 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
         </React.Fragment>
       ))}
 
-      {/* Color picker */}
+      {/* Color picker — independente do H selecionado */}
       <div className="rte-divider" />
       <div style={{ position: 'relative' }} ref={colorRef}>
         <button
           type="button"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setColorOpen((p) => !p);
-          }}
+          onMouseDown={(e) => { e.preventDefault(); setColorOpen((p) => !p); }}
           title="Cor do texto"
           className="rte-btn"
           style={{ position: 'relative' }}
         >
           <Palette size={14} />
-          {editor.isActive('textStyle') && (
+          {editor.getAttributes('textStyle').color && (
             <span
               style={{
                 position: 'absolute',
@@ -227,7 +267,7 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
                 width: 4,
                 height: 4,
                 borderRadius: '50%',
-                background: editor.getAttributes('textStyle').color || '#fff',
+                background: editor.getAttributes('textStyle').color,
               }}
             />
           )}
@@ -283,7 +323,7 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
         })}
       </div>
 
-      {/* Table Actions (Visible only when inside a table) */}
+      {/* Table Actions */}
       {editor.isActive('table') && (
         <div className="flex items-center gap-1 ml-2 bg-zinc-900/50 p-1 rounded-md border border-zinc-800">
           <button type="button" className="rte-btn !px-2" title="Linha Acima" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addRowBefore().run();}}><span className="text-[9px] font-bold text-zinc-300">L +↑</span></button>
@@ -305,35 +345,28 @@ const MULTI_COL_ATTR = 'data-multi-col-wrapper';
 
 function parseMultiColumnContent(html: string, cols: number): string[] {
   if (!html) return Array(cols).fill('');
-  
   if (!html.includes(MULTI_COL_ATTR)) {
     return [html, ...Array(Math.max(0, cols - 1)).fill('')];
   }
-
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const wrapper = doc.querySelector(`[${MULTI_COL_ATTR}]`);
-    
     if (!wrapper) return [html, ...Array(Math.max(0, cols - 1)).fill('')];
-
     const docCols = parseInt(wrapper.getAttribute('data-cols') || '1');
     const extracted: string[] = [];
-    
     for (let i = 0; i < Math.max(docCols, cols); i++) {
       const colDiv = wrapper.querySelector(`[data-col-idx="${i}"]`);
       extracted.push(colDiv ? colDiv.innerHTML : '');
     }
-
     if (cols < docCols) {
-       const surviving = extracted.slice(0, cols);
-       const dropped = extracted.slice(cols).filter(c => c.replace(/<p><\/p>|<br>|\s/g, '') !== '');
-       if (dropped.length > 0) {
-         surviving[cols - 1] = surviving[cols - 1] + '<p></p>' + dropped.join('<p></p>');
-       }
-       return surviving;
+      const surviving = extracted.slice(0, cols);
+      const dropped = extracted.slice(cols).filter(c => c.replace(/<p><\/p>|<br>|\s/g, '') !== '');
+      if (dropped.length > 0) {
+        surviving[cols - 1] = surviving[cols - 1] + '<p></p>' + dropped.join('<p></p>');
+      }
+      return surviving;
     }
-
     return extracted.slice(0, cols);
   } catch (e) {
     return [html, ...Array(Math.max(0, cols - 1)).fill('')];
@@ -342,11 +375,9 @@ function parseMultiColumnContent(html: string, cols: number): string[] {
 
 function buildMultiColumnContent(contents: string[], cols: number): string {
   if (cols === 1) return contents[0] || '';
-  
-  const innerHtml = contents.map((c, i) => 
+  const innerHtml = contents.map((c, i) =>
     `<div data-col-idx="${i}" style="flex:1; min-width:0;">${c}</div>`
   ).join('');
-
   return `<div ${MULTI_COL_ATTR}="true" data-cols="${cols}" style="display:flex; gap:1.25rem;">${innerHtml}</div>`;
 }
 
@@ -364,11 +395,14 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
 
   const editor = useEditor({
     extensions: [
+      // Headings kept in StarterKit for backward compat with existing content
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      // TaskList/TaskItem kept for backward compat (checklist button removed from toolbar)
       TaskList.configure({ HTMLAttributes: { class: 'task-list' } }),
       TaskItem.configure({ nested: true, HTMLAttributes: { class: 'task-item' } }),
       TextStyle.configure({ HTMLAttributes: {} }),
       Color.configure({ types: ['textStyle'] }),
+      FontSize,
       Table,
       TableRow,
       TableHeader,
@@ -395,7 +429,6 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
         if (!ed) return false;
         const isMod = event.ctrlKey || event.metaKey;
         if (!isMod) return false;
-
         if (event.key === 'b' || event.key === 'B') {
           event.preventDefault();
           toggleMarkKeepingColor(ed, (e) => e.chain().focus().toggleBold().run());
@@ -414,7 +447,6 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
   useEffect(() => {
     localRef.current = editor ?? null;
     editorRefCallback(editor ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
   useEffect(() => {
@@ -423,7 +455,6 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
         editor.commands.setContent(content || '');
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
   return <EditorContent editor={editor} className="h-full min-h-[150px]" />;
@@ -436,8 +467,7 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
 
   useEffect(() => {
     setContents(parseMultiColumnContent(content, columns));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId]); 
+  }, [taskId]);
 
   const handleEditorChange = (index: number, html: string) => {
     setContents(prev => {
@@ -450,28 +480,22 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
 
   const handleColumnsChange = (newCols: 1|2|3) => {
     if (newCols === columns) return;
-    
     setContents(prev => {
       let next = [...prev];
       if (newCols < columns) {
-         const surviving = next.slice(0, newCols);
-         const dropped = next.slice(newCols).filter(c => c.replace(/<p><\/p>|<br>|\s/g, '') !== '');
-         if (dropped.length > 0) {
-            surviving[newCols - 1] = surviving[newCols - 1] + '<p></p>' + dropped.join('<p></p>');
-         }
-         next = surviving;
+        const surviving = next.slice(0, newCols);
+        const dropped = next.slice(newCols).filter(c => c.replace(/<p><\/p>|<br>|\s/g, '') !== '');
+        if (dropped.length > 0) {
+          surviving[newCols - 1] = surviving[newCols - 1] + '<p></p>' + dropped.join('<p></p>');
+        }
+        next = surviving;
       } else {
-         while(next.length < newCols) {
-            next.push('');
-         }
+        while(next.length < newCols) next.push('');
       }
       onChange(buildMultiColumnContent(next, newCols));
       return next;
     });
-    
-    if (activeIdx >= newCols) {
-       setActiveIdx(newCols - 1);
-    }
+    if (activeIdx >= newCols) setActiveIdx(newCols - 1);
     onColumnsChange?.(newCols);
   };
 
@@ -481,18 +505,17 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
   return (
     <div className={`rte-wrapper flex flex-col ${variant === 'borderless' ? 'rte-borderless !border-transparent !bg-transparent' : ''} ${wrapperClassName}`}>
       <MenuBar editor={activeEditor} columns={columns} onColumnsChange={handleColumnsChange} />
-      
       <div className={`flex-1 overflow-y-auto grid ${gridClass} gap-5`}>
         {Array.from({ length: columns }).map((_, i) => (
           <div key={`${taskId}-col-${i}`} className={`h-full ${i < columns - 1 ? 'border-r border-zinc-800/50 pr-5' : ''}`}>
-             <SingleEditor
-                taskId={`${taskId}-col-${i}`}
-                content={contents[i] || ''}
-                onChange={(html) => handleEditorChange(i, html)}
-                onFocus={() => setActiveIdx(i)}
-                editorRefCallback={(ed) => { editorsRef.current[i] = ed; }}
-                placeholderText={i === 0 ? 'Escreva sobre o que é essa tarefa...' : 'Escreva aqui...'}
-             />
+            <SingleEditor
+              taskId={`${taskId}-col-${i}`}
+              content={contents[i] || ''}
+              onChange={(html) => handleEditorChange(i, html)}
+              onFocus={() => setActiveIdx(i)}
+              editorRefCallback={(ed) => { editorsRef.current[i] = ed; }}
+              placeholderText={i === 0 ? 'Escreva sobre o que é essa tarefa...' : 'Escreva aqui...'}
+            />
           </div>
         ))}
       </div>
