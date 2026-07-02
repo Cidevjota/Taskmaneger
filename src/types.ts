@@ -217,6 +217,7 @@ export interface Task {
   assigneeId?: string;
   parentTaskId?: string;
   reminderDate?: string;
+  reminderType?: '3h' | '1d' | 'custom';
   timeTracking?: TaskTimeTracking;
   reworkCount?: number;
   statusHistory?: StatusHistoryEntry[];
@@ -257,7 +258,8 @@ export interface SiengeTitle {
   lote?: string;       // legacy text field
   loteId?: string;     // FK to sienge_lotes
   assigneeId?: string; // User responsible
-  reminderDate?: string; // For bell reminders
+  reminderDate?: string;
+  reminderType?: '3h' | '1d' | 'custom';
   attachments?: { id: string, name: string, url?: string, data?: string }[];
   status: SiengeStatus;
   createdAt: string;

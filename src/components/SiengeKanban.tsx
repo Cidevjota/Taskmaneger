@@ -2,12 +2,12 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, Hash, DollarSign, Building2, Calendar, Tag, Receipt,
   ChevronRight, AlertTriangle, CheckCircle2, Clock, XCircle,
-  Banknote, ArrowRight, Search, SlidersHorizontal, User, Bell,
+  Banknote, ArrowRight, Search, SlidersHorizontal, User,
   LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy
 } from 'lucide-react';
 import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
 import SiengeTitleModal from './SiengeTitleModal';
-import DatePicker from './DatePicker';
+import ReminderBell from './ReminderBell';
 import { useAuth } from '../context/AuthContext';
 import { fetchSiengeTitleById } from '../lib/api';
 
@@ -191,22 +191,13 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
         </span>
 
         <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-          <DatePicker
-            value={title.reminderDate || ''}
+          <ReminderBell
+            reminderDate={title.reminderDate}
+            reminderType={title.reminderType}
+            size={11}
             align="right"
             disableAutoScroll
-            onChange={(date) => { onUpdateTitle({ ...title, reminderDate: date || undefined }); }}
-            enableTime={true}
-            onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTitle({ ...title, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
-            trigger={
-              <button 
-                type="button" 
-                className={`flex items-center justify-center transition-colors ${title.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'} hover:scale-110 active:scale-95`} 
-                title={title.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}
-              >
-                <Bell size={11} className={title.reminderDate ? 'fill-amber-400' : ''} />
-              </button>
-            }
+            onChange={({ reminderDate, reminderType }) => onUpdateTitle({ ...title, reminderDate, reminderType })}
           />
         </div>
       </div>
@@ -336,24 +327,16 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
               </div>
             )
           )}
-          {/* Lembrete de Sino (Bell Reminder) */}
+          {/* Lembrete de Sino */}
           <div onClick={(e) => e.stopPropagation()}>
-            <DatePicker
-              value={title.reminderDate || ''}
+            <ReminderBell
+              reminderDate={title.reminderDate}
+              reminderType={title.reminderType}
+              size={13}
+              showLabel={true}
               align="right"
               disableAutoScroll
-              onChange={(date) => { onUpdateTitle({ ...title, reminderDate: date || undefined }); }}
-              enableTime={true}
-              onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTitle({ ...title, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
-              trigger={
-                <button 
-                  type="button" 
-                  className={`flex items-center justify-center transition-colors ${title.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'} hover:scale-110 active:scale-95 ml-1`} 
-                  title={title.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}
-                >
-                  <Bell size={13} className={title.reminderDate ? 'fill-amber-400' : ''} />
-                </button>
-              }
+              onChange={({ reminderDate, reminderType }) => onUpdateTitle({ ...title, reminderDate, reminderType })}
             />
           </div>
         </div>

@@ -41,6 +41,7 @@ export async function fetchTasks(): Promise<Task[]> {
       createdAt: t.created_at,
       dueDate: t.due_date,
       reminderDate: t.reminder_date,
+      reminderType: t.reminder_type,
       plannedDate: t.planned_date,
       assigneeId: t.assignee_id,
       parentTaskId: t.parent_task_id,
@@ -96,6 +97,7 @@ export async function saveTask(task: Task) {
     created_at: task.createdAt,
     due_date: task.dueDate || null,
     reminder_date: task.reminderDate || null,
+    reminder_type: task.reminderType || null,
     planned_date: task.plannedDate || null,
     assignee_id: task.assigneeId || null,
     parent_task_id: task.parentTaskId || null,
@@ -178,7 +180,8 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId || null;
     if (updates.createdAt !== undefined) dbUpdates.created_at = updates.createdAt;
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
-    if (updates.reminderDate !== undefined) dbUpdates.reminder_date = updates.reminderDate;
+    if ('reminderDate' in updates) dbUpdates.reminder_date = updates.reminderDate ?? null;
+    if ('reminderType' in updates) dbUpdates.reminder_type = updates.reminderType ?? null;
     if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate;
     if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
     if (updates.parentTaskId !== undefined) dbUpdates.parent_task_id = updates.parentTaskId;
@@ -300,7 +303,7 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, lote, lote_id, assignee_id, reminder_date, status, created_at, updated_at';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, lote, lote_id, assignee_id, reminder_date, reminder_type, status, created_at, updated_at';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -314,6 +317,7 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     loteId: r.lote_id,
     assigneeId: r.assignee_id,
     reminderDate: r.reminder_date,
+    reminderType: r.reminder_type,
     attachments: attachments ?? r.attachments ?? [],
     status: r.status,
     createdAt: r.created_at,
@@ -355,6 +359,7 @@ export async function saveSiengeTitle(title: SiengeTitle) {
     lote_id: title.loteId || null,
     assignee_id: title.assigneeId || null,
     reminder_date: title.reminderDate || null,
+    reminder_type: title.reminderType || null,
     status: title.status,
   };
   // Only write attachments when they were explicitly loaded (fetchSiengeTitleById),

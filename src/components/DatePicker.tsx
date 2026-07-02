@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DatePickerProps {
   value: string;
@@ -11,13 +11,23 @@ interface DatePickerProps {
   suggestedDate?: string;
   align?: 'left' | 'right';
   disableAutoScroll?: boolean;
+  forceOpen?: number; // increment to programmatically open picker
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
-export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll }: DatePickerProps) {
+export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll, forceOpen }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const prevForceOpen = useRef(0);
+  useEffect(() => {
+    if (forceOpen && forceOpen !== prevForceOpen.current) {
+      prevForceOpen.current = forceOpen;
+      const d = value ? new Date(value.split('T')[0] + 'T00:00:00') : new Date();
+      setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+      setIsOpen(true);
+    }
+  }, [forceOpen]);
   
   // Parse initial date or default to today
   const initialDate = value ? new Date(value.split('T')[0] + 'T00:00:00') : new Date();
@@ -165,102 +175,108 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
 
       {/* Popover */}
       {isOpen && (
-        <div ref={popoverRef} className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1.5 w-[230px] bg-[#121214] border border-zinc-800/80 rounded-[8px] shadow-2xl p-3 z-50 animate-fade-in`}>
-          
-          {/* Header */}
-          <div className="flex items-center justify-between mb-3">
-            <button 
-              type="button" 
+        <div ref={popoverRef} className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-2 w-[252px] bg-[#111113] border border-zinc-800/70 rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 animate-fade-in`}>
+
+          {/* Header — mês e navegação */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800/60">
+            <button
+              type="button"
               onClick={handlePrevMonth}
-              className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+              className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
             >
-              <ChevronLeft size={14} />
+              <ChevronLeft size={13} />
             </button>
-            <span className="text-xs font-semibold text-zinc-200 font-sans tracking-wide">
+            <span className="text-[11px] font-semibold text-zinc-100 tracking-widest uppercase select-none">
               {MONTHS[currentMonth]} {currentYear}
             </span>
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={handleNextMonth}
-              className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+              className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
             >
-              <ChevronRight size={14} />
+              <ChevronRight size={13} />
             </button>
           </div>
 
-          {/* Weekdays */}
-          <div className="grid grid-cols-7 mb-1">
-            {WEEKDAYS.map((wd, i) => (
-              <div key={i} className="text-center text-[10px] font-medium text-zinc-500 opacity-70">
-                {wd}
-              </div>
-            ))}
-          </div>
-
-          {/* Days Grid */}
-          <div className="grid grid-cols-7 gap-y-1 gap-x-1 mb-3">
-            {allDays.map((slot, i) => {
-              const targetDate = new Date(currentYear, currentMonth + slot.monthOffset, slot.day);
-              const formattedDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-              const isSelected = formattedDate === currentDatePart;
-              const isToday = new Date().toDateString() === targetDate.toDateString();
-              const isSuggested = suggestedDate && formattedDate === suggestedDate.split('T')[0] && !isSelected;
-
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  title={isSuggested ? 'Data sugerida' : undefined}
-                  onClick={(e) => handleSelectDay(slot.day, slot.monthOffset, e)}
-                  className={`
-                    w-6 h-6 flex items-center justify-center text-[10px] rounded-full transition-all mx-auto
-                    ${!slot.isCurrentMonth ? 'opacity-35 text-zinc-400' : 'text-zinc-300'}
-                    ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md' : 
-                      isSuggested ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'hover:bg-zinc-800/80'}
-                    ${isToday && !isSelected && !isSuggested ? 'ring-1 ring-blue-500/50 text-blue-400' : ''}
-                  `}
-                >
-                  {slot.day}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Time Picker */}
-          {enableTime && (
-            <div className="mb-3 pt-2 border-t border-zinc-800/50 flex items-center justify-between">
-              <span className="text-[10px] text-zinc-400 font-medium">Horário:</span>
-              <input
-                type="time"
-                value={currentTimePart}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  const datePartToUse = currentDatePart || (() => {
-                    const d = new Date();
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                  })();
-                  const newTime = e.target.value || '09:00';
-                  onChange(`${datePartToUse}T${newTime}`);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-[10px] rounded px-1.5 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer [color-scheme:dark]"
-              />
+          <div className="px-3 pt-3 pb-2">
+            {/* Dias da semana */}
+            <div className="grid grid-cols-7 mb-1.5">
+              {WEEKDAYS.map((wd, i) => (
+                <div key={i} className="h-6 flex items-center justify-center text-[9px] font-semibold text-zinc-600 uppercase tracking-wider select-none">
+                  {wd}
+                </div>
+              ))}
             </div>
-          )}
 
-          {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-2 border-t border-zinc-800/50">
-            <button 
+            {/* Grid de dias */}
+            <div className="grid grid-cols-7">
+              {allDays.map((slot, i) => {
+                const targetDate = new Date(currentYear, currentMonth + slot.monthOffset, slot.day);
+                const formattedDate = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+                const isSelected = formattedDate === currentDatePart;
+                const isToday = new Date().toDateString() === targetDate.toDateString();
+                const isSuggested = suggestedDate && formattedDate === suggestedDate.split('T')[0] && !isSelected;
+
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    title={isSuggested ? 'Data sugerida' : undefined}
+                    onClick={(e) => handleSelectDay(slot.day, slot.monthOffset, e)}
+                    className={[
+                      'h-7 w-full flex items-center justify-center text-[11px] rounded-md transition-all select-none',
+                      !slot.isCurrentMonth ? 'opacity-20 text-zinc-500 pointer-events-none' : 'text-zinc-300',
+                      isSelected
+                        ? 'bg-blue-600 text-white font-bold shadow-sm shadow-blue-900/40'
+                        : isSuggested
+                        ? 'bg-emerald-500/10 text-emerald-400 font-semibold ring-1 ring-inset ring-emerald-500/20'
+                        : 'hover:bg-zinc-800 hover:text-white',
+                      isToday && !isSelected && !isSuggested
+                        ? 'text-blue-400 font-semibold ring-1 ring-inset ring-blue-500/30'
+                        : '',
+                    ].join(' ')}
+                  >
+                    {slot.day}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Horário */}
+            {enableTime && (
+              <div className="mt-3 flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2">
+                <span className="text-[10px] text-zinc-500 font-medium flex-1 select-none">Horário</span>
+                <input
+                  type="time"
+                  value={currentTimePart}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    const datePartToUse = currentDatePart || (() => {
+                      const d = new Date();
+                      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    })();
+                    onChange(`${datePartToUse}T${e.target.value || '09:00'}`);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-transparent text-zinc-100 text-[11px] font-mono font-semibold outline-none cursor-pointer [color-scheme:dark] tabular-nums"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-800/60 bg-zinc-900/50">
+            <button
               type="button"
               onClick={handleClear}
-              className="text-[10px] font-medium text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded hover:bg-zinc-800/50"
+              className="text-[10px] font-medium text-zinc-600 hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-red-500/5"
             >
-              Limpar
+              Excluir
             </button>
-            <button 
+            <button
               type="button"
               onClick={handleToday}
-              className="text-[10px] font-medium text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded hover:bg-blue-500/10"
+              className="text-[10px] font-semibold text-blue-400 hover:text-blue-300 transition-colors px-2.5 py-1 rounded-md bg-blue-500/8 hover:bg-blue-500/15"
             >
               Hoje
             </button>

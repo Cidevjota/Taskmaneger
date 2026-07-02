@@ -50,6 +50,16 @@ export default function App() {
   const currentUserRef = useRef(currentUser);
   currentUserRef.current = currentUser;
 
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, id: Date.now() });
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  };
+
   // Navigation Routing states
   const [activeView, setActiveView] = useState<ViewType>('home');
   const [activeTaskViewType, setActiveTaskViewType] = useState<'board' | 'list'>('board');
@@ -430,9 +440,20 @@ export default function App() {
 
     const nowISO = new Date().toISOString();
     
-    // Automation: Se o card ficar sem prazo, force para 'sem previsão'
-    const finalDueDate = updates.hasOwnProperty('dueDate') ? updates.dueDate : targetTask.dueDate;
-    if (!finalDueDate && targetTask.status !== 'done') {
+    // Regra: tarefas sem prazo não podem estar em outro status além de 'no_forecast' e 'done'
+    const resultingDueDate = 'dueDate' in updates ? updates.dueDate : targetTask.dueDate;
+    const newStatus = updates.status;
+    const statusIsChanging = newStatus !== undefined && newStatus !== targetTask.status;
+    const statusMovingActive = statusIsChanging && newStatus !== 'no_forecast' && newStatus !== 'done';
+
+    if (statusMovingActive && !resultingDueDate) {
+      showToast('Adicione um prazo antes de mover esta tarefa para outro status.');
+      return;
+    }
+
+    // Automação: prazo removido de task ativa → volta silenciosamente para 'Sem Previsão'
+    const dueDateBeingCleared = 'dueDate' in updates && !updates.dueDate && Boolean(targetTask.dueDate);
+    if (dueDateBeingCleared && targetTask.status !== 'done') {
       updates.status = 'no_forecast';
     }
 
@@ -915,7 +936,18 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
       />
-      <ConfirmModal 
+      {/* Toast de erro */}
+      {toast && (
+        <div
+          key={toast.id}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2.5 bg-zinc-900 border border-red-500/30 text-red-400 text-sm font-medium px-4 py-3 rounded-xl shadow-2xl shadow-black/60 animate-in fade-in slide-in-from-bottom-4 duration-200"
+        >
+          <span className="text-red-500 text-base leading-none">⚠</span>
+          {toast.message}
+        </div>
+      )}
+
+      <ConfirmModal
         isOpen={confirmModalData.isOpen}
         title="Campos Incompletos"
         message={confirmModalData.message || "Atenção: Campos obrigatórios não preenchidos. Se você sair agora, a tarefa incompleta será EXCLUÍDA. Deseja realmente sair?"}

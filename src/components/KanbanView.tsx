@@ -24,7 +24,6 @@ import {
   Share2,
   LayoutTemplate,
   Tag as TagIcon,
-  Bell,
   AlignJustify,
   LayoutGrid,
   Hourglass
@@ -64,7 +63,7 @@ const getElapsedTimeData = (tt: Task['timeTracking']): { text: string; colorClas
 };
 
 import { useAuth } from '../context/AuthContext';
-import DatePicker from './DatePicker';
+import ReminderBell from './ReminderBell';
 import PriorityPicker from './PriorityPicker';
 import AssigneePicker from './AssigneePicker';
 
@@ -709,18 +708,13 @@ export default function KanbanView({
                                     </div>
                                   );
                                 })()}
-                                <DatePicker
-                                  value={task.reminderDate || ''}
+                                <ReminderBell
+                                  reminderDate={task.reminderDate}
+                                  reminderType={task.reminderType}
+                                  size={10}
                                   align="right"
                                   disableAutoScroll
-                                  onChange={(date) => { onUpdateTask({ ...task, reminderDate: date || undefined }); }}
-                                  enableTime={true}
-                                  onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTask({ ...task, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
-                                  trigger={
-                                    <button type="button" className={`shrink-0 transition-colors ${task.reminderDate ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-400'}`} title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}>
-                                      <Bell size={10} className={task.reminderDate ? 'fill-amber-400' : ''} />
-                                    </button>
-                                  }
+                                  onChange={({ reminderDate, reminderType }) => onUpdateTask({ ...task, reminderDate, reminderType })}
                                 />
                               </div>
                             ) : (
@@ -805,18 +799,14 @@ export default function KanbanView({
                                           </div>
                                         );
                                       })()}
-                                      <DatePicker
-                                        value={task.reminderDate || ''}
+                                      <ReminderBell
+                                        reminderDate={task.reminderDate}
+                                        reminderType={task.reminderType}
+                                        size={13}
+                                        showLabel={true}
                                         align="right"
                                         disableAutoScroll
-                                        onChange={(date) => { onUpdateTask({ ...task, reminderDate: date || undefined }); }}
-                                        enableTime={true}
-                                        onQuickAdd={() => { const t = new Date(); t.setDate(t.getDate() + 1); onUpdateTask({ ...task, reminderDate: `${t.toISOString().split('T')[0]}T09:00` }); }}
-                                        trigger={
-                                          <button type="button" className={`flex items-center justify-center h-full transition-colors ${task.reminderDate ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-600 hover:text-zinc-400'}`} title={task.reminderDate ? "Desativar lembretes" : "Ativar lembretes"}>
-                                            <Bell size={13} className={task.reminderDate ? 'fill-amber-400' : ''} />
-                                          </button>
-                                        }
+                                        onChange={({ reminderDate, reminderType }) => onUpdateTask({ ...task, reminderDate, reminderType })}
                                       />
                                     </div>
                                   </div>

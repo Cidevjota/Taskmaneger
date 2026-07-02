@@ -17,8 +17,6 @@ import {
   SlidersHorizontal,
   GripVertical,
   Columns,
-  Bell,
-  BellRing,
   PenTool,
   Type,
   CheckSquare,
@@ -31,7 +29,7 @@ import {
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
 import { useAuth } from '../context/AuthContext';
-import DatePicker from './DatePicker';
+import ReminderBell from './ReminderBell';
 import StatusPicker from './StatusPicker';
 import PriorityPicker from './PriorityPicker';
 import AssigneePicker from './AssigneePicker';
@@ -528,38 +526,16 @@ export default function ListView({
         );
       case 'reminder':
         return (
-          <DatePicker
-            value={task.reminderDate || ''}
-            onChange={(date) => {
-              if (date) {
-                onUpdateTask({ ...task, reminderDate: date });
-              } else {
-                onUpdateTask({ ...task, reminderDate: undefined });
-              }
-            }}
-            enableTime={true}
-            onQuickAdd={() => {
-              const tomorrow = new Date();
-              tomorrow.setDate(tomorrow.getDate() + 1);
-              onUpdateTask({ ...task, reminderDate: `${tomorrow.toISOString().split('T')[0]}T09:00` });
-            }}
-            trigger={
-              <button
-                type="button"
-                className={`w-[80px] inline-flex items-center justify-between gap-1.5 text-[9px] font-sans font-medium px-2 py-1 rounded border min-h-[22px] transition-colors truncate ${task.reminderDate ? 'text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20' : 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20'}`}
-                title={task.reminderDate ? "Alterar lembrete" : "Adicionar lembrete"}
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <Bell size={10} className={task.reminderDate ? 'fill-amber-400 opacity-100' : 'opacity-60'} />
-                  {task.reminderDate ? (
-                    task.reminderDate.includes('T')
-                      ? `${task.reminderDate.split('T')[0].split('-').reverse().join('/').substring(0, 5)} ${task.reminderDate.split('T')[1]}`
-                      : task.reminderDate.split('-').reverse().join('/').substring(0, 5)
-                  ) : 'Adicionar'}
-                </div>
-              </button>
-            }
-          />
+          <div className="w-[80px] flex items-center">
+            <ReminderBell
+              reminderDate={task.reminderDate}
+              reminderType={task.reminderType}
+              size={11}
+              showLabel={true}
+              align="right"
+              onChange={({ reminderDate, reminderType }) => onUpdateTask({ ...task, reminderDate, reminderType })}
+            />
+          </div>
         );
       default:
         return null;
