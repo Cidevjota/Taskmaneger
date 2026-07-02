@@ -20,6 +20,7 @@ export interface Subtask {
   completed: boolean;
   canceled?: boolean;
   reminderDate?: string;
+  reminderType?: '3h' | '1d' | 'custom';
   assigneeId?: string;
   level?: number;
   completedAt?: string; // ISO timestamp when marked completed

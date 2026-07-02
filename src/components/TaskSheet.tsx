@@ -44,6 +44,7 @@ import {
   Search
 } from 'lucide-react';
 import DatePicker from './DatePicker';
+import ReminderBell from './ReminderBell';
 import RichTextEditor from './RichTextEditor';
 import DesignProperties from './DesignProperties';
 import CopyProperties from './CopyProperties';
@@ -691,8 +692,11 @@ export default function TaskSheet({
     }));
   };
 
-  const handleSetSubtaskReminder = (subId: string, date: string) => {
-    setSubtasks(prev => prev.map(s => s.id === subId ? { ...s, reminderDate: date } : s));
+  const handleSetSubtaskReminder = (subId: string, update: { reminderDate?: string; reminderType?: '3h' | '1d' | 'custom' }) => {
+    setSubtasks(prev => prev.map(s => s.id === subId
+      ? { ...s, reminderDate: update.reminderDate, reminderType: update.reminderType }
+      : s
+    ));
   };
 
   const handleSetSubtaskAssignee = (subId: string, userId: string) => {
@@ -1436,7 +1440,7 @@ export default function TaskSheet({
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />
                       </div>
-                      <div className={`flex items-center mt-[1px] ml-2 shrink-0 transition-opacity gap-1 ${subtask.completed || subtask.reminderDate || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                      <div className={`flex items-center mt-[1px] ml-2 shrink-0 transition-opacity gap-1 ${subtask.completed || subtask.reminderDate || subtask.reminderType || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                         {subtask.completed && subtask.completedAt && (
                           <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
                             <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
@@ -1489,43 +1493,16 @@ export default function TaskSheet({
                           )}
                         </div>
 
-                        {/* Remainder Button / Date Picker */}
-                        <div className="flex items-center justify-center">
-                          {(() => {
-                            const relatedNotif = notifications.find(n => n.type === 'reminder' && n.targetId === subtask.id);
-                            const isReminderSeen = relatedNotif && relatedNotif.status !== 'unread';
-                            const activeColorClass = isReminderSeen ? 'text-emerald-400 bg-emerald-400/10' : 'text-amber-400 bg-amber-400/10';
-                            const activeFillClass = isReminderSeen ? 'fill-emerald-400/20' : 'fill-amber-400/20';
-                            const hoverColorClass = isReminderSeen ? 'hover:text-emerald-400' : 'hover:text-amber-400';
-
-                            return (
-                              <DatePicker
-                                value={subtask.reminderDate || ''}
-                                onChange={(date) => handleSetSubtaskReminder(subtask.id, date)}
-                                enableTime={true}
-                                onQuickAdd={() => {
-                                  const tomorrow = new Date();
-                                  tomorrow.setDate(tomorrow.getDate() + 1);
-                                  handleSetSubtaskReminder(subtask.id, `${tomorrow.toISOString().split('T')[0]}T09:00`);
-                                }}
-                                trigger={
-                                  <button
-                                    type="button"
-                                    className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors ${subtask.reminderDate ? activeColorClass : `text-zinc-500 ${hoverColorClass} hover:bg-zinc-800/80`}`}
-                                    title={subtask.reminderDate ? "Alterar data de lembrete" : "Definir lembrete para esta atividade"}
-                                  >
-                                    <Bell size={14} className={subtask.reminderDate ? activeFillClass : ""} />
-                                    {subtask.reminderDate ? (
-                                      subtask.reminderDate.includes('T') 
-                                        ? `${subtask.reminderDate.split('T')[0].split('-').reverse().slice(0, 2).join('/')} às ${subtask.reminderDate.split('T')[1]}` 
-                                        : subtask.reminderDate.split('-').reverse().slice(0, 2).join('/')
-                                    ) : ''}
-                                  </button>
-                                }
-                              />
-                            );
-                          })()}
-                        </div>
+                        {/* Lembrete do item do checklist */}
+                        <ReminderBell
+                          reminderDate={subtask.reminderDate}
+                          reminderType={subtask.reminderType}
+                          onChange={(update) => handleSetSubtaskReminder(subtask.id, update)}
+                          size={11}
+                          showLabel={true}
+                          align="right"
+                          disableAutoScroll={true}
+                        />
                         <button
                           onClick={() => handleDeleteSubtask(subtask.id)}
                           className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80 rounded transition-colors"

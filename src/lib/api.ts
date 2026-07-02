@@ -60,6 +60,7 @@ export async function fetchTasks(): Promise<Task[]> {
         completed: st.completed,
         canceled: st.canceled,
         reminderDate: st.reminder_date,
+        reminderType: st.reminder_type,
         level: st.level
       })),
       labels: extractedLabels
@@ -144,7 +145,8 @@ export async function saveTask(task: Task) {
       title: st.title,
       completed: st.completed,
       canceled: st.canceled,
-      reminder_date: st.reminderDate,
+      reminder_date: st.reminderDate || null,
+      reminder_type: st.reminderType || null,
       level: st.level
     }));
     const { error: insertSubtasksError } = await supabase.from('subtasks').insert(subtaskInserts);
