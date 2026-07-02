@@ -34,6 +34,8 @@ import StatusPicker from './StatusPicker';
 import PriorityPicker from './PriorityPicker';
 import AssigneePicker from './AssigneePicker';
 
+type EditorPresence = { name: string; avatarUrl?: string; color: string };
+
 interface ListViewProps {
   tasks: Task[];
   projects: Project[];
@@ -42,6 +44,7 @@ interface ListViewProps {
   onUpdateTask: (task: Task) => void;
   onAddTask: (task: Task) => void;
   currentProjectFilter: string | null;
+  editingMap?: Record<string, EditorPresence>;
 }
 
 type GroupByOption = 'none' | 'status' | 'priority';
@@ -73,7 +76,8 @@ export default function ListView({
   onSelectTask,
   onUpdateTask,
   onAddTask,
-  currentProjectFilter
+  currentProjectFilter,
+  editingMap = {}
 }: ListViewProps) {
   const { currentUser, updateProfile, allUsers: USERS } = useAuth();
   
@@ -570,23 +574,37 @@ export default function ListView({
 
       {/* Table Body */}
       <div className="flex flex-col divide-y divide-zinc-900">
-        {taskList.map(task => (
-          <div
-            key={task.id}
-            onClick={() => onSelectTask(task)}
-            className="flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350"
-          >
-            {columns.filter(c => c.visible !== false).map(col => (
-              <div 
-                key={col.id} 
-                style={{ width: col.width }}
-                className="px-4 py-2.5 shrink-0 flex flex-col justify-center"
-              >
-                {renderCellContent(task, col)}
-              </div>
-            ))}
-          </div>
-        ))}
+        {taskList.map(task => {
+          const presence = editingMap[task.id];
+          return (
+            <div
+              key={task.id}
+              onClick={() => onSelectTask(task)}
+              className="relative flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350"
+              style={presence ? { borderLeft: `2px solid ${presence.color}` } : undefined}
+            >
+              {columns.filter(c => c.visible !== false).map(col => (
+                <div
+                  key={col.id}
+                  style={{ width: col.width }}
+                  className="px-4 py-2.5 shrink-0 flex flex-col justify-center"
+                >
+                  {renderCellContent(task, col)}
+                </div>
+              ))}
+              {presence && (
+                <div
+                  title={`${presence.name} está editando`}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold"
+                  style={{ background: `${presence.color}22`, color: presence.color, border: `1px solid ${presence.color}44` }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: presence.color }} />
+                  {presence.name.split(' ')[0]}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Quick Add inline row */}
         <form onSubmit={handleInlineAddSubmit} className="flex items-center gap-3 px-4 py-2 bg-zinc-950/80">

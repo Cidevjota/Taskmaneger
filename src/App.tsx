@@ -40,6 +40,16 @@ import SiengeView from './components/SiengeView';
 import DashboardView from './components/DashboardView';
 import HomeView from './components/HomeView';
 
+// Stable color per user — used for presence avatars / ring
+function colorFor(userId: string) {
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
+  let h = 0;
+  for (const c of userId) h = (h << 5) - h + c.charCodeAt(0);
+  return COLORS[Math.abs(h) % COLORS.length];
+}
+
+export type EditorPresence = { name: string; avatarUrl?: string; color: string };
+
 export default function App() {
   const { currentUser, loading, updateProfile } = useAuth();
   const { addNotification } = useNotifications();
@@ -68,6 +78,20 @@ export default function App() {
   // Database core states using React Query
   const queryClient = useQueryClient();
   const syncManager = useSyncManager();
+  // Ref so Realtime handler always reads the latest syncManager without re-subscribing
+  const syncManagerRef = useRef(syncManager);
+  syncManagerRef.current = syncManager;
+
+  // Presence: who is editing which task
+  const presenceTrackRef = useRef<((taskId: string | null) => void) | null>(null);
+  const [editingMap, setEditingMap] = useState<Record<string, EditorPresence>>({});
+
+  // Track recently saved task IDs to suppress self-triggered Realtime events
+  const recentlySavedRef = useRef<Map<string, number>>(new Map());
+  const markRecentlySaved = (taskId: string) => {
+    recentlySavedRef.current.set(taskId, Date.now());
+    setTimeout(() => recentlySavedRef.current.delete(taskId), 3000);
+  };
 
   const queryFnTasks = async () => {
     const freshTasks = await fetchTasks();
@@ -126,21 +150,103 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [socialMediaFilter, setSocialMediaFilter] = useState(false);
 
+  // Presence channel — tracks who is editing which task in real time
+  useEffect(() => {
+    if (!currentUser) return;
+    const ch = supabase.channel('task-presence', {
+      config: { presence: { key: currentUser.id } },
+    });
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<any>();
+      const map: Record<string, EditorPresence> = {};
+      for (const presences of Object.values(state) as any[][]) {
+        for (const p of presences) {
+          if (p.editingTaskId && p.userId !== currentUser.id) {
+            map[p.editingTaskId] = { name: p.name, avatarUrl: p.avatarUrl, color: p.color };
+          }
+        }
+      }
+      setEditingMap(map);
+    }).subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        const track = (taskId: string | null) => ch.track({
+          userId: currentUser.id,
+          name: currentUser.name,
+          avatarUrl: currentUser.avatarUrl,
+          editingTaskId: taskId,
+          color: colorFor(currentUser.id),
+        });
+        presenceTrackRef.current = track;
+        track(null);
+      }
+    });
+    return () => { presenceTrackRef.current = null; supabase.removeChannel(ch); };
+  }, [currentUser?.id]);
+
+  // Tell presence channel when this user starts/stops editing a task
+  useEffect(() => {
+    const taskId = isTaskSheetOpen && selectedTask ? selectedTask.id : null;
+    presenceTrackRef.current?.(taskId);
+  }, [isTaskSheetOpen, selectedTask?.id]);
+
   // Setup realtime — per-table filters avoid the schema-wide wildcard that was
   // driving realtime.list_changes() to ~1M calls/day.
   useEffect(() => {
+    // For subtasks/labels, still need a full refetch (joined data not in payload)
     const invalidateTasks = () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      }, 1500);
+      }, 400);
     };
 
     const channel = supabase
       .channel('app-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidateTasks)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, invalidateTasks)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_labels' }, invalidateTasks)
+      // Task UPDATE: update only the changed task in cache directly — no full refetch
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, (payload) => {
+        const raw = payload.new as any;
+        const sm = syncManagerRef.current;
+        queryClient.setQueryData<Task[]>(['tasks'], (old) => {
+          if (!old) return old;
+          return old.map(t => {
+            if (t.id !== raw.id) return t;
+            return {
+              ...t,
+              ...(sm.isFieldDirty(t.id, 'status')      ? {} : { status:      raw.status }),
+              ...(sm.isFieldDirty(t.id, 'priority')    ? {} : { priority:    raw.priority }),
+              ...(sm.isFieldDirty(t.id, 'title')       ? {} : { title:       raw.title }),
+              ...(sm.isFieldDirty(t.id, 'assigneeId')  ? {} : { assigneeId:  raw.assignee_id }),
+              ...(sm.isFieldDirty(t.id, 'dueDate')     ? {} : { dueDate:     raw.due_date }),
+              ...(sm.isFieldDirty(t.id, 'plannedDate') ? {} : { plannedDate: raw.planned_date }),
+              ...(sm.isFieldDirty(t.id, 'reminderDate')? {} : { reminderDate:raw.reminder_date }),
+              ...(sm.isFieldDirty(t.id, 'reminderType')? {} : { reminderType:raw.reminder_type }),
+              ...(sm.isFieldDirty(t.id, 'projectId')   ? {} : { projectId:   raw.project_id }),
+              ...(sm.isFieldDirty(t.id, 'description') ? {} : { description: raw.description }),
+              updatedBy: raw.updated_by,
+            };
+          });
+        });
+      })
+      // Task INSERT/DELETE: need full refetch to keep list consistent
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, invalidateTasks)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' }, (payload) => {
+        const deletedId = (payload.old as any)?.id;
+        if (deletedId) {
+          queryClient.setQueryData<Task[]>(['tasks'], (old) => old?.filter(t => t.id !== deletedId) ?? []);
+        }
+      })
+      // Subtasks/labels changes require refetch of the parent task (joined data).
+      // Skip events triggered by our own saves (recentlySavedRef) to avoid redundant refetches.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, (payload) => {
+        const taskId = (payload.new as any)?.task_id || (payload.old as any)?.task_id;
+        if (taskId && recentlySavedRef.current.has(taskId)) return;
+        invalidateTasks();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_labels' }, (payload) => {
+        const taskId = (payload.new as any)?.task_id || (payload.old as any)?.task_id;
+        if (taskId && recentlySavedRef.current.has(taskId)) return;
+        invalidateTasks();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
         queryClient.invalidateQueries({ queryKey: ['projects'] });
       })
@@ -524,6 +630,9 @@ export default function App() {
       ['description', 'title', 'chatMessages', 'designBriefing', 'copyBriefing', 'planningBriefing'].includes(key)
     );
 
+    // Suppress self-triggered Realtime events for this task for the next 3s
+    markRecentlySaved(updates.id);
+
     // Queue update via SyncManager
     syncManager.updateTask(updates.id, updates, { debounce: needsDebounce });
 
@@ -534,6 +643,7 @@ export default function App() {
   };
 
   const handleAddTask = (newTask: Task) => {
+    markRecentlySaved(newTask.id);
     queryClient.setQueryData<Task[]>(['tasks'], prev => [newTask, ...(prev || [])]);
     saveTask(newTask).catch(console.error);
   };
@@ -810,6 +920,7 @@ export default function App() {
               currentProjectFilter={currentProjectFilter}
               socialMediaFilter={socialMediaFilter}
               setSocialMediaFilter={setSocialMediaFilter}
+              editingMap={editingMap}
             />
           )}
 
@@ -825,6 +936,7 @@ export default function App() {
               onUpdateTask={handleUpdateTask}
               onAddTask={handleAddTask}
               currentProjectFilter={currentProjectFilter}
+              editingMap={editingMap}
             />
           )}
 
@@ -920,6 +1032,7 @@ export default function App() {
         allTasks={tasks}
         onAddTask={handleAddTask}
         onSelectTask={setSelectedTask}
+        editingBy={selectedTask ? editingMap[selectedTask.id] : undefined}
       />
 
       {/* Cmd+K global Command Palette overlay popover */}

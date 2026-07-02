@@ -67,6 +67,8 @@ import ReminderBell from './ReminderBell';
 import PriorityPicker from './PriorityPicker';
 import AssigneePicker from './AssigneePicker';
 
+type EditorPresence = { name: string; avatarUrl?: string; color: string };
+
 interface KanbanViewProps {
   tasks: Task[];
   projects: Project[];
@@ -81,6 +83,7 @@ interface KanbanViewProps {
   maxCardsPerColumn?: number;
   defaultCompact?: boolean;
   hideNewTaskButton?: boolean;
+  editingMap?: Record<string, EditorPresence>;
 }
 
 const COLUMNS: { id: TaskStatus; label: string; dotColor: string; icon: React.ReactNode; accentBg: string; accentBorder: string }[] = [
@@ -105,6 +108,7 @@ export default function KanbanView({
   socialMediaFilter,
   setSocialMediaFilter,
   hideFilters = false,
+  editingMap = {},
   maxCardsPerColumn,
   defaultCompact = false,
   hideNewTaskButton = false
@@ -675,8 +679,16 @@ export default function KanbanView({
                                 onDrag={(e) => { if (e.clientX || e.clientY) moveGhost(e.clientX, e.clientY); }}
                                 onDragEnd={handleDragEnd}
                                 onClick={() => onSelectTask(task)}
-                                className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0' : ''}`}
+                                className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0' : ''} ${editingMap[task.id] ? 'border-[var(--edit-color)]/40' : 'border-zinc-900/60 hover:border-zinc-800'}`}
+                                style={editingMap[task.id] ? { '--edit-color': editingMap[task.id].color } as React.CSSProperties : undefined}
                               >
+                                {editingMap[task.id] && (
+                                  <span
+                                    title={`${editingMap[task.id].name} está editando`}
+                                    className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse"
+                                    style={{ background: editingMap[task.id].color }}
+                                  />
+                                )}
                                 {ThemeIcon && <div className={`shrink-0 ${themeTextColor}`}><ThemeIcon size={12} /></div>}
                                 <span className="flex-1 text-[11px] font-medium text-zinc-200 truncate min-w-0" title={task.title}>
                                   {task.title.length > 35 ? task.title.slice(0, 35) + '…' : task.title}
@@ -726,8 +738,20 @@ export default function KanbanView({
                                 onDrag={(e) => { if (e.clientX || e.clientY) moveGhost(e.clientX, e.clientY); }}
                                 onDragEnd={handleDragEnd}
                                 onClick={() => onSelectTask(task)}
-                                className={`group relative bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-lg p-2.5 transition-all duration-200 cursor-grab active:cursor-grabbing hover:shadow-xl hover:shadow-black/50 ${isDragging ? 'opacity-0' : ''}`}
+                                className={`group relative bg-[#121214] hover:bg-[#161619] border rounded-lg p-2.5 transition-all duration-200 cursor-grab active:cursor-grabbing hover:shadow-xl hover:shadow-black/50 ${isDragging ? 'opacity-0' : ''} ${editingMap[task.id] ? 'border-[var(--edit-color)]/40' : 'border-zinc-900/60 hover:border-zinc-800'}`}
+                                style={editingMap[task.id] ? { '--edit-color': editingMap[task.id].color } as React.CSSProperties : undefined}
                               >
+                                {/* Editing indicator badge */}
+                                {editingMap[task.id] && (
+                                  <div
+                                    title={`${editingMap[task.id].name} está editando`}
+                                    className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold z-10"
+                                    style={{ background: `${editingMap[task.id].color}22`, color: editingMap[task.id].color, border: `1px solid ${editingMap[task.id].color}44` }}
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: editingMap[task.id].color }} />
+                                    {editingMap[task.id].name.split(' ')[0]}
+                                  </div>
+                                )}
                                 {/* ID & Assignee */}
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-[10px] text-zinc-500 font-mono font-semibold tracking-tight uppercase flex items-center gap-1.5">

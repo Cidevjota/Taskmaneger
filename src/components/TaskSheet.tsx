@@ -41,7 +41,8 @@ import {
   Download,
   GitFork,
   Columns,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ReminderBell from './ReminderBell';
@@ -57,6 +58,8 @@ import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 
+type EditorPresence = { name: string; avatarUrl?: string; color: string };
+
 interface TaskSheetProps {
   task: Task | null;
   isOpen: boolean;
@@ -69,6 +72,7 @@ interface TaskSheetProps {
   onAddTask?: (task: Task) => void;
   onSelectTask?: (task: Task) => void;
   isCompareChild?: boolean;
+  editingBy?: EditorPresence;
 }
 
 const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon: React.ReactNode }[] = [
@@ -450,7 +454,8 @@ export default function TaskSheet({
   allTasks = [],
   onAddTask,
   onSelectTask,
-  isCompareChild = false
+  isCompareChild = false,
+  editingBy
 }: TaskSheetProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -672,7 +677,7 @@ export default function TaskSheet({
   if (!isOpen || !task) return null;
 
   const saveChange = (updates: Partial<Task>) => {
-    if (!task) return;
+    if (!task || editingBy) return;
     onUpdateTask({ ...updates, id: task.id } as Task);
   };
 
@@ -982,6 +987,16 @@ export default function TaskSheet({
             </button>
           </div>
         </div>
+
+        {editingBy && (
+          <div
+            className="flex items-center gap-2 px-4 py-2.5 border-b text-xs font-medium"
+            style={{ background: `${editingBy.color}18`, borderColor: `${editingBy.color}30`, color: editingBy.color }}
+          >
+            <Lock size={11} />
+            <span>{editingBy.name} está editando esta tarefa agora — visualização somente leitura</span>
+          </div>
+        )}
 
         <div className="flex-1 flex overflow-hidden">
           {/* Main Task Panel */}

@@ -117,28 +117,24 @@ export async function saveTask(task: Task) {
     throw taskError;
   }
 
-  // 2. Sync Labels (delete existing, insert new)
-  // First clear old ones
-  const { error: deleteLabelsError } = await supabase.from('task_labels').delete().eq('task_id', task.id);
-  if (deleteLabelsError) console.error("Error deleting task labels:", deleteLabelsError);
-  
-  // Insert new
+  // 2. Sync Labels — upsert new rows, delete only removed ones (avoids N WAL events per save)
   if (task.labels && task.labels.length > 0) {
-    const labelInserts = task.labels.map(l => ({
-      task_id: task.id,
-      label_id: l.id
-    }));
-    const { error: insertLabelsError } = await supabase.from('task_labels').insert(labelInserts);
-    if (insertLabelsError) console.error("Error inserting task labels:", insertLabelsError);
+    const keepLabelIds = task.labels.map(l => l.id);
+    const { error: deleteLabelsError } = await supabase.from('task_labels').delete().eq('task_id', task.id).not('label_id', 'in', `(${keepLabelIds.join(',')})`);
+    if (deleteLabelsError) console.error("Error deleting task labels:", deleteLabelsError);
+    const labelInserts = task.labels.map(l => ({ task_id: task.id, label_id: l.id }));
+    const { error: upsertLabelsError } = await supabase.from('task_labels').upsert(labelInserts);
+    if (upsertLabelsError) console.error("Error upserting task labels:", upsertLabelsError);
+  } else {
+    const { error: deleteLabelsError } = await supabase.from('task_labels').delete().eq('task_id', task.id);
+    if (deleteLabelsError) console.error("Error deleting task labels:", deleteLabelsError);
   }
 
-  // 3. Sync Subtasks
-  // Supabase doesn't easily do full nested replace without deleting first.
-  // We'll delete old subtasks and insert the new array
-  const { error: deleteSubtasksError } = await supabase.from('subtasks').delete().eq('task_id', task.id);
-  if (deleteSubtasksError) console.error("Error deleting subtasks:", deleteSubtasksError);
-  
+  // 3. Sync Subtasks — upsert changed/new rows, delete removed ones only (avoids N WAL events per save)
   if (task.subtasks && task.subtasks.length > 0) {
+    const keepIds = task.subtasks.map(st => st.id);
+    const { error: deleteSubtasksError } = await supabase.from('subtasks').delete().eq('task_id', task.id).not('id', 'in', `(${keepIds.join(',')})`);
+    if (deleteSubtasksError) console.error("Error deleting subtasks:", deleteSubtasksError);
     const subtaskInserts = task.subtasks.map(st => ({
       id: st.id,
       task_id: task.id,
@@ -149,8 +145,11 @@ export async function saveTask(task: Task) {
       reminder_type: st.reminderType || null,
       level: st.level
     }));
-    const { error: insertSubtasksError } = await supabase.from('subtasks').insert(subtaskInserts);
-    if (insertSubtasksError) console.error("Error inserting subtasks:", insertSubtasksError);
+    const { error: upsertSubtasksError } = await supabase.from('subtasks').upsert(subtaskInserts);
+    if (upsertSubtasksError) console.error("Error upserting subtasks:", upsertSubtasksError);
+  } else {
+    const { error: deleteSubtasksError } = await supabase.from('subtasks').delete().eq('task_id', task.id);
+    if (deleteSubtasksError) console.error("Error deleting subtasks:", deleteSubtasksError);
   }
   } finally {
     delete taskSaveLocks[task.id];
@@ -206,30 +205,39 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     }
 
     if (updates.labels !== undefined) {
-      const { error: deleteError } = await supabase.from('task_labels').delete().eq('task_id', taskId);
-      if (deleteError) console.error("Error deleting task labels:", deleteError);
       if (updates.labels && updates.labels.length > 0) {
+        const keepLabelIds = updates.labels.map(l => l.id);
+        const { error: deleteError } = await supabase.from('task_labels').delete().eq('task_id', taskId).not('label_id', 'in', `(${keepLabelIds.join(',')})`);
+        if (deleteError) console.error("Error deleting task labels:", deleteError);
         const labelInserts = updates.labels.map(l => ({ task_id: taskId, label_id: l.id }));
-        const { error: insertError } = await supabase.from('task_labels').insert(labelInserts);
-        if (insertError) console.error("Error inserting task labels:", insertError);
+        const { error: upsertError } = await supabase.from('task_labels').upsert(labelInserts);
+        if (upsertError) console.error("Error upserting task labels:", upsertError);
+      } else {
+        const { error: deleteError } = await supabase.from('task_labels').delete().eq('task_id', taskId);
+        if (deleteError) console.error("Error deleting task labels:", deleteError);
       }
     }
 
     if (updates.subtasks !== undefined) {
-      const { error: deleteError } = await supabase.from('subtasks').delete().eq('task_id', taskId);
-      if (deleteError) console.error("Error deleting subtasks:", deleteError);
       if (updates.subtasks && updates.subtasks.length > 0) {
+        const keepIds = updates.subtasks.map(st => st.id);
+        const { error: deleteError } = await supabase.from('subtasks').delete().eq('task_id', taskId).not('id', 'in', `(${keepIds.join(',')})`);
+        if (deleteError) console.error("Error deleting subtasks:", deleteError);
         const subtaskInserts = updates.subtasks.map(st => ({
           id: st.id,
           task_id: taskId,
           title: st.title,
           completed: st.completed,
           canceled: st.canceled,
-          reminder_date: st.reminderDate,
+          reminder_date: st.reminderDate || null,
+          reminder_type: st.reminderType || null,
           level: st.level
         }));
-        const { error: insertError } = await supabase.from('subtasks').insert(subtaskInserts);
-        if (insertError) console.error("Error inserting subtasks:", insertError);
+        const { error: upsertError } = await supabase.from('subtasks').upsert(subtaskInserts);
+        if (upsertError) console.error("Error upserting subtasks:", upsertError);
+      } else {
+        const { error: deleteError } = await supabase.from('subtasks').delete().eq('task_id', taskId);
+        if (deleteError) console.error("Error deleting subtasks:", deleteError);
       }
     }
   } finally {
