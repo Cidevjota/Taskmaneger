@@ -169,13 +169,19 @@ export default function App() {
       setEditingMap(map);
     }).subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        const track = (taskId: string | null) => ch.track({
-          userId: currentUser.id,
-          name: currentUser.name,
-          avatarUrl: currentUser.avatarUrl,
-          editingTaskId: taskId,
-          color: colorFor(currentUser.id),
-        });
+        const track = (taskId: string | null) => {
+          if (taskId) {
+            ch.track({
+              userId: currentUser.id,
+              name: currentUser.name,
+              avatarUrl: currentUser.avatarUrl,
+              editingTaskId: taskId,
+              color: colorFor(currentUser.id),
+            });
+          } else {
+            ch.untrack();
+          }
+        };
         presenceTrackRef.current = track;
         track(null);
       }
