@@ -204,10 +204,10 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
     if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId || null;
     if (updates.createdAt !== undefined) dbUpdates.created_at = updates.createdAt;
-    if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
+    if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate || null;
     if ('reminderDate' in updates) dbUpdates.reminder_date = updates.reminderDate ?? null;
     if ('reminderType' in updates) dbUpdates.reminder_type = updates.reminderType ?? null;
-    if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate;
+    if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate || null;
     if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
     if (updates.parentTaskId !== undefined) dbUpdates.parent_task_id = updates.parentTaskId;
     if (updates.updatedBy !== undefined) dbUpdates.updated_by = updates.updatedBy;

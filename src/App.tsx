@@ -84,6 +84,7 @@ export default function App() {
 
   // Presence: who is editing which task
   const presenceTrackRef = useRef<((taskId: string | null) => void) | null>(null);
+  const presenceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingMap, setEditingMap] = useState<Record<string, EditorPresence>>({});
 
   // Track recently saved task IDs to suppress self-triggered Realtime events
@@ -189,10 +190,17 @@ export default function App() {
     return () => { presenceTrackRef.current = null; supabase.removeChannel(ch); };
   }, [currentUser?.id]);
 
-  // Tell presence channel when this user starts/stops editing a task
+  // Tell presence channel when this user starts/stops editing a task.
+  // Debounced to avoid rate-limit errors when navigating quickly between tasks.
   useEffect(() => {
     const taskId = isTaskSheetOpen && selectedTask ? selectedTask.id : null;
-    presenceTrackRef.current?.(taskId);
+    if (presenceDebounceRef.current) clearTimeout(presenceDebounceRef.current);
+    presenceDebounceRef.current = setTimeout(() => {
+      presenceTrackRef.current?.(taskId);
+    }, 300);
+    return () => {
+      if (presenceDebounceRef.current) clearTimeout(presenceDebounceRef.current);
+    };
   }, [isTaskSheetOpen, selectedTask?.id]);
 
   // Setup realtime — per-table filters avoid the schema-wide wildcard that was
