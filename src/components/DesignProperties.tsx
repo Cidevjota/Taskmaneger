@@ -154,7 +154,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
       });
       setIsEditing(!task.designBriefing?.isFilled);
     }
-  }, [task.id]);
+  }, [task.id, task.designBriefing]);
 
   useEffect(() => {
     const handleOpenSection = (e: CustomEvent<{ section: string, targetId?: string }>) => {

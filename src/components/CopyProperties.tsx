@@ -167,7 +167,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
       });
       setIsEditing(false); // Reset to view mode on new task
     }
-  }, [task.id]);
+  }, [task.id, task.copyBriefing]);
 
   useEffect(() => {
     const handleOpenSection = (e: CustomEvent<{ section: string, targetId?: string }>) => {
