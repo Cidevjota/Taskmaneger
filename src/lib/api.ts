@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, DesignBriefing, CopyBriefing, PlanningBriefing } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -13,9 +13,18 @@ export async function fetchLabels(): Promise<Label[]> {
   return data as Label[];
 }
 
+// design_briefing / copy_briefing / planning_briefing are excluded here (~13 MB total).
+// They are fetched on-demand via fetchTaskBriefings() when a task is opened.
+const TASKS_LIST_COLS = [
+  'id', 'task_code', 'title', 'description', 'status', 'priority',
+  'project_id', 'created_at', 'due_date', 'reminder_date', 'reminder_type',
+  'planned_date', 'assignee_id', 'parent_task_id', 'updated_by',
+  'chat_messages', 'attachments', 'proposals', 'social_media_approval', 'time_tracking'
+].join(', ');
+
 export async function fetchTasks(): Promise<Task[]> {
   const { data, error } = await supabase.from('tasks').select(`
-    *,
+    ${TASKS_LIST_COLS},
     subtasks(*),
     task_labels(
       labels(*)
@@ -47,9 +56,6 @@ export async function fetchTasks(): Promise<Task[]> {
       parentTaskId: t.parent_task_id,
       updatedBy: t.updated_by,
       chatMessages: t.chat_messages || [],
-      designBriefing: t.design_briefing,
-      copyBriefing: t.copy_briefing,
-      planningBriefing: t.planning_briefing,
       attachments: t.attachments || [],
       proposals: t.proposals || [],
       socialMediaApproval: t.social_media_approval,
@@ -66,6 +72,24 @@ export async function fetchTasks(): Promise<Task[]> {
       labels: extractedLabels
     };
   });
+}
+
+export async function fetchTaskBriefings(id: string): Promise<{
+  designBriefing?: DesignBriefing;
+  copyBriefing?: CopyBriefing;
+  planningBriefing?: PlanningBriefing;
+} | null> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('design_briefing, copy_briefing, planning_briefing')
+    .eq('id', id)
+    .single();
+  if (error || !data) return null;
+  return {
+    designBriefing: data.design_briefing ?? undefined,
+    copyBriefing: data.copy_briefing ?? undefined,
+    planningBriefing: data.planning_briefing ?? undefined,
+  };
 }
 
 const taskSaveLocks: Record<string, Promise<void>> = {};

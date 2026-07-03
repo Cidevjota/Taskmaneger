@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Columns3, 
   List, 
@@ -21,7 +21,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote } from './types';
-import { fetchTasks, fetchProjects, fetchLabels, saveTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -517,12 +517,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalShortcuts);
   }, []);
 
-  // Update selectedTask details live when the database copies alter
+  // Update selectedTask details live when the database copies alter.
+  // Briefings are NOT in the list fetch — preserve them from the previous state.
   useEffect(() => {
     if (selectedTask) {
       const refreshedTask = tasks.find(t => t.id === selectedTask.id);
       if (refreshedTask) {
-        setSelectedTask(refreshedTask);
+        setSelectedTask(prev => prev ? {
+          ...refreshedTask,
+          designBriefing: prev.designBriefing,
+          copyBriefing: prev.copyBriefing,
+          planningBriefing: prev.planningBriefing,
+        } : refreshedTask);
       }
     }
   }, [tasks, selectedTask?.id]);
@@ -684,6 +690,20 @@ export default function App() {
     setIsTaskSheetOpen(true);
   };
 
+  const handleSelectTask = useCallback(async (task: Task) => {
+    setSelectedTask(task);
+    setIsTaskSheetOpen(true);
+    // Load briefing columns on-demand (excluded from fetchTasks to save bandwidth)
+    try {
+      const briefings = await fetchTaskBriefings(task.id);
+      if (briefings) {
+        setSelectedTask(prev => prev?.id === task.id ? { ...prev, ...briefings } : prev);
+      }
+    } catch {
+      // Non-blocking — briefing sections will just appear empty
+    }
+  }, []);
+
   const handleCloseTaskSheet = (localTaskState?: any) => {
     if (isTaskSheetOpen && selectedTask) {
       const taskToCheck = localTaskState && !localTaskState.nativeEvent ? localTaskState : tasks.find(t => t.id === selectedTask.id);
@@ -826,10 +846,7 @@ export default function App() {
         onNewTask={handleAddNewTaskPrompt}
         currentProjectFilter={currentProjectFilter}
         setCurrentProjectFilter={setCurrentProjectFilter}
-        onSelectTask={(task) => {
-          setSelectedTask(task);
-          setIsTaskSheetOpen(true);
-        }}
+        onSelectTask={handleSelectTask}
       />
 
       {/* Main Container Viewport */}
@@ -894,20 +911,14 @@ export default function App() {
               setSocialMediaFilter={setSocialMediaFilter}
               onUpdateTask={handleUpdateTask}
               onAddTask={handleAddTask}
-              onSelectTask={(task) => {
-                setSelectedTask(task);
-                setIsTaskSheetOpen(true);
-              }}
+              onSelectTask={handleSelectTask}
             />
           )}
 
           {activeView === 'inbox' && (
-            <InboxView 
+            <InboxView
               projects={projects}
-              onSelectTask={(task) => {
-                setSelectedTask(task);
-                setIsTaskSheetOpen(true);
-              }}
+              onSelectTask={handleSelectTask}
               tasks={tasks}
             />
           )}
@@ -917,10 +928,7 @@ export default function App() {
               tasks={visibleTasks}
               projects={projects}
               labels={labels}
-              onSelectTask={(task) => {
-                setSelectedTask(task);
-                setIsTaskSheetOpen(true);
-              }}
+              onSelectTask={handleSelectTask}
               onUpdateTask={handleUpdateTask}
               onAddTask={handleAddTask}
               currentProjectFilter={currentProjectFilter}
@@ -935,10 +943,7 @@ export default function App() {
               tasks={visibleTasks}
               projects={projects}
               labels={labels}
-              onSelectTask={(task) => {
-                setSelectedTask(task);
-                setIsTaskSheetOpen(true);
-              }}
+              onSelectTask={handleSelectTask}
               onUpdateTask={handleUpdateTask}
               onAddTask={handleAddTask}
               currentProjectFilter={currentProjectFilter}
@@ -951,10 +956,7 @@ export default function App() {
               tasks={visibleTasks}
               projects={projects}
               labels={labels}
-              onSelectTask={(task) => {
-                setSelectedTask(task);
-                setIsTaskSheetOpen(true);
-              }}
+              onSelectTask={handleSelectTask}
               onAddTask={handleAddTask}
               onUpdateTask={handleUpdateTask}
               currentProjectFilter={currentProjectFilter}
@@ -1037,7 +1039,7 @@ export default function App() {
         onDeleteTask={handleDeleteTask}
         allTasks={tasks}
         onAddTask={handleAddTask}
-        onSelectTask={setSelectedTask}
+        onSelectTask={handleSelectTask}
         editingBy={selectedTask ? editingMap[selectedTask.id] : undefined}
       />
 
@@ -1047,10 +1049,7 @@ export default function App() {
         onClose={() => setIsCommandBarOpen(false)}
         tasks={tasks}
         projects={projects}
-        onSelectTask={(task) => {
-          setSelectedTask(task);
-          setIsTaskSheetOpen(true);
-        }}
+        onSelectTask={handleSelectTask}
         onSelectView={setActiveView}
         onSelectTaskViewType={setActiveTaskViewType}
         onNewTask={handleAddNewTaskPrompt}
