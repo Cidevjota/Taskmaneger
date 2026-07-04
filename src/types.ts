@@ -20,7 +20,7 @@ export interface Subtask {
   completed: boolean;
   canceled?: boolean;
   reminderDate?: string;
-  reminderType?: '3h' | '1d' | 'custom';
+  reminderType?: '3h' | '1d' | 'custom' | 'seen';
   assigneeId?: string;
   level?: number;
   completedAt?: string; // ISO timestamp when marked completed
@@ -218,7 +218,7 @@ export interface Task {
   assigneeId?: string;
   parentTaskId?: string;
   reminderDate?: string;
-  reminderType?: '3h' | '1d' | 'custom';
+  reminderType?: '3h' | '1d' | 'custom' | 'seen';
   timeTracking?: TaskTimeTracking;
   reworkCount?: number;
   statusHistory?: StatusHistoryEntry[];
@@ -260,7 +260,7 @@ export interface SiengeTitle {
   loteId?: string;     // FK to sienge_lotes
   assigneeId?: string; // User responsible
   reminderDate?: string;
-  reminderType?: '3h' | '1d' | 'custom';
+  reminderType?: '3h' | '1d' | 'custom' | 'seen';
   attachments?: { id: string, name: string, url?: string, data?: string }[];
   status: SiengeStatus;
   createdAt: string;

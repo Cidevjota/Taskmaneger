@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, BellOff } from 'lucide-react';
 import DatePicker from './DatePicker';
 
-export type ReminderType = '3h' | '1d' | 'custom';
+export type ReminderType = '3h' | '1d' | 'custom' | 'seen';
 
 interface ReminderBellProps {
   reminderDate?: string;
@@ -22,6 +22,18 @@ function toISOLocal(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function addHours(h: number): string {
+  const t = new Date();
+  t.setHours(t.getHours() + h);
+  return toISOLocal(t);
+}
+
+function tomorrowAt8(): string {
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T08:00`;
+}
+
 export default function ReminderBell({
   reminderDate,
   reminderType,
@@ -35,27 +47,25 @@ export default function ReminderBell({
 
   function handleClick(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!reminderDate || !reminderType) {
-      // none → +3h
-      const t = new Date();
-      t.setHours(t.getHours() + 3);
-      onChange({ reminderDate: toISOLocal(t), reminderType: '3h' });
+
+    if (!reminderType || reminderType === 'seen') {
+      // Sem lembrete ou já visto → cria +3h
+      onChange({ reminderDate: addHours(3), reminderType: '3h' });
     } else if (reminderType === '3h') {
-      // +3h → +1d at 08:00
-      const t = new Date();
-      t.setDate(t.getDate() + 1);
-      onChange({
-        reminderDate: `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T08:00`,
-        reminderType: '1d',
-      });
+      // +3h → amanhã às 8h
+      onChange({ reminderDate: tomorrowAt8(), reminderType: '1d' });
     } else {
-      // +1d ou custom → abrir calendário
+      // +1d ou custom → abre calendário personalizado
       setForceOpenKey(k => k + 1);
     }
   }
 
+  const isSeen = reminderType === 'seen';
+
   const bellColor =
-    reminderType === '3h'
+    isSeen
+      ? 'text-emerald-400'
+      : reminderType === '3h'
       ? 'text-blue-400'
       : reminderType === '1d'
       ? 'text-yellow-400'
@@ -64,7 +74,9 @@ export default function ReminderBell({
       : 'text-zinc-600 hover:text-zinc-400';
 
   const labelText =
-    reminderType === '3h'
+    isSeen
+      ? '✓'
+      : reminderType === '3h'
       ? '+3h'
       : reminderType === '1d'
       ? '+1d'
@@ -76,20 +88,24 @@ export default function ReminderBell({
       : null;
 
   const labelColor =
-    reminderType === '3h'
+    isSeen
+      ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+      : reminderType === '3h'
       ? 'text-blue-400 bg-blue-400/10 border-blue-400/20'
       : reminderType === '1d'
       ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'
       : 'text-orange-400 bg-orange-400/10 border-orange-400/20';
 
   const title =
-    !reminderType
+    isSeen
+      ? 'Lembrete visto — clique para criar novo (+3h)'
+      : !reminderType
       ? 'Adicionar lembrete (+3h)'
       : reminderType === '3h'
       ? 'Lembrete em 3h — clique para amanhã 8h'
       : reminderType === '1d'
       ? 'Lembrete amanhã 8h — clique para personalizar'
-      : 'Lembrete personalizado — clique para remover';
+      : 'Lembrete personalizado — clique para personalizar';
 
   return (
     <div className="inline-flex items-center gap-1">
@@ -121,7 +137,10 @@ export default function ReminderBell({
             title={title}
             onClick={handleClick}
           >
-            <Bell size={size} className={reminderType ? 'fill-current' : ''} />
+            {isSeen
+              ? <BellOff size={size} className="fill-current" />
+              : <Bell size={size} className={reminderType ? 'fill-current' : ''} />
+            }
           </button>
         }
       />

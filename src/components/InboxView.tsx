@@ -194,8 +194,8 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
 
           <div className="flex flex-col items-end shrink-0 gap-1.5 pt-0.5">
             {!isPostponedNotif(n) && (
-              <span className="text-[10px] text-zinc-500 font-medium">
-                {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+              <span className="text-[10px] text-zinc-500 font-medium whitespace-nowrap">
+                {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} • {new Date(n.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
             {viewTimeStr && (

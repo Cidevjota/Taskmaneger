@@ -21,7 +21,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -86,6 +86,10 @@ export default function App() {
   const presenceTrackRef = useRef<((taskId: string | null) => void) | null>(null);
   const presenceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingMap, setEditingMap] = useState<Record<string, EditorPresence>>({});
+
+  // In-memory set of already-fired reminder IDs to prevent duplicate notifications
+  // across rapid re-renders before updateProfile() persists to Supabase.
+  const triggeredRemindersRef = useRef<Set<string>>(new Set());
 
   // Track recently saved task IDs to suppress self-triggered Realtime events
   const recentlySavedRef = useRef<Map<string, number>>(new Map());
@@ -319,9 +323,14 @@ export default function App() {
       const now = new Date();
       const today = now.toISOString().split('T')[0];
 
-      // Read triggered reminders from user preferences (synced with Supabase)
-      let triggeredReminders: string[] = currentUser.preferences?.triggeredReminders || [];
-      
+      // Merge persisted list with in-memory ref — prevents duplicates when
+      // updateProfile() hasn't flushed to Supabase yet on rapid re-renders.
+      const persisted: string[] = currentUser.preferences?.triggeredReminders || [];
+      let triggeredReminders: string[] = [
+        ...persisted,
+        ...Array.from(triggeredRemindersRef.current).filter(id => !persisted.includes(id)),
+      ];
+
       let hasNewTriggers = false;
       
       tasks.filter(t => t.assigneeId === currentUser.id && t.status !== 'done').forEach(task => {
@@ -386,10 +395,10 @@ export default function App() {
         }
 
         // Check task reminder
-        if (task.reminderDate) {
+        if (task.reminderDate && task.reminderType !== 'seen') {
            const reminderTime = new Date(task.reminderDate).getTime();
            const reminderId = `task_${task.id}_${task.reminderDate}`;
-           
+
            if (now.getTime() >= reminderTime && !triggeredReminders.includes(reminderId)) {
              addNotification({
                userId: currentUser.id,
@@ -400,17 +409,20 @@ export default function App() {
                message: 'Lembrete de Tarefa',
                details: `O lembrete para a tarefa "${task.title}" foi acionado`
              });
+             triggeredRemindersRef.current.add(reminderId);
              triggeredReminders = [...triggeredReminders, reminderId];
              hasNewTriggers = true;
+             // Mark as seen in DB so the bell turns green
+             patchTask(task.id, { reminderType: 'seen' as any, updatedBy: currentUser.id }).catch(console.error);
            }
         }
 
         // Check subtask reminders
         task.subtasks.forEach(st => {
-           if (st.reminderDate && !st.completed) {
+           if (st.reminderDate && !st.completed && st.reminderType !== 'seen') {
              const reminderTime = new Date(st.reminderDate).getTime();
              const reminderId = `sub_${st.id}_${st.reminderDate}`;
-             
+
              if (now.getTime() >= reminderTime && !triggeredReminders.includes(reminderId)) {
                addNotification({
                  userId: currentUser.id,
@@ -421,6 +433,7 @@ export default function App() {
                  message: 'Lembrete Acionado',
                  details: `"${st.title}"`
                });
+               triggeredRemindersRef.current.add(reminderId);
                triggeredReminders = [...triggeredReminders, reminderId];
                hasNewTriggers = true;
              }
