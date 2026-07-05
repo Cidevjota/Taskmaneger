@@ -67,6 +67,7 @@ export async function fetchTasks(): Promise<Task[]> {
         canceled: st.canceled,
         reminderDate: st.reminder_date,
         reminderType: st.reminder_type,
+        assigneeId: st.assignee_id,
         level: st.level
       })),
       labels: extractedLabels
@@ -167,6 +168,7 @@ export async function saveTask(task: Task) {
       canceled: st.canceled,
       reminder_date: st.reminderDate || null,
       reminder_type: st.reminderType || null,
+      assignee_id: st.assigneeId || null,
       level: st.level
     }));
     const { error: upsertSubtasksError } = await supabase.from('subtasks').upsert(subtaskInserts);
@@ -255,6 +257,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
           canceled: st.canceled,
           reminder_date: st.reminderDate || null,
           reminder_type: st.reminderType || null,
+          assignee_id: st.assigneeId || null,
           level: st.level
         }));
         const { error: upsertError } = await supabase.from('subtasks').upsert(subtaskInserts);

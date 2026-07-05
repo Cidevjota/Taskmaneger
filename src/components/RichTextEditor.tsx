@@ -51,6 +51,7 @@ interface RichTextEditorProps {
   wrapperClassName?: string;
   columns?: 1 | 2 | 3;
   onColumnsChange?: (cols: 1 | 2 | 3) => void;
+  readOnly?: boolean;
 }
 
 const COLORS = [
@@ -388,12 +389,14 @@ interface SingleEditorProps {
   onFocus: () => void;
   editorRefCallback: (editor: Editor | null) => void;
   placeholderText?: string;
+  readOnly?: boolean;
 }
 
-function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, placeholderText = 'Escreva sobre o que é essa tarefa...' }: SingleEditorProps) {
+function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, placeholderText = 'Escreva sobre o que é essa tarefa...', readOnly }: SingleEditorProps) {
   const localRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
+    editable: !readOnly,
     extensions: [
       // Headings kept in StarterKit for backward compat with existing content
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -450,24 +453,26 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
   }, [editor]);
 
   useEffect(() => {
-    if (editor && !editor.isDestroyed) {
+    if (editor && !editor.isDestroyed && readOnly) {
       if (editor.getHTML() !== content) {
         editor.commands.setContent(content || '');
       }
     }
-  }, [taskId]);
+  }, [content, readOnly, editor]);
 
   return <EditorContent editor={editor} className="h-full min-h-[150px]" />;
 }
 
-export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '', columns = 1, onColumnsChange }: RichTextEditorProps) {
+export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '', columns = 1, onColumnsChange, readOnly }: RichTextEditorProps) {
   const [contents, setContents] = useState<string[]>(() => parseMultiColumnContent(content, columns));
   const [activeIdx, setActiveIdx] = useState(0);
   const editorsRef = useRef<(Editor | null)[]>([null, null, null]);
 
   useEffect(() => {
-    setContents(parseMultiColumnContent(content, columns));
-  }, [taskId]);
+    if (readOnly) {
+      setContents(parseMultiColumnContent(content, columns));
+    }
+  }, [content, readOnly, columns]);
 
   const handleEditorChange = (index: number, html: string) => {
     setContents(prev => {
@@ -511,6 +516,7 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
             <SingleEditor
               taskId={`${taskId}-col-${i}`}
               content={contents[i] || ''}
+              readOnly={readOnly}
               onChange={(html) => handleEditorChange(i, html)}
               onFocus={() => setActiveIdx(i)}
               editorRefCallback={(ed) => { editorsRef.current[i] = ed; }}

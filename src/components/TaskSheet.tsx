@@ -73,6 +73,7 @@ interface TaskSheetProps {
   onSelectTask?: (task: Task) => void;
   isCompareChild?: boolean;
   editingBy?: EditorPresence;
+  editingMap?: Record<string, EditorPresence>;
 }
 
 const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon: React.ReactNode }[] = [
@@ -392,32 +393,45 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
   );
 };
 
-const TitleInput = ({ taskId, initialValue, onChange, missingTitle }: { taskId: string, initialValue: string, onChange: (val: string) => void, missingTitle: boolean }) => {
+const TitleInput = ({ taskId, initialValue, onChange, missingTitle, disabled }: { taskId: string, initialValue: string, onChange: (val: string) => void, missingTitle: boolean, disabled?: boolean }) => {
   const [val, setVal] = useState(initialValue);
   
   useEffect(() => {
+    if (disabled || val === initialValue) return; // Keep uncontrolled if they type. But wait, if disabled we DO want to update.
+    // Actually, just:
+    if (disabled) setVal(initialValue);
+  }, [initialValue, disabled]);
+
+  useEffect(() => {
+    // Only reset on new task
     setVal(initialValue);
   }, [taskId]);
 
   return (
     <textarea
       value={val}
+      disabled={disabled}
       onChange={(e) => {
+        if (disabled) return;
         setVal(e.target.value);
         onChange(e.target.value);
       }}
       placeholder="Dê um nome para sua tarefa..."
       rows={2}
-      className={`w-full bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-2xl font-bold placeholder-zinc-500 resize-none leading-tight ${missingTitle ? 'text-red-400 placeholder:text-red-400/50' : 'text-zinc-100'}`}
+      className={`w-full bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-2xl font-bold placeholder-zinc-500 resize-none leading-tight ${missingTitle ? 'text-red-400 placeholder:text-red-400/50' : 'text-zinc-100'} ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}
     />
   );
 };
 
-const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown }: { subtaskId: string, initialValue: string, onChange: (val: string) => void, onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void }) => {
+const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled }: { subtaskId: string, initialValue: string, onChange: (val: string) => void, onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void, disabled?: boolean }) => {
   const [val, setVal] = useState(initialValue);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => setVal(initialValue), [subtaskId, initialValue]);
+  useEffect(() => {
+    if (disabled) setVal(initialValue);
+  }, [initialValue, disabled]);
+  
+  useEffect(() => setVal(initialValue), [subtaskId]); // Removed initialValue from here to avoid typing jump if it was an echo.
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -432,12 +446,17 @@ const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown }: { subtas
       id={`subtask-input-${subtaskId}`}
       rows={1}
       value={val}
+      disabled={disabled}
       onChange={(e) => {
+        if (disabled) return;
         setVal(e.target.value);
         onChange(e.target.value);
       }}
-      onKeyDown={onKeyDown}
-      className="flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-xs font-normal text-zinc-300 placeholder-zinc-600 resize-none overflow-hidden block w-full py-0"
+      onKeyDown={(e) => {
+        if (disabled) return;
+        if (onKeyDown) onKeyDown(e);
+      }}
+      className={`flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-xs font-normal text-zinc-300 placeholder-zinc-600 resize-none overflow-hidden block w-full py-0 ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}
       placeholder="Descreva a subtarefa..."
     />
   );
@@ -455,7 +474,8 @@ export default function TaskSheet({
   onAddTask,
   onSelectTask,
   isCompareChild = false,
-  editingBy
+  editingBy,
+  editingMap
 }: TaskSheetProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -540,19 +560,19 @@ export default function TaskSheet({
 
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.classList.add('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
+            el.classList.add('animate-highlight-glow', 'rounded-md');
             setTimeout(() => {
-              el.classList.remove('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
-            }, 2500);
+              el.classList.remove('animate-highlight-glow', 'rounded-md');
+            }, 2200);
           } else if (targetId && attempts < 15) {
             attempts++;
             setTimeout(tryScroll, 100);
           } else if (fallbackEl) {
             fallbackEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            fallbackEl.classList.add('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
+            fallbackEl.classList.add('animate-highlight-glow', 'rounded-md');
             setTimeout(() => {
-              fallbackEl.classList.remove('animate-pulse-subtle', '!bg-amber-500/20', '!border-amber-500/50', 'rounded-md', 'transition-all', 'duration-500');
-            }, 2500);
+              fallbackEl.classList.remove('animate-highlight-glow', 'rounded-md');
+            }, 2200);
           } else if (attempts < 15) {
             attempts++;
             setTimeout(tryScroll, 100);
@@ -578,8 +598,30 @@ export default function TaskSheet({
   const [isCompareSearchOpen, setIsCompareSearchOpen] = useState(false);
   const [compareSearchQuery, setCompareSearchQuery] = useState('');
 
+  const [effectiveLock, setEffectiveLock] = useState<EditorPresence | null>(editingBy || null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    if (editingBy) {
+      setEffectiveLock(editingBy);
+      setIsSyncing(false);
+    } else if (effectiveLock && !editingBy) {
+      setIsSyncing(true);
+      const timer = setTimeout(() => {
+        setEffectiveLock(null);
+        setIsSyncing(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setEffectiveLock(null);
+      setIsSyncing(false);
+    }
+  }, [editingBy]);
+
   if (task?.id !== prevTaskId) {
     setPrevTaskId(task?.id);
+    setEffectiveLock(editingBy || null);
+    setIsSyncing(false);
     titleRef.current = task?.title || '';
     descriptionRef.current = task?.description || '';
     setStatus(task?.status || 'todo');
@@ -596,6 +638,14 @@ export default function TaskSheet({
     setAnimatingToIndex(null);
     setCurrentVisibleIndex(-1);
   }
+
+  useEffect(() => {
+    if (effectiveLock && task) {
+      titleRef.current = task.title || '';
+      descriptionRef.current = task.description || '';
+      setSubtasks(task.subtasks || []);
+    }
+  }, [task, effectiveLock]);
 
   useEffect(() => {
     if (task && task.status && task.status !== status) {
@@ -677,7 +727,7 @@ export default function TaskSheet({
   if (!isOpen || !task) return null;
 
   const saveChange = (updates: Partial<Task>) => {
-    if (!task || editingBy) return;
+    if (!task || effectiveLock) return;
     onUpdateTask({ ...updates, id: task.id } as Task);
   };
 
@@ -988,13 +1038,17 @@ export default function TaskSheet({
           </div>
         </div>
 
-        {editingBy && (
+        {effectiveLock && (
           <div
             className="flex items-center gap-2 px-4 py-2.5 border-b text-xs font-medium"
-            style={{ background: `${editingBy.color}18`, borderColor: `${editingBy.color}30`, color: editingBy.color }}
+            style={{ background: `${effectiveLock.color}18`, borderColor: `${effectiveLock.color}30`, color: effectiveLock.color }}
           >
-            <Lock size={11} />
-            <span>{editingBy.name} está editando esta tarefa agora — visualização somente leitura</span>
+            {isSyncing ? <Clock size={11} className="animate-pulse" /> : <Lock size={11} />}
+            <span>
+              {isSyncing 
+                ? `${effectiveLock.name} finalizou a edição. Sincronizando os últimos dados...` 
+                : `${effectiveLock.name} está editando esta tarefa agora — visualização somente leitura`}
+            </span>
           </div>
         )}
 
@@ -1008,8 +1062,9 @@ export default function TaskSheet({
             </div>
             <TitleInput
               taskId={task.id}
-              initialValue={titleRef.current}
+              initialValue={effectiveLock ? (task.title || '') : titleRef.current}
               missingTitle={missingTitle}
+              disabled={!!effectiveLock}
               onChange={(val) => {
                 titleRef.current = val;
                 if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
@@ -1389,9 +1444,10 @@ export default function TaskSheet({
                 <div className={`flex flex-col h-full transition-all duration-300 ease-in-out shrink-0 min-w-0 ${isChatOpen ? 'w-full md:w-[calc(66.666%-12px)]' : 'w-full'}`}>
                   <RichTextEditor
                     taskId={task.id}
-                    content={descriptionRef.current}
+                    content={effectiveLock ? (task.description || '') : descriptionRef.current}
                     wrapperClassName="h-full"
                     columns={descColumns as 1|2|3}
+                    readOnly={!!effectiveLock}
                     onColumnsChange={(c) => setDescColumns(c)}
                     onChange={(newContent) => {
                       descriptionRef.current = newContent;
@@ -1458,6 +1514,7 @@ export default function TaskSheet({
                         <SubtaskInput
                           subtaskId={subtask.id}
                           initialValue={subtask.title}
+                          disabled={!!effectiveLock}
                           onChange={(val) => handleEditSubtaskTitle(subtask.id, val)}
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />
@@ -1633,6 +1690,28 @@ export default function TaskSheet({
                                    </span>
                                  )}
                                </span>
+                               
+                               {editingMap && editingMap[t.id] && (
+                                 <span 
+                                   className="flex items-center gap-1 opacity-90 border rounded-full px-1.5 py-0.5 shadow-sm"
+                                   style={{ 
+                                     background: `${editingMap[t.id].color}20`, 
+                                     borderColor: `${editingMap[t.id].color}40`,
+                                     color: editingMap[t.id].color
+                                   }}
+                                   title={`${editingMap[t.id].name} está editando`}
+                                 >
+                                   <Lock size={9} />
+                                   {editingMap[t.id].avatarUrl ? (
+                                      <img src={editingMap[t.id].avatarUrl} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                   ) : (
+                                      <span className="text-[8px] font-bold">
+                                        {editingMap[t.id].name.substring(0, 1).toUpperCase()}
+                                      </span>
+                                   )}
+                                 </span>
+                               )}
+
                                <span className="flex items-center gap-1 whitespace-nowrap font-mono tracking-tighter text-[9px] opacity-80">
                                  {t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR').slice(0, 5) : 'S/P'}
                                </span>
@@ -2082,7 +2161,8 @@ export default function TaskSheet({
           <div className="flex-1 overflow-hidden flex flex-col p-8 max-w-5xl mx-auto w-full">
             <RichTextEditor
               taskId={task.id}
-              content={descriptionRef.current}
+              content={effectiveLock ? (task.description || '') : descriptionRef.current}
+              readOnly={!!effectiveLock}
               onChange={(newContent) => {
                 descriptionRef.current = newContent;
                 if (descTimerRef.current) clearTimeout(descTimerRef.current);

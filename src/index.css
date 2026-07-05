@@ -40,10 +40,39 @@
   --animate-slide-in-right: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-pulse-slow: pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-pulse-subtle: pulseSubtle 2s ease-in-out;
-  
+  --animate-highlight-glow: highlightGlow 2.2s cubic-bezier(0.16, 1, 0.3, 1);
+
   @keyframes pulseSubtle {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.8; transform: scale(1.02); }
+  }
+
+  @keyframes highlightGlow {
+    0% {
+      opacity: 0;
+      transform: scale(0.98);
+      background-color: color-mix(in srgb, var(--color-blue-500, #3b82f6) 0%, transparent);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-blue-500, #3b82f6) 0%, transparent);
+    }
+    12% {
+      opacity: 1;
+      transform: scale(1.015);
+      background-color: color-mix(in srgb, var(--color-blue-500, #3b82f6) 16%, transparent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-blue-500, #3b82f6) 22%, transparent), 0 0 24px 4px color-mix(in srgb, var(--color-blue-500, #3b82f6) 18%, transparent);
+    }
+    28% {
+      transform: scale(1);
+    }
+    75% {
+      opacity: 1;
+      background-color: color-mix(in srgb, var(--color-blue-500, #3b82f6) 10%, transparent);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-blue-500, #3b82f6) 12%, transparent), 0 0 12px 2px color-mix(in srgb, var(--color-blue-500, #3b82f6) 8%, transparent);
+    }
+    100% {
+      opacity: 1;
+      background-color: transparent;
+      box-shadow: 0 0 0 0 transparent;
+    }
   }
   
   @keyframes slideUp {

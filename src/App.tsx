@@ -163,12 +163,25 @@ export default function App() {
     });
     ch.on('presence', { event: 'sync' }, () => {
       const state = ch.presenceState<any>();
-      const map: Record<string, EditorPresence> = {};
+      const taskPresences: Record<string, any[]> = {};
+      
       for (const presences of Object.values(state) as any[][]) {
         for (const p of presences) {
-          if (p.editingTaskId && p.userId !== currentUser.id) {
-            map[p.editingTaskId] = { name: p.name, avatarUrl: p.avatarUrl, color: p.color };
+          if (p.editingTaskId) {
+            if (!taskPresences[p.editingTaskId]) taskPresences[p.editingTaskId] = [];
+            taskPresences[p.editingTaskId].push(p);
           }
+        }
+      }
+
+      const map: Record<string, EditorPresence> = {};
+      for (const [taskId, users] of Object.entries(taskPresences)) {
+        // Sort by joinedAt to find the first one (oldest)
+        users.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+        const winner = users[0];
+        
+        if (winner.userId !== currentUser.id) {
+          map[taskId] = { name: winner.name, avatarUrl: winner.avatarUrl, color: winner.color };
         }
       }
       setEditingMap(map);
@@ -182,6 +195,7 @@ export default function App() {
               avatarUrl: currentUser.avatarUrl,
               editingTaskId: taskId,
               color: colorFor(currentUser.id),
+              joinedAt: Date.now(),
             });
           } else {
             ch.untrack();
@@ -1072,6 +1086,7 @@ export default function App() {
         onAddTask={handleAddTask}
         onSelectTask={handleSelectTask}
         editingBy={selectedTask ? editingMap[selectedTask.id] : undefined}
+        editingMap={editingMap}
       />
 
       {/* Cmd+K global Command Palette overlay popover */}
