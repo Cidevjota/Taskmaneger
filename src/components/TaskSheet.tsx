@@ -697,7 +697,7 @@ export default function TaskSheet({
     }));
   };
 
-  const handleSetSubtaskReminder = (subId: string, update: { reminderDate?: string; reminderType?: '3h' | '1d' | 'custom' }) => {
+  const handleSetSubtaskReminder = (subId: string, update: { reminderDate?: string; reminderType?: '3h' | '1d' | 'custom' | 'seen' }) => {
     setSubtasks(prev => prev.map(s => s.id === subId
       ? { ...s, reminderDate: update.reminderDate, reminderType: update.reminderType }
       : s
@@ -1240,15 +1240,22 @@ export default function TaskSheet({
                   trigger={
                     (() => {
                       const relatedNotif = notifications.find(n => n.type === 'reminder' && n.taskId === task.id && (!n.targetId || n.targetId === task.id));
-                      const isReminderSeen = relatedNotif && relatedNotif.status !== 'unread';
-                      const activeColorClass = isReminderSeen 
-                        ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 hover:bg-emerald-400/20' 
+                      const isReminderSeen = task?.reminderType === 'seen' || (relatedNotif && relatedNotif.status !== 'unread');
+                      const activeColorClass = isReminderSeen
+                        ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 hover:bg-emerald-400/20'
                         : 'text-amber-400 bg-amber-400/10 border-amber-400/20 hover:bg-amber-400/20';
 
                       return (
                         <button
                           type="button"
                           className={`w-full inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors ${reminderDate ? activeColorClass : 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20'}`}
+                      onClick={(e) => {
+                        if (isReminderSeen) {
+                          e.stopPropagation();
+                          setReminderDate(undefined);
+                          saveChange({ reminderDate: undefined, reminderType: undefined });
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-1.5 truncate">
                         {reminderDate ? (
@@ -1436,10 +1443,10 @@ export default function TaskSheet({
                       id={`target-${subtask.id}`}
                       key={subtask.id} 
                       style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
-                      className="flex items-start justify-between py-0.5 group transition-all border-b border-transparent hover:border-zinc-800/50"
+                      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50"
                     >
-                      <div className="flex items-start gap-2 flex-1 min-w-0 py-[1px]">
-                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 mt-[2px]">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 flex items-center justify-center">
                           {subtask.completed ? (
                             <CheckSquare size={13} className="text-emerald-400/50" />
                           ) : subtask.canceled ? (
@@ -1448,14 +1455,14 @@ export default function TaskSheet({
                             <Square size={13} className="text-gray-500 hover:text-gray-300" />
                           )}
                         </button>
-                        <SubtaskInput 
+                        <SubtaskInput
                           subtaskId={subtask.id}
                           initialValue={subtask.title}
                           onChange={(val) => handleEditSubtaskTitle(subtask.id, val)}
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />
                       </div>
-                      <div className={`flex items-center mt-[1px] ml-2 shrink-0 transition-opacity gap-1 ${subtask.completed || subtask.reminderDate || subtask.reminderType || subtask.assigneeId || subtaskAssigneeMenuOpenFor === subtask.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                      <div className="flex items-center ml-2 shrink-0 gap-1">
                         {subtask.completed && subtask.completedAt && (
                           <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
                             <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
@@ -1530,8 +1537,8 @@ export default function TaskSheet({
                   ))}
 
                   {/* Ghost inline input for adding subtasks */}
-                  <div className="flex items-start gap-2 py-1 opacity-50 hover:opacity-100 transition-opacity mt-1">
-                    <Plus size={13} className="text-gray-500 shrink-0 mt-[2px]" />
+                  <div className="flex items-center gap-2 py-1 px-1 -mx-1 opacity-50 hover:opacity-100 transition-opacity mt-1">
+                    <Plus size={13} className="text-gray-500 shrink-0" />
                     <textarea
                       rows={1}
                       value={newSubtaskTitle}

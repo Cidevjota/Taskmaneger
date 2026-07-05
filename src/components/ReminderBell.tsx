@@ -44,19 +44,31 @@ export default function ReminderBell({
   disableAutoScroll,
 }: ReminderBellProps) {
   const [forceOpenKey, setForceOpenKey] = useState(0);
+  const [awaitingCustomDate, setAwaitingCustomDate] = useState(false);
 
   function handleClick(e: React.MouseEvent) {
     e.stopPropagation();
 
-    if (!reminderType || reminderType === 'seen') {
-      // Sem lembrete ou já visto → cria +3h
+    if (reminderType === 'seen') {
+      // Visto (verde) → remove o lembrete por completo
+      onChange({ reminderDate: undefined, reminderType: undefined });
+      setAwaitingCustomDate(false);
+    } else if (!reminderType) {
+      // Sem lembrete → +3h
       onChange({ reminderDate: addHours(3), reminderType: '3h' });
+      setAwaitingCustomDate(false);
     } else if (reminderType === '3h') {
       // +3h → amanhã às 8h
       onChange({ reminderDate: tomorrowAt8(), reminderType: '1d' });
+      setAwaitingCustomDate(false);
+    } else if (awaitingCustomDate) {
+      // 4º clique sem escolher data no calendário → remove o lembrete
+      onChange({ reminderDate: undefined, reminderType: undefined });
+      setAwaitingCustomDate(false);
     } else {
       // +1d ou custom → abre calendário personalizado
       setForceOpenKey(k => k + 1);
+      setAwaitingCustomDate(true);
     }
   }
 
@@ -98,11 +110,13 @@ export default function ReminderBell({
 
   const title =
     isSeen
-      ? 'Lembrete visto — clique para criar novo (+3h)'
+      ? 'Lembrete reconhecido — clique para remover'
       : !reminderType
       ? 'Adicionar lembrete (+3h)'
       : reminderType === '3h'
       ? 'Lembrete em 3h — clique para amanhã 8h'
+      : awaitingCustomDate
+      ? 'Escolha uma data ou clique novamente para remover o lembrete'
       : reminderType === '1d'
       ? 'Lembrete amanhã 8h — clique para personalizar'
       : 'Lembrete personalizado — clique para personalizar';
@@ -124,6 +138,7 @@ export default function ReminderBell({
         enableTime={true}
         forceOpen={forceOpenKey}
         onChange={(date) => {
+          setAwaitingCustomDate(false);
           if (date) {
             onChange({ reminderDate: date, reminderType: 'custom' });
           } else {

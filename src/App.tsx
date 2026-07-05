@@ -333,9 +333,11 @@ export default function App() {
 
       let hasNewTriggers = false;
       
-      tasks.filter(t => t.assigneeId === currentUser.id && t.status !== 'done').forEach(task => {
+      tasks.filter(t => t.status !== 'done').forEach(task => {
+        const isMyTask = task.assigneeId === currentUser.id;
+
         // Check due date relative to today
-        if (task.dueDate) {
+        if (isMyTask && task.dueDate) {
           const due = new Date(task.dueDate + 'T00:00:00');
           due.setHours(0,0,0,0);
           const todayDate = new Date();
@@ -394,8 +396,8 @@ export default function App() {
           }
         }
 
-        // Check task reminder
-        if (task.reminderDate && task.reminderType !== 'seen') {
+        // Check task reminder — recipient is always the task's assignee
+        if (isMyTask && task.reminderDate && task.reminderType !== 'seen') {
            const reminderTime = new Date(task.reminderDate).getTime();
            const reminderId = `task_${task.id}_${task.reminderDate}`;
 
@@ -417,15 +419,19 @@ export default function App() {
            }
         }
 
-        // Check subtask reminders
+        // Check subtask reminders — recipient is the subtask's own assignee if set,
+        // otherwise it falls back to the parent task's assignee.
         task.subtasks.forEach(st => {
+           const recipientId = st.assigneeId || task.assigneeId;
+           if (recipientId !== currentUser.id) return;
+
            if (st.reminderDate && !st.completed && st.reminderType !== 'seen') {
              const reminderTime = new Date(st.reminderDate).getTime();
              const reminderId = `sub_${st.id}_${st.reminderDate}`;
 
              if (now.getTime() >= reminderTime && !triggeredReminders.includes(reminderId)) {
                addNotification({
-                 userId: currentUser.id,
+                 userId: recipientId,
                  actorId: 'system',
                  taskId: task.id,
                  targetId: st.id,
@@ -436,6 +442,10 @@ export default function App() {
                triggeredRemindersRef.current.add(reminderId);
                triggeredReminders = [...triggeredReminders, reminderId];
                hasNewTriggers = true;
+               // Mark as seen in DB so the bell turns green
+               supabase.from('subtasks').update({ reminder_type: 'seen' }).eq('id', st.id).then(({ error }) => {
+                 if (error) console.error(error);
+               });
              }
            }
         });
