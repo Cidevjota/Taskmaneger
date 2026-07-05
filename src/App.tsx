@@ -203,16 +203,18 @@ export default function App() {
 
     ch.on('broadcast', { event: 'task_close' }, ({ payload }: any) => {
       if (!payload || payload.userId === currentUser.id) return;
-      const prevTaskId = payload.taskId;
-      if (prevTaskId && viewerMapRef.current[prevTaskId]) {
-        const lastUser = viewerMapRef.current[prevTaskId];
-        delete viewerMapRef.current[prevTaskId];
-        // Start cooldown
-        if (cooldownTimersRef.current[prevTaskId]) clearTimeout(cooldownTimersRef.current[prevTaskId]);
-        setCooldownMap(m => ({ ...m, [prevTaskId]: { name: lastUser.name, expiresAt: Date.now() + 2000 } }));
-        cooldownTimersRef.current[prevTaskId] = setTimeout(() => {
-          setCooldownMap(m => { const n = { ...m }; delete n[prevTaskId]; return n; });
-        }, 2000);
+      // Find which task this user had open (by userId, not by taskId which may be empty)
+      for (const [tid, v] of Object.entries(viewerMapRef.current)) {
+        if ((v as any).userId === payload.userId) {
+          const lastUser = v;
+          delete (viewerMapRef.current as any)[tid];
+          if (cooldownTimersRef.current[tid]) clearTimeout(cooldownTimersRef.current[tid]);
+          setCooldownMap(m => ({ ...m, [tid]: { name: lastUser.name, expiresAt: Date.now() + 2000 } }));
+          cooldownTimersRef.current[tid] = setTimeout(() => {
+            setCooldownMap(m => { const n = { ...m }; delete n[tid]; return n; });
+          }, 2000);
+          break;
+        }
       }
       rebuildEditingMap();
     });
