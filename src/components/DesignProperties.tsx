@@ -13,6 +13,7 @@ interface DesignPropertiesProps {
   allTasks?: Task[];
   saveChange: (updates: Partial<Task>) => void;
   themeColor?: string;
+  disabled?: boolean;
 }
 
 const OBJETIVOS_OPTIONS = [
@@ -111,13 +112,13 @@ const DIRECAO_CRIATIVA_OPTIONS = [
 
 type TabId = 'copy' | 'aprovacao';
 
-export default function DesignProperties({ task, allTasks = [], saveChange, themeColor = 'text-blue-500' }: DesignPropertiesProps) {
+export default function DesignProperties({ task, allTasks = [], saveChange, themeColor = 'text-blue-500', disabled = false }: DesignPropertiesProps) {
   const [isCreatingDelivery, setIsCreatingDelivery] = useState(false);
   const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
   
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-
-  const [isEditing, setIsEditing] = useState(!task.designBriefing?.isFilled);
+  
+  const [isEditing, setIsEditing] = useState(!task.designBriefing?.isFilled && !disabled);
   const [isBriefingCollapsed, setIsBriefingCollapsed] = useState(false);
   const [isCopyDropdownOpen, setIsCopyDropdownOpen] = useState(false);
   const { allUsers: USERS, currentUser } = useAuth();
@@ -152,9 +153,9 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
         inspiracoes: [''],
         copyContent: ''
       });
-      setIsEditing(!task.designBriefing?.isFilled);
+      setIsEditing(!task.designBriefing?.isFilled && !disabled);
     }
-  }, [task.id, task.designBriefing]);
+  }, [task.id, task.designBriefing, disabled]);
 
   useEffect(() => {
     const handleOpenSection = (e: CustomEvent<{ section: string, targetId?: string }>) => {
@@ -261,8 +262,9 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
           return (
             <button
               key={opt}
+              disabled={disabled}
               onClick={() => onChange(toggleArrayItem(selected, opt))}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                 isSelected
                   ? 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 shadow-[0_0_8px_rgba(234,179,8,0.15)]'
                   : 'bg-[#1f2937]/30 text-zinc-400 hover:text-zinc-200 hover:bg-[#1f2937]/60 border border-transparent'
@@ -292,12 +294,14 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
               {isBriefingCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </button>
           </div>
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded transition-colors"
-          >
-            <Edit2 size={10} /> Editar
-          </button>
+          {!disabled && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded transition-colors"
+            >
+              <Edit2 size={10} /> Editar
+            </button>
+          )}
         </div>
         
         {!isBriefingCollapsed && (
@@ -405,9 +409,10 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                 <span className="text-[10px] font-medium text-zinc-500 font-sans uppercase tracking-widest">Mensagem Principal</span>
                 <textarea
                   value={briefingForm.mensagemPrincipal}
+                  disabled={disabled}
                   onChange={(e) => setBriefingForm({ ...briefingForm, mensagemPrincipal: e.target.value })}
                   placeholder="Escreva a mensagem principal..."
-                  className="w-full bg-[#121214] border border-zinc-800/80 rounded-lg p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50 focus:border-yellow-500/50 resize-y min-h-[80px] transition-all"
+                  className="w-full bg-[#121214] border border-zinc-800/80 rounded-lg p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50 focus:border-yellow-500/50 resize-y min-h-[80px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -449,22 +454,25 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                             <input
                               type="number"
                               placeholder="Largura"
+                              disabled={disabled}
                               value={customData.width}
                               onChange={(e) => handleCustomFormatChange(peca, 'width', e.target.value)}
-                              className="w-20 bg-[#121214] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-yellow-500/50"
+                              className="w-20 bg-[#121214] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-yellow-500/50 disabled:opacity-50"
                             />
                             <span className="text-zinc-500 text-[10px]">x</span>
                             <input
                               type="number"
                               placeholder="Altura"
+                              disabled={disabled}
                               value={customData.height}
                               onChange={(e) => handleCustomFormatChange(peca, 'height', e.target.value)}
-                              className="w-20 bg-[#121214] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-yellow-500/50"
+                              className="w-20 bg-[#121214] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-yellow-500/50 disabled:opacity-50"
                             />
                             <select
                               value={customData.unit}
+                              disabled={disabled}
                               onChange={(e) => handleCustomFormatChange(peca, 'unit', e.target.value)}
-                              className="bg-[#121214] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-yellow-500/50"
+                              className="bg-[#121214] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none focus:border-yellow-500/50 disabled:opacity-50"
                             >
                               <option value="px">px</option>
                               <option value="cm">cm</option>
@@ -488,23 +496,25 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                         <input
                           type="text"
                           value={url}
+                          disabled={disabled}
                           onChange={(e) => {
                             const newList = [...(briefingForm.inspiracoes || [''])];
                             newList[idx] = e.target.value;
                             setBriefingForm({ ...briefingForm, inspiracoes: newList });
                           }}
                           placeholder={`https://... (link de inspiração ${idx + 1})`}
-                          className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 outline-none"
+                          className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 outline-none disabled:opacity-50"
                         />
                       </div>
                       {(briefingForm.inspiracoes || ['']).length > 1 && (
                         <button
                           type="button"
+                          disabled={disabled}
                           onClick={() => {
                             const newList = (briefingForm.inspiracoes || ['']).filter((_, i) => i !== idx);
                             setBriefingForm({ ...briefingForm, inspiracoes: newList.length > 0 ? newList : [''] });
                           }}
-                          className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
                           title="Remover"
                         >
                           <X size={12} />
@@ -514,11 +524,12 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                   ))}
                   <button
                     type="button"
+                    disabled={disabled}
                     onClick={() => {
                       const newList = [...(briefingForm.inspiracoes || ['']), ''];
                       setBriefingForm({ ...briefingForm, inspiracoes: newList });
                     }}
-                    className="self-start flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-200 py-1 px-2 rounded hover:bg-zinc-900 transition-colors"
+                    className="self-start flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-200 py-1 px-2 rounded hover:bg-zinc-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Plus size={12} />
                     Adicionar mais uma inspiração
@@ -530,7 +541,8 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
             <div className="flex justify-end pt-4 border-t border-zinc-900/50">
               <button
                 onClick={handleSaveBriefing}
-                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 transition-colors"
+                disabled={disabled}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check size={14} /> Salvar Briefing
               </button>
@@ -550,14 +562,15 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
             {approvedCopies.length > 0 && (
               <div className="mb-3 border-b border-zinc-800/40 pb-2 relative">
                 <button
-                  onClick={() => setIsCopyDropdownOpen(!isCopyDropdownOpen)}
-                  className="w-full flex items-center justify-between bg-transparent text-zinc-500 hover:text-zinc-300 text-xs py-1 cursor-pointer focus:outline-none focus:ring-0 border-none transition-colors outline-none font-medium"
+                  onClick={() => !disabled && setIsCopyDropdownOpen(!isCopyDropdownOpen)}
+                  disabled={disabled}
+                  className="w-full flex items-center justify-between bg-transparent text-zinc-500 hover:text-zinc-300 text-xs py-1 cursor-pointer focus:outline-none focus:ring-0 border-none transition-colors outline-none font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span>Importar Copy...</span>
                   <ChevronDown size={12} className={`transition-transform ${isCopyDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 
-                {isCopyDropdownOpen && (
+                {isCopyDropdownOpen && !disabled && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsCopyDropdownOpen(false)}></div>
                     <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1b1e] border border-zinc-800 rounded-lg shadow-xl z-50 flex flex-col overflow-hidden animate-fade-in py-1">
@@ -581,6 +594,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
               content={briefingForm.copyContent || ''}
               onChange={handleCopyChange}
               variant="borderless"
+              readOnly={disabled}
             />
             </div>
           </div>
@@ -593,7 +607,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
           <h3 className={`text-xs font-semibold font-sans uppercase tracking-wider flex items-center gap-1.5 ${themeColor}`}>
             Aprovação de Criativos
           </h3>
-          {!isCreatingDelivery && !editingDeliveryId && (
+          {!isCreatingDelivery && !editingDeliveryId && !disabled && (
             <button 
               onClick={() => setIsCreatingDelivery(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-yellow-950 uppercase tracking-wider rounded transition-colors"
@@ -674,7 +688,8 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                       <DeliveryApproval
                         delivery={delivery}
                         index={i + 1}
-                      onUpdate={(id, updates) => {
+                        disabled={disabled}
+                        onUpdate={(id, updates) => {
                         const oldDelivery = briefingForm.deliveries?.find(d => d.id === id);
                         const newDeliveries = briefingForm.deliveries?.map(d => 
                           d.id === id ? { ...d, ...updates } : d

@@ -161,14 +161,18 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
     <div className={`relative ${trigger && !fullWidth ? 'inline-block' : 'w-full'}`} ref={containerRef}>
       {/* Trigger */}
       {trigger ? (
-        <div onClick={handleOpen} className={`cursor-pointer ${fullWidth ? 'w-full' : 'inline-flex'}`}>
+        <div
+          onClick={disabled ? undefined : handleOpen}
+          className={`${disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'cursor-pointer'} ${fullWidth ? 'w-full' : 'inline-flex'}`}
+        >
           {trigger}
         </div>
       ) : (
         <button
           type="button"
+          disabled={disabled}
           onClick={handleOpen}
-          className="w-full flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 transition-colors cursor-pointer min-h-[26px]"
+          className="w-full flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 transition-colors cursor-pointer min-h-[26px] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span>{displayValue || 'Sem prazo'}</span>
           <span className="text-[9px] opacity-60 ml-1">▼</span>

@@ -1365,8 +1365,9 @@ export default function TaskSheet({
                   return (
                     <button
                       key={label.id}
-                      onClick={() => toggleLabel(label)}
-                      className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1.5 font-medium ${
+                      disabled={!!effectiveLock}
+                      onClick={() => !effectiveLock && toggleLabel(label)}
+                      className={`px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1.5 font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
                         isSelected 
                           ? label.color 
                           : 'bg-[#1f2937]/30 text-zinc-500 hover:text-zinc-300 hover:bg-[#1f2937]/60'
@@ -1409,8 +1410,9 @@ export default function TaskSheet({
                   return (
                     <button
                       key={label.id}
-                      onClick={() => toggleLabel(label)}
-                      className={`animate-slide-in px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1.5 font-medium bg-[#1f2937]/30 text-zinc-500 hover:text-zinc-300 hover:bg-[#1f2937]/60 border border-transparent`}
+                      disabled={!!effectiveLock}
+                      onClick={() => !effectiveLock && toggleLabel(label)}
+                      className={`animate-slide-in px-3 py-1 text-xs rounded-md transition-all flex items-center gap-1.5 font-medium bg-[#1f2937]/30 text-zinc-500 hover:text-zinc-300 hover:bg-[#1f2937]/60 border border-transparent disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                       <LabelIcon size={12} className="opacity-60" />
                       <span>{label.name}</span>
@@ -1998,23 +2000,23 @@ export default function TaskSheet({
                 Painel de Design & Aprovação
               </button>
               <div className={`animate-fade-in ${openSections.designProps ? 'block' : 'hidden'}`}>
-                <DesignProperties task={task} allTasks={allTasks} saveChange={saveChange} themeColor={themeTextColor} />
+                <DesignProperties task={task} allTasks={allTasks} saveChange={saveChange} themeColor={themeTextColor} disabled={!!effectiveLock} />
               </div>
             </div>
           )}
 
           {/* Dynamic Copy Properties */}
           {taskLabels.some(l => l.name === 'Copy') && (
-            <div className="flex flex-col gap-3">
+            <div id="section-copyProps" className="flex flex-col gap-3 scroll-mt-20">
               <button
                 onClick={() => toggleSection('copyProps')}
-                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-opacity w-full text-left`}
+                className={`text-xs font-semibold font-sans flex items-center gap-1.5 uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-all`}
               >
                 {openSections.copyProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 Painel de Copy & Aprovação
               </button>
               <div className={`animate-fade-in ${openSections.copyProps ? 'block' : 'hidden'}`}>
-                <CopyProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
+                <CopyProperties task={task} saveChange={saveChange} themeColor={themeTextColor} disabled={!!effectiveLock} />
               </div>
             </div>
           )}

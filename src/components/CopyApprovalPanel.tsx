@@ -102,6 +102,7 @@ interface CopyApprovalPanelProps {
   currentText?: string;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Delivery>) => void;
+  disabled?: boolean;
 }
 
 type ViewMode = 'gestor-rev1' | 'redator-ajuste' | 'gestor-rev2';
@@ -256,7 +257,7 @@ const DynamicDocument = ({ submission, tempHtml, feedbacks, revNum, isCompact, i
 
 // --- MAIN COMPONENT ---
 
-export default function CopyApprovalPanel({ delivery, currentText, onClose, onUpdate }: CopyApprovalPanelProps) {
+export default function CopyApprovalPanel({ delivery, currentText, onClose, onUpdate, disabled = false }: CopyApprovalPanelProps) {
   const { currentUser } = useAuth();
   const [newDefense, setNewDefense] = useState('');
   const [rejectReason, setRejectReason] = useState('');
@@ -580,7 +581,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
             </button>
             
             {/* TOOLBAR CENTRAL */}
-            {viewMode !== 'redator-ajuste' && (
+            {viewMode !== 'redator-ajuste' && !disabled && (
               <div className="flex items-center gap-1 bg-[#1C1C21] border border-zinc-800/50 rounded-lg p-1 shadow-sm">
                 <button
                   onClick={() => setToolMode('cursor')}
@@ -797,7 +798,11 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
               <div className="flex flex-col gap-3">
                 <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Ações Finais</span>
                 
-                {viewMode === 'redator-ajuste' ? (
+                {disabled ? (
+                  <div className="text-xs text-zinc-500 font-medium bg-[#1C1C21] px-4 py-3 rounded-md border border-zinc-800 text-center">
+                    Tarefa em modo leitura
+                  </div>
+                ) : viewMode === 'redator-ajuste' ? (
                   <div className="flex flex-col gap-3">
                     <textarea 
                       value={newDefense}

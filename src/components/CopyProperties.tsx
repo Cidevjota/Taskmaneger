@@ -13,6 +13,7 @@ interface CopyPropertiesProps {
   task: Task;
   saveChange: (updates: Partial<Task>) => void;
   themeColor?: string;
+  disabled?: boolean;
 }
 
 const PERFIL_PRIMARIO_OPTIONS = [
@@ -83,7 +84,7 @@ const EXTENSAO_TEXTO_OPTIONS = [
 
 type TabId = 'copy' | 'aprovacao';
 
-export default function CopyProperties({ task, saveChange, themeColor = 'text-pink-500' }: CopyPropertiesProps) {
+export default function CopyProperties({ task, saveChange, themeColor = 'text-pink-500', disabled = false }: CopyPropertiesProps) {
   const [activeTab, setActiveTab] = useState<TabId>('copy');
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
   const [isCreatingDelivery, setIsCreatingDelivery] = useState(false);
@@ -167,7 +168,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
       });
       setIsEditing(false); // Reset to view mode on new task
     }
-  }, [task.id, task.copyBriefing]);
+  }, [task.id, task.copyBriefing, disabled]);
 
   useEffect(() => {
     const handleOpenSection = (e: CustomEvent<{ section: string, targetId?: string }>) => {
@@ -204,8 +205,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
           return (
             <button
               key={opt}
+              disabled={disabled}
               onClick={() => onChange(toggleArrayItem(selected, opt))}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                 isSelected
                   ? 'bg-pink-500/15 text-pink-300 border border-pink-500/30 shadow-[0_0_8px_rgba(236,72,153,0.15)]'
                   : 'bg-[#1f2937]/30 text-zinc-400 hover:text-zinc-200 hover:bg-[#1f2937]/60 border border-transparent'
@@ -230,12 +232,14 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
             {isBriefingOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             Briefing
           </button>
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded transition-colors"
-          >
-            <Edit2 size={10} /> Editar
-          </button>
+          {!disabled && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded transition-colors"
+            >
+              <Edit2 size={10} /> Editar
+            </button>
+          )}
         </div>
         
         {isBriefingOpen && (
@@ -344,7 +348,8 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
               </h3>
               <button
                 onClick={handleSaveBriefing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors"
+                disabled={disabled}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check size={12} /> Salvar Briefing
               </button>
@@ -444,14 +449,16 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
             </div>
           </div>
         ) : !briefingForm.isFilled ? (
-          <div className="flex items-center justify-start py-1">
-            <button 
-              onClick={() => setIsEditing(true)}
-              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors shadow-lg"
-            >
-              + Adicionar Briefing
-            </button>
-          </div>
+          !disabled ? (
+            <div className="flex items-center justify-start py-1">
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors shadow-lg"
+              >
+                + Adicionar Briefing
+              </button>
+            </div>
+          ) : null
         ) : renderReadonlyBriefing()}
       </div>
       
@@ -487,22 +494,24 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
       <div className="px-5 py-6 min-h-[250px]">
         {activeTab === 'copy' && (
           <div className="flex flex-col gap-6 animate-fade-in relative">
-            <div className="flex items-center justify-end pb-2">
-            <button
-              onClick={() => {
-                const editors = briefingForm.copyEditors || [];
-                if (editors.length >= 5) {
-                  setAlertMessage('Limite máximo de 5 editores atingido.');
-                  setShowAlert(true);
-                } else {
-                  setShowNamePrompt(true);
-                }
-              }}
-              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors shadow-lg"
-            >
-              + Adicionar Editor
-            </button>
-          </div>
+            {!disabled && (
+              <div className="flex items-center justify-end pb-2">
+                <button
+                  onClick={() => {
+                    const editors = briefingForm.copyEditors || [];
+                    if (editors.length >= 5) {
+                      setAlertMessage('Limite máximo de 5 editores atingido.');
+                      setShowAlert(true);
+                    } else {
+                      setShowNamePrompt(true);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors shadow-lg"
+                >
+                  + Adicionar Editor
+                </button>
+              </div>
+            )}
 
           <div className="flex flex-col gap-8">
             {(briefingForm.copyEditors || []).map((editor) => (
@@ -519,12 +528,13 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                       <span className="text-sm font-semibold text-zinc-400">Dê um nome a este editor para começar a escrever</span>
                       <div className="flex items-center gap-2">
                         <input 
-                          type="text"
+                          type="text" 
                           placeholder="Ex: Título, Variável 1..."
-                          className="bg-[#121214] border border-zinc-700/50 rounded-lg px-4 py-2 text-sm text-zinc-200 outline-none focus:border-pink-500/50 min-w-[250px]"
+                          disabled={disabled}
+                          className="bg-[#121214] border border-zinc-700/50 rounded-lg px-4 py-2 text-sm text-zinc-200 outline-none focus:border-pink-500/50 min-w-[250px] disabled:opacity-50"
                           id={`inline-name-${editor.id}`}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                            if (e.key === 'Enter' && !disabled) {
                               const val = e.currentTarget.value.trim();
                               if (val) {
                                 const newEditors = briefingForm.copyEditors!.map(ed => ed.id === editor.id ? { ...ed, name: val } : ed);
@@ -536,6 +546,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                           }}
                         />
                         <button 
+                          disabled={disabled}
                           onClick={() => {
                             const val = (document.getElementById(`inline-name-${editor.id}`) as HTMLInputElement).value.trim();
                             if (val) {
@@ -545,7 +556,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                               saveChange({ copyBriefing: updatedBriefing });
                             }
                           }}
-                          className="px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-lg border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors"
+                          className="px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-lg border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors disabled:opacity-50"
                         >
                           Confirmar
                         </button>
@@ -557,6 +568,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                         taskId={editor.id}
                         content={editor.content}
                         variant="borderless"
+                        readOnly={disabled}
                         onChange={(newContent) => {
                           const newEditors = briefingForm.copyEditors!.map(ed => ed.id === editor.id ? { ...ed, content: newContent } : ed);
                           const combinedText = newEditors.map(ed => `<h3>${ed.name}</h3>${ed.content}`).join('<br/><hr/><br/>');
@@ -811,6 +823,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                     {selectedApprovalDeliveryId && briefingForm.deliveries && (
                       <CopyApprovalPanel 
                         delivery={briefingForm.deliveries.find(d => d.id === selectedApprovalDeliveryId)!}
+                        disabled={disabled}
                         currentText={
                           briefingForm.copyEditors?.find(e => {
                               const delivery = briefingForm.deliveries!.find(d => d.id === selectedApprovalDeliveryId)!;
@@ -946,13 +959,15 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                            <div className="text-zinc-500 group-hover:text-pink-400 transition-colors opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs font-medium pr-2">
                              Abrir Painel &rarr;
                            </div>
-                           <button 
-                             onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(delivery.id); }} 
-                             className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors" 
-                             title="Excluir Aprovação"
-                           >
-                             <Trash2 size={14} />
-                           </button>
+                           {!disabled && (
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(delivery.id); }} 
+                               className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors" 
+                               title="Excluir Aprovação"
+                             >
+                               <Trash2 size={14} />
+                             </button>
+                           )}
                         </div>
                       </div>
                     );

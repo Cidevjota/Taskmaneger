@@ -10,6 +10,7 @@ interface DeliveryApprovalProps {
   taskTitle?: string;
   onUpdate: (id: string, updates: Partial<Delivery>) => void;
   onDelete: (id: string) => void;
+  disabled?: boolean;
 }
 
 export default function DeliveryApproval({ 
@@ -17,7 +18,8 @@ export default function DeliveryApproval({
   index,
   taskTitle,
   onUpdate, 
-  onDelete
+  onDelete,
+  disabled = false
 }: DeliveryApprovalProps) {
   const [feedback, setFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
@@ -279,7 +281,7 @@ export default function DeliveryApproval({
         </div>
         
         <div className="flex items-center gap-2">
-          {onDelete && (
+          {onDelete && !disabled && (
             <button onClick={() => onDelete(delivery.id)} className="p-1.5 text-zinc-500 hover:text-red-400 bg-zinc-900/50 hover:bg-red-500/10 rounded transition-colors" title="Excluir Criativo">
               <Trash2 size={14} />
             </button>
@@ -330,7 +332,7 @@ export default function DeliveryApproval({
             </div>
             
             <div className="flex items-center gap-3 shrink-0">
-              {delivery.status === 'reworking' && !isExpired && (
+              {delivery.status === 'reworking' && !isExpired && !disabled && (
                 <button
                   onClick={() => setIsSubmittingNewVersion(true)}
                   className="flex items-center justify-center gap-2 px-4 py-2 text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-yellow-950 uppercase tracking-wider rounded transition-colors whitespace-nowrap shrink-0"
@@ -550,7 +552,7 @@ export default function DeliveryApproval({
           <div className="mt-auto pt-4 border-t border-zinc-800/50 flex flex-col gap-3">
 
             {/* GESTOR: APROVAR/REPROVAR */}
-            {(delivery.status === 'pending' || delivery.status === 'review_requested') && !isExpired && (
+            {(delivery.status === 'pending' || delivery.status === 'review_requested') && !isExpired && !disabled && (
               <div className="flex flex-col gap-4">
                 {showFeedbackInput && (
                   <div className="flex flex-col gap-2 animate-slide-down">
@@ -612,14 +614,15 @@ export default function DeliveryApproval({
               <input 
                 type="text" 
                 value={chatText}
+                disabled={disabled}
                 onChange={(e) => setChatText(e.target.value)}
-                placeholder="Mensagem..." 
-                className="flex-1 bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-[13px] text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors"
+                placeholder={disabled ? "Tarefa em modo leitura" : "Mensagem..."}
+                className="flex-1 bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-[13px] text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button 
                 type="submit" 
-                disabled={!chatText.trim()}
-                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors disabled:opacity-50"
+                disabled={disabled || !chatText.trim()}
+                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Enviar mensagem"
               >
                 <Send size={14} />
@@ -627,7 +630,7 @@ export default function DeliveryApproval({
             </form>
 
             {/* DESIGNER: REPROVADO -> ESCOLHER AÇÃO */}
-            {delivery.status === 'rejected' && (
+            {delivery.status === 'rejected' && !disabled && (
               <div className="flex flex-col gap-4">
                 {showReplyInput ? (
                   <div className="flex flex-col gap-2 animate-slide-down">
