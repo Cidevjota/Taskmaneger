@@ -1107,8 +1107,9 @@ export default function TaskSheet({
                   return (
                     <button
                       key={s.value}
+                      disabled={!!effectiveLock}
                       onClick={() => {
-                        if (status === s.value) return;
+                        if (status === s.value || effectiveLock) return;
                         const startIdx = statuses.findIndex(x => x.value === status);
                         const targetIdx = idx;
                         
@@ -1122,7 +1123,7 @@ export default function TaskSheet({
                         isLit 
                           ? activeColorStyle 
                           : 'bg-zinc-950 text-zinc-600 border border-transparent hover:bg-zinc-900 hover:text-zinc-400 shadow-none'
-                      } ${isAnimActive ? 'scale-105 shadow-lg brightness-125 z-10' : 'scale-100'}`}
+                      } ${isAnimActive ? 'scale-105 shadow-lg brightness-125 z-10' : 'scale-100'} disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                       {!isLit && <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />}
                       <span className={`${!isLit ? 'opacity-60 grayscale' : ''}`}>{s.icon}</span>
@@ -1138,9 +1139,10 @@ export default function TaskSheet({
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><Flag size={13} className="opacity-60" /> Prioridade</span>
                 <button
                   type="button"
-                  onClick={() => setPriorityOpen(!isPriorityOpen)}
+                  disabled={!!effectiveLock}
+                  onClick={() => !effectiveLock && setPriorityOpen(!isPriorityOpen)}
                   onBlur={() => setTimeout(() => setPriorityOpen(false), 200)}
-                  className={`inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors ${priorities.find(p => p.value === priority)?.badgeStyle}`}
+                  className={`inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border min-h-[26px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${priorities.find(p => p.value === priority)?.badgeStyle}`}
                 >
                   <div className="flex items-center gap-1.5">
                     {priorities.find(p => p.value === priority)?.icon}
@@ -1175,9 +1177,10 @@ export default function TaskSheet({
                 <span className={`${missingProject ? 'text-red-400' : 'text-zinc-500'} font-medium font-sans flex items-center gap-1.5`}><FolderIcon size={13} className="opacity-60" /> Empreendimento</span>
                 <button
                   type="button"
-                  onClick={() => setProjectOpen(!isProjectOpen)}
+                  disabled={!!effectiveLock}
+                  onClick={() => !effectiveLock && setProjectOpen(!isProjectOpen)}
                   onBlur={() => setTimeout(() => setProjectOpen(false), 200)}
-                  className="inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 min-h-[26px] transition-colors"
+                  className="inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 min-h-[26px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="truncate max-w-[150px]">{projects.find(p => p.id === projectId)?.name || 'Selecionar...'}</span>
                   <span className="text-[10px] opacity-60 ml-1">▼</span>
@@ -1208,7 +1211,9 @@ export default function TaskSheet({
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><CalendarIcon size={13} className="opacity-60" /> Prazo</span>
                 <DatePicker
                   value={dueDate}
+                  disabled={!!effectiveLock}
                   onChange={(newDate) => {
+                    if (effectiveLock) return;
                     setDueDate(newDate);
                     let newStatus = status;
                     if (status === 'no_forecast' && newDate) {
@@ -1227,7 +1232,9 @@ export default function TaskSheet({
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><CalendarIcon size={13} className="opacity-60" /> Planejado</span>
                 <DatePicker
                   value={plannedDate}
+                  disabled={!!effectiveLock}
                   onChange={(newDate) => {
+                    if (effectiveLock) return;
                     setPlannedDate(newDate);
                     saveChange({ plannedDate: newDate });
                   }}
@@ -1238,9 +1245,10 @@ export default function TaskSheet({
                 <span className={`${missingAssignee ? 'text-red-400' : 'text-zinc-500'} font-medium font-sans flex items-center gap-1.5`}><UserIcon size={13} className="opacity-60" /> Responsável</span>
                 <button
                   type="button"
-                  onClick={() => setAssigneeOpen(!isAssigneeOpen)}
+                  disabled={!!effectiveLock}
+                  onClick={() => !effectiveLock && setAssigneeOpen(!isAssigneeOpen)}
                   onBlur={() => setTimeout(() => setAssigneeOpen(false), 200)}
-                  className="inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 min-h-[26px] transition-colors"
+                  className="inline-flex items-center justify-between gap-1.5 text-[10px] font-sans font-medium px-2 py-1 rounded border text-zinc-300 bg-zinc-500/10 border-zinc-500/20 hover:bg-zinc-500/20 min-h-[26px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center gap-1.5 truncate max-w-[150px]">
                     {assigneeId && USERS.find(u => u.id === assigneeId) ? (
@@ -1291,7 +1299,9 @@ export default function TaskSheet({
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><Bell size={13} className="opacity-60" /> Lembrete</span>
                 <DatePicker
                   value={reminderDate || ''}
+                  disabled={!!effectiveLock}
                   onChange={(date) => {
+                    if (effectiveLock) return;
                     setReminderDate(date);
                     saveChange({ reminderDate: date });
                   }}
