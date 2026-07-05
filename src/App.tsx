@@ -158,12 +158,12 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [socialMediaFilter, setSocialMediaFilter] = useState(false);
 
-  // Presence channel — tracks who is online (for the avatar bar)
-  // Broadcast channel — tracks who has which task open (reliable state updates)
+  // Presence + Broadcast channel: tracks who has which task open.
+  // "First come, first served" — the user with the earliest joinedAt for a task is the owner.
+  // Newcomers receive a re-announcement from the owner and get blocked.
   useEffect(() => {
     if (!currentUser) return;
 
-    // ----- PRESENCE: just for "who is online" detection (join/leave) -----
     const ch = supabase.channel('task-presence', {
       config: {
         presence: { key: currentUser.id },
@@ -171,64 +171,104 @@ export default function App() {
       },
     });
 
-    // Helper: rebuild editingMap from our in-memory viewerMap (not from presenceState)
-    // viewerMap is maintained via broadcast events which are reliable
-    const viewerMapRef = { current: {} as Record<string, { userId: string; name: string; avatarUrl?: string; color: string }> };
+    // viewerMap: taskId → array of viewers (multiple users can be on same task)
+    type Viewer = { userId: string; name: string; avatarUrl?: string; color: string; joinedAt: number };
+    const viewerMapRef = { current: {} as Record<string, Viewer[]> };
+    // myOpenedTasks: taskId → timestamp when current user opened it
+    const myOpenedTasksRef = { current: {} as Record<string, number> };
+    // currently open task for re-announcement
+    const currentlyOpenRef = { current: null as string | null };
 
     const rebuildEditingMap = () => {
       const map: Record<string, EditorPresence> = {};
-      for (const [taskId, viewer] of Object.entries(viewerMapRef.current)) {
-        if (viewer.userId !== currentUser.id) {
-          map[taskId] = { name: viewer.name, avatarUrl: viewer.avatarUrl, color: viewer.color };
+      for (const [taskId, viewers] of Object.entries(viewerMapRef.current)) {
+        if (!viewers.length) continue;
+        // Sort by joinedAt → earliest is the "owner"
+        const sorted = [...viewers].sort((a, b) => a.joinedAt - b.joinedAt);
+        const owner = sorted[0];
+        const myJoinedAt = myOpenedTasksRef.current[taskId];
+
+        // Block current user only if the owner arrived BEFORE them
+        if (!myJoinedAt || owner.joinedAt < myJoinedAt) {
+          map[taskId] = { name: owner.name, avatarUrl: owner.avatarUrl, color: owner.color };
         }
       }
       setEditingMap(map);
     };
 
-    // Listen for broadcast events: "task_open" / "task_close"
+    const sendBroadcast = async (event: 'task_open' | 'task_close', taskId: string, joinedAt: number) => {
+      try {
+        await ch.send({
+          type: 'broadcast',
+          event,
+          payload: { userId: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl, color: colorFor(currentUser.id), taskId, joinedAt },
+        });
+      } catch (err) { console.error('Broadcast error:', err); }
+    };
+
+    // task_open: another user opened a task
     ch.on('broadcast', { event: 'task_open' }, ({ payload }: any) => {
       if (!payload || payload.userId === currentUser.id) return;
-      // Remove this user from any previous task first
-      for (const [tid, v] of Object.entries(viewerMapRef.current)) {
-        if ((v as any).userId === payload.userId) delete (viewerMapRef.current as any)[tid];
+      const { userId, taskId, joinedAt, name, avatarUrl, color } = payload;
+
+      // Remove this user from any previous task
+      for (const [tid, viewers] of Object.entries(viewerMapRef.current)) {
+        viewerMapRef.current[tid] = viewers.filter(v => v.userId !== userId);
+        if (viewerMapRef.current[tid].length === 0) delete viewerMapRef.current[tid];
       }
-      viewerMapRef.current[payload.taskId] = {
-        userId: payload.userId,
-        name: payload.name,
-        avatarUrl: payload.avatarUrl,
-        color: payload.color,
-      };
+
+      // Add to new task
+      if (!viewerMapRef.current[taskId]) viewerMapRef.current[taskId] = [];
+      viewerMapRef.current[taskId].push({ userId, name, avatarUrl, color, joinedAt });
+
+      // Re-announce if current user has this task open (so newcomer knows we're here first)
+      const myJoinedAt = myOpenedTasksRef.current[taskId];
+      if (myJoinedAt && currentlyOpenRef.current === taskId) {
+        sendBroadcast('task_open', taskId, myJoinedAt);
+      }
+
       rebuildEditingMap();
     });
 
+    // task_close: another user left a task
     ch.on('broadcast', { event: 'task_close' }, ({ payload }: any) => {
       if (!payload || payload.userId === currentUser.id) return;
-      // Find which task this user had open (by userId, not by taskId which may be empty)
-      for (const [tid, v] of Object.entries(viewerMapRef.current)) {
-        if ((v as any).userId === payload.userId) {
-          const lastUser = v;
-          delete (viewerMapRef.current as any)[tid];
-          if (cooldownTimersRef.current[tid]) clearTimeout(cooldownTimersRef.current[tid]);
-          setCooldownMap(m => ({ ...m, [tid]: { name: lastUser.name, expiresAt: Date.now() + 2000 } }));
-          cooldownTimersRef.current[tid] = setTimeout(() => {
-            setCooldownMap(m => { const n = { ...m }; delete n[tid]; return n; });
-          }, 2000);
+      const { userId } = payload;
+
+      for (const [tid, viewers] of Object.entries(viewerMapRef.current)) {
+        const idx = viewers.findIndex(v => v.userId === userId);
+        if (idx !== -1) {
+          const lastUser = viewers[idx];
+          viewerMapRef.current[tid] = viewers.filter(v => v.userId !== userId);
+          if (viewerMapRef.current[tid].length === 0) delete viewerMapRef.current[tid];
+          // Start cooldown only if this user was the owner (earliest joinedAt)
+          const remaining = viewerMapRef.current[tid] || [];
+          const myJoinedAt = myOpenedTasksRef.current[tid];
+          const wasOwner = !remaining.length || lastUser.joinedAt <= remaining[0].joinedAt;
+          if (wasOwner && (!myJoinedAt || lastUser.joinedAt < myJoinedAt)) {
+            if (cooldownTimersRef.current[tid]) clearTimeout(cooldownTimersRef.current[tid]);
+            setCooldownMap(m => ({ ...m, [tid]: { name: lastUser.name, expiresAt: Date.now() + 2000 } }));
+            cooldownTimersRef.current[tid] = setTimeout(() => {
+              setCooldownMap(m => { const n = { ...m }; delete n[tid]; return n; });
+            }, 2000);
+          }
           break;
         }
       }
       rebuildEditingMap();
     });
 
-    // When a user leaves the channel entirely (tab closed), remove their presence
+    // When a user closes the browser (tab closed) — clean up via presence leave
     ch.on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
       for (const p of (leftPresences || []) as any[]) {
         const userId = p.userId || p.key;
-        for (const [tid, v] of Object.entries(viewerMapRef.current)) {
-          if ((v as any).userId === userId) {
-            const lastUser = v;
-            delete (viewerMapRef.current as any)[tid];
+        for (const [tid, viewers] of Object.entries(viewerMapRef.current)) {
+          const v = viewers.find(x => x.userId === userId);
+          if (v) {
+            viewerMapRef.current[tid] = viewers.filter(x => x.userId !== userId);
+            if (viewerMapRef.current[tid].length === 0) delete viewerMapRef.current[tid];
             if (cooldownTimersRef.current[tid]) clearTimeout(cooldownTimersRef.current[tid]);
-            setCooldownMap(m => ({ ...m, [tid]: { name: lastUser.name, expiresAt: Date.now() + 2000 } }));
+            setCooldownMap(m => ({ ...m, [tid]: { name: v.name, expiresAt: Date.now() + 2000 } }));
             cooldownTimersRef.current[tid] = setTimeout(() => {
               setCooldownMap(m => { const n = { ...m }; delete n[tid]; return n; });
             }, 2000);
@@ -240,35 +280,22 @@ export default function App() {
 
     ch.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        // Track presence for online detection
-        await ch.track({
-          userId: currentUser.id,
-          name: currentUser.name,
-          avatarUrl: currentUser.avatarUrl,
-          color: colorFor(currentUser.id),
-        });
-
-        const broadcast = async (event: 'task_open' | 'task_close', taskId: string | null) => {
-          if (!taskId && event === 'task_open') return;
-          try {
-            await ch.send({
-              type: 'broadcast',
-              event,
-              payload: {
-                userId: currentUser.id,
-                name: currentUser.name,
-                avatarUrl: currentUser.avatarUrl,
-                color: colorFor(currentUser.id),
-                taskId: taskId || '',
-              },
-            });
-          } catch (err) {
-            console.error('Broadcast error:', err);
-          }
-        };
+        await ch.track({ userId: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl, color: colorFor(currentUser.id) });
 
         presenceTrackRef.current = (taskId: string | null) => {
-          broadcast(taskId ? 'task_open' : 'task_close', taskId);
+          if (taskId) {
+            const ts = myOpenedTasksRef.current[taskId] || Date.now();
+            myOpenedTasksRef.current[taskId] = ts;
+            currentlyOpenRef.current = taskId;
+            sendBroadcast('task_open', taskId, ts);
+          } else {
+            const prev = currentlyOpenRef.current;
+            currentlyOpenRef.current = null;
+            if (prev) {
+              delete myOpenedTasksRef.current[prev];
+              sendBroadcast('task_close', prev, 0);
+            }
+          }
         };
       }
     });
@@ -280,7 +307,7 @@ export default function App() {
   }, [currentUser?.id]);
 
   // Tell broadcast channel when this user opens/closes a task.
-  // Debounced to avoid rate-limit errors when navigating quickly between tasks.
+  // Debounced to avoid rate-limit on rapid task switching.
   useEffect(() => {
     const taskId = isTaskSheetOpen && selectedTask ? selectedTask.id : null;
     if (presenceDebounceRef.current) clearTimeout(presenceDebounceRef.current);
