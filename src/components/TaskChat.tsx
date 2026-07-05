@@ -9,9 +9,10 @@ interface TaskChatProps {
   onUpdate: (chatMessages: ChatMessage[]) => void;
   baseColor?: string;
   theme?: any;
+  readOnly?: boolean;
 }
 
-export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme }: TaskChatProps) {
+export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, readOnly = false }: TaskChatProps) {
   const [text, setText] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -220,56 +221,58 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme }: 
         )}
       </div>
 
-      <div className="relative p-3 bg-zinc-900/10 border-t border-zinc-800/40">
-        {showMentions && filteredUsers.length > 0 && (
-          <div className="absolute bottom-full left-3 mb-2 w-64 max-h-48 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-10 flex flex-col p-1 animate-fade-in">
-            {filteredUsers.map((u, i) => (
-              <button
-                key={u.id}
-                onClick={() => handleMentionSelect(u)}
-                className={`flex items-center gap-2 px-3 py-2 text-xs rounded transition-colors text-left ${
-                  i === mentionIndex || (mentionIndex === -1 && i === 0)
-                    ? `bg-zinc-800 ${theme ? theme.text : 'text-blue-300'}` 
-                    : 'text-zinc-300 hover:bg-zinc-800/50'
-                }`}
-              >
-                <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
-                  {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> : u.initials}
-                </div>
-                <span className="truncate">{u.name}</span>
-              </button>
-            ))}
+      {!readOnly && (
+        <div className="relative p-3 bg-zinc-900/10 border-t border-zinc-800/40">
+          {showMentions && filteredUsers.length > 0 && (
+            <div className="absolute bottom-full left-3 mb-2 w-64 max-h-48 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-10 flex flex-col p-1 animate-fade-in">
+              {filteredUsers.map((u, i) => (
+                <button
+                  key={u.id}
+                  onClick={() => handleMentionSelect(u)}
+                  className={`flex items-center gap-2 px-3 py-2 text-xs rounded transition-colors text-left ${
+                    i === mentionIndex || (mentionIndex === -1 && i === 0)
+                      ? `bg-zinc-800 ${theme ? theme.text : 'text-blue-300'}` 
+                      : 'text-zinc-300 hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+                    {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" /> : u.initials}
+                  </div>
+                  <span className="truncate">{u.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          
+          <div className="flex items-end gap-2 relative">
+            <textarea
+              ref={inputRef}
+              value={text}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Responder... (@ para marcar)"
+              className={`flex-1 bg-transparent border-0 border-b border-zinc-800/50 px-1 py-1.5 text-[13px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-b-2 ${theme ? theme.focusBorder.replace('focus:', '') : 'border-blue-500/50'} resize-none transition-colors`}
+              rows={1}
+              style={{
+                height: '32px',
+                maxHeight: '100px',
+                overflowY: text && inputRef.current && inputRef.current.scrollHeight > 100 ? 'auto' : 'hidden'
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!text.trim()}
+              className={`flex-shrink-0 p-1.5 mb-0.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                text.trim() 
+                  ? (theme ? `${theme.text} hover:bg-zinc-800` : 'text-blue-500 hover:bg-blue-500/10')
+                  : 'text-zinc-600'
+              }`}
+            >
+              <Send size={15} />
+            </button>
           </div>
-        )}
-        
-        <div className="flex items-end gap-2 relative">
-          <textarea
-            ref={inputRef}
-            value={text}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Responder... (@ para marcar)"
-            className={`flex-1 bg-transparent border-0 border-b border-zinc-800/50 px-1 py-1.5 text-[13px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-b-2 ${theme ? theme.focusBorder.replace('focus:', '') : 'border-blue-500/50'} resize-none transition-colors`}
-            rows={1}
-            style={{
-              height: '32px',
-              maxHeight: '100px',
-              overflowY: text && inputRef.current && inputRef.current.scrollHeight > 100 ? 'auto' : 'hidden'
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!text.trim()}
-            className={`flex-shrink-0 p-1.5 mb-0.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-              text.trim() 
-                ? (theme ? `${theme.text} hover:bg-zinc-800` : 'text-blue-500 hover:bg-blue-500/10')
-                : 'text-zinc-600'
-            }`}
-          >
-            <Send size={15} />
-          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

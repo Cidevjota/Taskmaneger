@@ -12,12 +12,13 @@ interface DatePickerProps {
   align?: 'left' | 'right';
   disableAutoScroll?: boolean;
   forceOpen?: number; // increment to programmatically open picker
+  disabled?: boolean;
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
-export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll, forceOpen }: DatePickerProps) {
+export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll, forceOpen, disabled }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const prevForceOpen = useRef(0);
   useEffect(() => {
@@ -75,6 +76,7 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
   // Update view when opening
   const handleOpen = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (disabled) return;
     if (!value && onQuickAdd) {
       onQuickAdd();
       return;

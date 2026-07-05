@@ -86,6 +86,9 @@ export default function App() {
   const presenceTrackRef = useRef<((taskId: string | null) => void) | null>(null);
   const presenceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingMap, setEditingMap] = useState<Record<string, EditorPresence>>({});
+  const [cooldownMap, setCooldownMap] = useState<Record<string, { name: string, expiresAt: number }>>({});
+  const previousPresencesRef = useRef<Record<string, any[]>>({});
+  const cooldownTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // In-memory set of already-fired reminder IDs to prevent duplicate notifications
   // across rapid re-renders before updateProfile() persists to Supabase.
@@ -174,6 +177,40 @@ export default function App() {
         }
       }
 
+      let newlyEmptyTasks: Array<{ taskId: string, name: string }> = [];
+      for (const [oldTaskId, oldUsers] of Object.entries(previousPresencesRef.current)) {
+        const currentUsers = taskPresences[oldTaskId];
+        if (!currentUsers || currentUsers.length === 0) {
+          const lastUser = oldUsers[0]; 
+          if (lastUser) {
+            newlyEmptyTasks.push({ taskId: oldTaskId, name: lastUser.name });
+            if (cooldownTimersRef.current[oldTaskId]) {
+              clearTimeout(cooldownTimersRef.current[oldTaskId]);
+            }
+            cooldownTimersRef.current[oldTaskId] = setTimeout(() => {
+              setCooldownMap(prev => {
+                const next = { ...prev };
+                delete next[oldTaskId];
+                return next;
+              });
+            }, 2000);
+          }
+        }
+      }
+      
+      previousPresencesRef.current = taskPresences;
+
+      if (newlyEmptyTasks.length > 0) {
+        setCooldownMap(prev => {
+          const next = { ...prev };
+          const now = Date.now();
+          for (const t of newlyEmptyTasks) {
+            next[t.taskId] = { name: t.name, expiresAt: now + 2000 };
+          }
+          return next;
+        });
+      }
+
       const map: Record<string, EditorPresence> = {};
       for (const [taskId, users] of Object.entries(taskPresences)) {
         // Sort by joinedAt to find the first one (oldest)
@@ -188,18 +225,14 @@ export default function App() {
     }).subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         const track = (taskId: string | null) => {
-          if (taskId) {
-            ch.track({
-              userId: currentUser.id,
-              name: currentUser.name,
-              avatarUrl: currentUser.avatarUrl,
-              editingTaskId: taskId,
-              color: colorFor(currentUser.id),
-              joinedAt: Date.now(),
-            });
-          } else {
-            ch.untrack();
-          }
+          ch.track({
+            userId: currentUser.id,
+            name: currentUser.name,
+            avatarUrl: currentUser.avatarUrl,
+            editingTaskId: taskId,
+            color: colorFor(currentUser.id),
+            joinedAt: Date.now(),
+          });
         };
         presenceTrackRef.current = track;
         track(null);
@@ -1086,6 +1119,7 @@ export default function App() {
         onAddTask={handleAddTask}
         onSelectTask={handleSelectTask}
         editingBy={selectedTask ? editingMap[selectedTask.id] : undefined}
+        cooldown={selectedTask ? cooldownMap[selectedTask.id] : undefined}
         editingMap={editingMap}
       />
 

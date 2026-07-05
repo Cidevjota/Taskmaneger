@@ -74,6 +74,7 @@ interface TaskSheetProps {
   isCompareChild?: boolean;
   editingBy?: EditorPresence;
   editingMap?: Record<string, EditorPresence>;
+  cooldown?: { name: string, expiresAt: number };
 }
 
 const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon: React.ReactNode }[] = [
@@ -95,7 +96,7 @@ const statuses: { value: TaskStatus; label: string; color: string; dotColor: str
   { value: 'done', label: 'Concluído', color: 'bg-emerald-900/40 text-emerald-300 border border-emerald-500/20', dotColor: 'bg-emerald-500', icon: <CheckCircle2 size={12} className="shrink-0" /> },
 ];
 
-const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, taskAssigneeId }: { attachments?: Attachment[], onUpdate: (newAttachments: Attachment[]) => void, taskId: string, taskTitle: string, taskAssigneeId?: string }) => {
+const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, taskAssigneeId, disabled }: { attachments?: Attachment[], onUpdate: (newAttachments: Attachment[]) => void, taskId: string, taskTitle: string, taskAssigneeId?: string, disabled?: boolean }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [addMode, setAddMode] = useState<'link' | 'file'>('link');
@@ -305,7 +306,8 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
         </div>
       )}
       
-      {!isAdding ? (
+      {/* Add New Attachment */}
+      {!disabled && !isAdding ? (
         <button 
           type="button"
           onClick={() => setIsAdding(true)}
@@ -314,7 +316,7 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
           <Plus size={13} />
           Anexar documento ou link
         </button>
-      ) : (
+      ) : !disabled && (
         <div className="flex items-center gap-2 p-1.5 border border-zinc-800 rounded-lg bg-[#0e0e10] animate-fade-in">
           <input
             type="text"
@@ -475,7 +477,8 @@ export default function TaskSheet({
   onSelectTask,
   isCompareChild = false,
   editingBy,
-  editingMap
+  editingMap,
+  cooldown
 }: TaskSheetProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -598,30 +601,38 @@ export default function TaskSheet({
   const [isCompareSearchOpen, setIsCompareSearchOpen] = useState(false);
   const [compareSearchQuery, setCompareSearchQuery] = useState('');
 
-  const [effectiveLock, setEffectiveLock] = useState<EditorPresence | null>(editingBy || null);
+  const [effectiveLock, setEffectiveLock] = useState<EditorPresence | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (editingBy) {
       setEffectiveLock(editingBy);
       setIsSyncing(false);
-    } else if (effectiveLock && !editingBy) {
+    } else if (cooldown && cooldown.expiresAt > Date.now()) {
+      setEffectiveLock({ name: cooldown.name, color: 'blue' });
       setIsSyncing(true);
+      const timeLeft = cooldown.expiresAt - Date.now();
       const timer = setTimeout(() => {
         setEffectiveLock(null);
         setIsSyncing(false);
-      }, 2000);
+      }, timeLeft);
       return () => clearTimeout(timer);
     } else {
       setEffectiveLock(null);
       setIsSyncing(false);
     }
-  }, [editingBy]);
+  }, [editingBy, cooldown]);
 
   if (task?.id !== prevTaskId) {
     setPrevTaskId(task?.id);
-    setEffectiveLock(editingBy || null);
-    setIsSyncing(false);
+    let newLock: EditorPresence | null = editingBy || null;
+    let newSyncing = false;
+    if (!editingBy && cooldown && cooldown.expiresAt > Date.now()) {
+      newLock = { name: cooldown.name, color: 'blue' };
+      newSyncing = true;
+    }
+    setEffectiveLock(newLock);
+    setIsSyncing(newSyncing);
     titleRef.current = task?.title || '';
     descriptionRef.current = task?.description || '';
     setStatus(task?.status || 'todo');
@@ -1462,9 +1473,10 @@ export default function TaskSheet({
                 >
                   <TaskChat 
                     task={task} 
-                    onUpdate={(chatMessages) => saveChange({ chatMessages })}
+                    onUpdate={(chatMessages) => !effectiveLock && saveChange({ chatMessages })}
                     baseColor={baseColor}
                     theme={theme}
+                    readOnly={!!effectiveLock}
                   />
                 </div>
               </div>
@@ -1502,11 +1514,11 @@ export default function TaskSheet({
                       className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50"
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <button onClick={() => toggleSubtask(subtask.id)} className="shrink-0 flex items-center justify-center">
+                        <button onClick={() => toggleSubtask(subtask.id)} disabled={!!effectiveLock} className="shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
                           {subtask.completed ? (
                             <CheckSquare size={13} className="text-emerald-400/50" />
                           ) : subtask.canceled ? (
-                            <XSquare size={13} className="text-red-400/50" />
+                            <Square size={13} className="text-red-400/50 line-through" />
                           ) : (
                             <Square size={13} className="text-gray-500 hover:text-gray-300" />
                           )}
@@ -1519,7 +1531,8 @@ export default function TaskSheet({
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />
                       </div>
-                      <div className="flex items-center ml-2 shrink-0 gap-1">
+                      {!effectiveLock && (
+                      <div className="flex items-center ml-2 shrink-0 gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {subtask.completed && subtask.completedAt && (
                           <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
                             <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
@@ -1587,13 +1600,15 @@ export default function TaskSheet({
                           className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80 rounded transition-colors"
                           title="Remover"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={12} />
                         </button>
                       </div>
+                      )}
                     </div>
                   ))}
 
                   {/* Ghost inline input for adding subtasks */}
+                  {!effectiveLock && (
                   <div className="flex items-center gap-2 py-1 px-1 -mx-1 opacity-50 hover:opacity-100 transition-opacity mt-1">
                     <Plus size={13} className="text-gray-500 shrink-0" />
                     <textarea
@@ -1618,6 +1633,7 @@ export default function TaskSheet({
                       className="flex-1 bg-transparent border-0 ring-0 outline-none text-xs font-normal text-gray-400 focus:text-gray-200 resize-none overflow-hidden py-0"
                     />
                   </div>
+                  )}
                 </div>
             </div>
 
@@ -1954,6 +1970,7 @@ export default function TaskSheet({
                     taskId={task.id}
                     taskTitle={task.title}
                     taskAssigneeId={task.assigneeId}
+                    disabled={!!effectiveLock}
                   />
                 </div>
               )}

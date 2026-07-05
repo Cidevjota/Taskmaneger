@@ -741,17 +741,6 @@ export default function KanbanView({
                                 className={`group relative bg-[#121214] hover:bg-[#161619] border rounded-lg p-2.5 transition-all duration-200 cursor-grab active:cursor-grabbing hover:shadow-xl hover:shadow-black/50 ${isDragging ? 'opacity-0' : ''} ${editingMap[task.id] ? 'border-[var(--edit-color)]/40' : 'border-zinc-900/60 hover:border-zinc-800'}`}
                                 style={editingMap[task.id] ? { '--edit-color': editingMap[task.id].color } as React.CSSProperties : undefined}
                               >
-                                {/* Editing indicator badge */}
-                                {editingMap[task.id] && (
-                                  <div
-                                    title={`${editingMap[task.id].name} está editando`}
-                                    className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold z-10"
-                                    style={{ background: `${editingMap[task.id].color}22`, color: editingMap[task.id].color, border: `1px solid ${editingMap[task.id].color}44` }}
-                                  >
-                                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: editingMap[task.id].color }} />
-                                    {editingMap[task.id].name.split(' ')[0]}
-                                  </div>
-                                )}
                                 {/* ID & Assignee */}
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-[10px] text-zinc-500 font-mono font-semibold tracking-tight uppercase flex items-center gap-1.5">
@@ -763,18 +752,31 @@ export default function KanbanView({
                                       </>
                                     )}
                                   </span>
-                                  <AssigneePicker
-                                    value={task.assigneeId}
-                                    onChange={(val) => onUpdateTask({ ...task, assigneeId: val })}
-                                    trigger={
-                                      <button type="button" className="w-5 h-5 rounded-full border border-zinc-800 shrink-0 overflow-hidden hover:border-zinc-500 transition-colors bg-zinc-900 flex items-center justify-center"
-                                        title={task.assigneeId && USERS.find(u => u.id === task.assigneeId)?.name || 'Sem responsável'}>
-                                        {task.assigneeId && USERS.find(u => u.id === task.assigneeId)
-                                          ? <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all" />
-                                          : <span className="text-[10px] text-zinc-500 font-bold">+</span>}
-                                      </button>
-                                    }
-                                  />
+                                  <div className="flex items-center gap-1.5">
+                                    {/* Editing indicator badge */}
+                                    {editingMap[task.id] && (
+                                      <div
+                                        title={`${editingMap[task.id].name} está editando`}
+                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold"
+                                        style={{ background: `${editingMap[task.id].color}22`, color: editingMap[task.id].color, border: `1px solid ${editingMap[task.id].color}44` }}
+                                      >
+                                        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: editingMap[task.id].color }} />
+                                        {editingMap[task.id].name.split(' ')[0]}
+                                      </div>
+                                    )}
+                                    <AssigneePicker
+                                      value={task.assigneeId}
+                                      onChange={(val) => onUpdateTask({ ...task, assigneeId: val })}
+                                      trigger={
+                                        <button type="button" className="w-5 h-5 rounded-full border border-zinc-800 shrink-0 overflow-hidden hover:border-zinc-500 transition-colors bg-zinc-900 flex items-center justify-center"
+                                          title={task.assigneeId && USERS.find(u => u.id === task.assigneeId)?.name || 'Sem responsável'}>
+                                          {task.assigneeId && USERS.find(u => u.id === task.assigneeId)
+                                            ? <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all" />
+                                            : <span className="text-[10px] text-zinc-500 font-bold">+</span>}
+                                        </button>
+                                      }
+                                    />
+                                  </div>
                                 </div>
 
                                 {/* Title */}
