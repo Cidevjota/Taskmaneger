@@ -1875,7 +1875,7 @@ export default function TaskSheet({
                           )}
 
                           {/* Add/Link Subtask Area */}
-                          {(onAddTask || onUpdateTask) && (
+                          {!effectiveLock && (onAddTask || onUpdateTask) && (
                             <div className="mt-4 flex gap-2">
                               {onAddTask && (
                                 <button 

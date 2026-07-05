@@ -224,15 +224,19 @@ export default function App() {
       setEditingMap(map);
     }).subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        const track = (taskId: string | null) => {
-          ch.track({
-            userId: currentUser.id,
-            name: currentUser.name,
-            avatarUrl: currentUser.avatarUrl,
-            editingTaskId: taskId,
-            color: colorFor(currentUser.id),
-            joinedAt: Date.now(),
-          });
+        const track = async (taskId: string | null) => {
+          try {
+            await ch.track({
+              userId: currentUser.id,
+              name: currentUser.name,
+              avatarUrl: currentUser.avatarUrl,
+              editingTaskId: taskId || "",
+              color: colorFor(currentUser.id),
+              joinedAt: Date.now(),
+            });
+          } catch (err) {
+            console.error('Error tracking presence:', err);
+          }
         };
         presenceTrackRef.current = track;
         track(null);
