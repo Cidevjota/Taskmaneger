@@ -158,71 +158,59 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [socialMediaFilter, setSocialMediaFilter] = useState(false);
 
-  // Presence channel — tracks who is editing which task in real time
+  // Presence channel — tracks who is viewing which task in real time
   useEffect(() => {
     if (!currentUser) return;
     const ch = supabase.channel('task-presence', {
       config: { presence: { key: currentUser.id } },
     });
-    ch.on('presence', { event: 'sync' }, () => {
+
+    // Helper: rebuild editingMap and detect exits from the current presence state
+    const rebuildFromState = () => {
       const state = ch.presenceState<any>();
+
+      // Build taskPresences from current state (only non-empty editingTaskId from other users)
       const taskPresences: Record<string, any[]> = {};
-      
       for (const presences of Object.values(state) as any[][]) {
         for (const p of presences) {
-          if (p.editingTaskId) {
+          if (p.editingTaskId && p.userId !== currentUser.id) {
             if (!taskPresences[p.editingTaskId]) taskPresences[p.editingTaskId] = [];
             taskPresences[p.editingTaskId].push(p);
           }
         }
       }
 
-      let newlyEmptyTasks: Array<{ taskId: string, name: string }> = [];
-      for (const [oldTaskId, oldUsers] of Object.entries(previousPresencesRef.current)) {
-        const currentUsers = taskPresences[oldTaskId];
-        if (!currentUsers || currentUsers.length === 0) {
-          const lastUser = oldUsers[0]; 
+      // Detect tasks that previously had users but now are empty → start cooldown
+      const prev = previousPresencesRef.current;
+      for (const [oldTaskId, oldUsers] of Object.entries(prev)) {
+        if (!taskPresences[oldTaskId] || taskPresences[oldTaskId].length === 0) {
+          const lastUser = oldUsers[0];
           if (lastUser) {
-            newlyEmptyTasks.push({ taskId: oldTaskId, name: lastUser.name });
-            if (cooldownTimersRef.current[oldTaskId]) {
-              clearTimeout(cooldownTimersRef.current[oldTaskId]);
-            }
+            if (cooldownTimersRef.current[oldTaskId]) clearTimeout(cooldownTimersRef.current[oldTaskId]);
+            setCooldownMap(m => ({ ...m, [oldTaskId]: { name: lastUser.name, expiresAt: Date.now() + 2000 } }));
             cooldownTimersRef.current[oldTaskId] = setTimeout(() => {
-              setCooldownMap(prev => {
-                const next = { ...prev };
-                delete next[oldTaskId];
-                return next;
-              });
+              setCooldownMap(m => { const n = { ...m }; delete n[oldTaskId]; return n; });
             }, 2000);
           }
         }
       }
-      
+
       previousPresencesRef.current = taskPresences;
 
-      if (newlyEmptyTasks.length > 0) {
-        setCooldownMap(prev => {
-          const next = { ...prev };
-          const now = Date.now();
-          for (const t of newlyEmptyTasks) {
-            next[t.taskId] = { name: t.name, expiresAt: now + 2000 };
-          }
-          return next;
-        });
-      }
-
+      // Rebuild editingMap from current state
       const map: Record<string, EditorPresence> = {};
       for (const [taskId, users] of Object.entries(taskPresences)) {
-        // Sort by joinedAt to find the first one (oldest)
         users.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
-        const winner = users[0];
-        
-        if (winner.userId !== currentUser.id) {
-          map[taskId] = { name: winner.name, avatarUrl: winner.avatarUrl, color: winner.color };
-        }
+        map[taskId] = { name: users[0].name, avatarUrl: users[0].avatarUrl, color: users[0].color };
       }
       setEditingMap(map);
-    }).subscribe(async (status) => {
+    };
+
+    ch.on('presence', { event: 'sync' }, rebuildFromState);
+    ch.on('presence', { event: 'join' }, rebuildFromState);
+    ch.on('presence', { event: 'leave' }, rebuildFromState);
+
+    ch.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         const track = async (taskId: string | null) => {
           try {
