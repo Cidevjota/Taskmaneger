@@ -73,16 +73,27 @@ export default function HomeView({
   // Filtrar apenas tasks do usuário logado
   const myTasks = tasks.filter(t => t.assigneeId === currentUser?.id);
 
-  // 1. Concluídas da semana (active tasks transferred to "implementação" or "concluído" that belong to user)
-  // Assumindo updatedAt ou createdAt para aproximação de semana se history não estiver perfeitamente completo, 
-  // mas como regra simples usamos o campo updatedAt / reachedImplementationAt caso exista, ou apenas o status + data de planejamento na semana
-  const concluidasDaSemana = myTasks.filter(t => {
+  // Helper function: verifica se a tarefa chegou em 'implementation' ou 'done' NESTA semana.
+  const reachedConcludedThisWeek = (t: Task) => {
+    if (t.statusHistory && t.statusHistory.length > 0) {
+      return t.statusHistory.some(h => 
+        (h.status === 'implementation' || h.status === 'done') && 
+        isDateInCurrentWeek(h.enteredAt)
+      );
+    }
+    if (t.timeTracking?.reachedImplementationAt && isDateInCurrentWeek(t.timeTracking.reachedImplementationAt)) {
+      return true;
+    }
+    // Fallback caso a task não tenha histórico mapeado ainda
     if (t.status === 'done' || t.status === 'implementation') {
-      // Simplification: check if it was planned for this week OR updated this week
-      return isDateInCurrentWeek(t.updatedAt || t.plannedDate || t.createdAt);
+      return isDateInCurrentWeek(t.updatedAt || t.createdAt);
     }
     return false;
-  });
+  };
+
+  // 1. Concluídas da semana (Status alterado para implementação ou concluído nesta semana)
+  // Cada ID de tarefa é verificado uma vez pelo helper acima.
+  const concluidasDaSemana = myTasks.filter(t => reachedConcludedThisWeek(t));
 
   // 2. Atrasadas (Total tasks delayed associated with user)
   const atrasadas = myTasks.filter(t => {
@@ -93,14 +104,16 @@ export default function HomeView({
     return due < today;
   });
 
-  // 3. Em andamento (todo, in_progress, approval, rework, implementation, paused)
+  // 3. Em andamento (in_progress, approval, rework, paused - excluindo 'todo' e status de conclusão)
   const emAndamento = myTasks.filter(t => 
-    ['todo', 'in_progress', 'approval', 'rework', 'implementation', 'paused'].includes(t.status)
+    ['in_progress', 'approval', 'rework', 'paused'].includes(t.status)
   );
 
   // 4. Planejado vs. concluído
+  // Planejadas: Tarefas agendadas para esta semana
+  // Concluídas: Tarefas dentre essas planejadas que FORAM concluídas nesta semana
   const planejadasNaSemana = myTasks.filter(t => isDateInCurrentWeek(t.plannedDate));
-  const planejadasEConcluidas = planejadasNaSemana.filter(t => t.status === 'done' || t.status === 'implementation');
+  const planejadasEConcluidas = planejadasNaSemana.filter(t => reachedConcludedThisWeek(t));
   const planejadoVsConcluidoRatio = planejadasNaSemana.length > 0 
     ? Math.round((planejadasEConcluidas.length / planejadasNaSemana.length) * 100) 
     : 0;
@@ -114,10 +127,14 @@ export default function HomeView({
   const focoSemanaProj = projects?.find(p => p.id === focoSemana?.projectId)?.name || '';
 
   // 6. Notificações reais
-  const myNotifications = notifications.filter(n => (n.status !== 'read' && n.status !== 'viewed') && (n.userId === currentUser?.id || n.userId === 'all'));
+  const myNotifications = notifications.filter(n => (n.status !== 'viewed') && (n.userId === currentUser?.id || n.userId === 'all'));
 
   // 7. Prioridades (Máximo de 4 cartões urgentes não concluídos)
   const prioridades = myTasks.filter(t => t.priority === 'urgent' && t.status !== 'done' && t.status !== 'implementation').slice(0, 4);
+
+  // Helper para mostrar período da semana atual
+  const startOfWeekStr = getStartOfWeek(today).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const endOfWeekStr = getEndOfWeek(getStartOfWeek(today)).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
   // 8. Próximos Prazos (Atrasadas ou vencendo nos próximos 7 dias, order by date)
   const proximosPrazos = myTasks.filter(t => {
@@ -131,7 +148,7 @@ export default function HomeView({
   }).sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
 
   return (
-    <div className="flex-1 overflow-auto bg-[#08080a] p-6 lg:p-10 text-zinc-200 custom-scrollbar">
+    <div className="flex-1 overflow-auto bg-[#08080a] p-6 lg:p-10 text-zinc-200 scrollbar-minimal">
       <div className="max-w-[1900px] w-full mx-auto flex flex-col gap-4">
         
         {/* HEADER AREA - SINGLE LINE */}
@@ -190,6 +207,7 @@ export default function HomeView({
               <span className="text-[11px] text-zinc-400 font-medium whitespace-nowrap">Concluídas da semana</span>
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-xl font-bold text-zinc-100 leading-none">{concluidasDaSemana.length.toString().padStart(2, '0')}</span>
+                <span className="text-[10px] text-zinc-500 font-medium ml-1">({startOfWeekStr} a {endOfWeekStr})</span>
               </div>
             </div>
           </div>
@@ -223,7 +241,10 @@ export default function HomeView({
               <Target size={16} className="text-purple-400" />
             </div>
             <div className="flex flex-col flex-1">
-              <span className="text-[11px] text-zinc-400 font-medium">Planejado vs. concluído</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-zinc-400 font-medium">Planejado vs. concluído</span>
+                <span className="text-[10px] font-medium text-zinc-500">{planejadasEConcluidas.length} de {planejadasNaSemana.length}</span>
+              </div>
               <span className="text-xl font-bold text-zinc-100 leading-none mt-0.5">{planejadoVsConcluidoRatio}%</span>
               <div className="h-1 w-full bg-[#08080a] border border-zinc-900 rounded-full mt-2 overflow-hidden">
                 <div className="h-full bg-purple-500 rounded-full" style={{ width: `${planejadoVsConcluidoRatio}%` }} />
@@ -260,7 +281,7 @@ export default function HomeView({
                   tasks={myTasks}
                   projects={projects}
                   labels={labels}
-                  onSelectTask={onSelectTask}
+                  onSelectTask={() => {}} // Disabled task opening in mirrored kanban
                   onUpdateTask={onUpdateTask}
                   onAddTask={onAddTask}
                   currentProjectFilter={currentProjectFilter}
@@ -299,7 +320,7 @@ export default function HomeView({
               </div>
               <button className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider font-semibold">Ver todas</button>
             </div>
-            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto custom-scrollbar">
+            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto scrollbar-minimal">
               {myNotifications.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 py-10 opacity-70">
                   <CheckCircle2 size={32} className="mb-2 text-zinc-600" />
@@ -394,7 +415,7 @@ export default function HomeView({
               </div>
               <button className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider font-semibold">Ver todas</button>
             </div>
-            <div className="flex flex-col p-2 gap-1 min-h-[250px]">
+            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto scrollbar-minimal">
               {prioridades.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 py-10 opacity-70">
                   <span className="text-xs">Nenhuma tarefa urgente</span>
@@ -452,7 +473,7 @@ export default function HomeView({
               </div>
               <button className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider font-semibold">Ver todas</button>
             </div>
-            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto custom-scrollbar">
+            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto scrollbar-minimal">
               {proximosPrazos.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 py-10 opacity-70">
                   <span className="text-xs">Tudo em dia!</span>

@@ -9,7 +9,7 @@ interface WeeklyPlannerProps {
 }
 
 // Helpers for Date
-const getToday = () => new Date(); // Using real today date
+const getRealToday = () => new Date();
 
 const getMonday = (d: Date) => {
   const date = new Date(d);
@@ -29,12 +29,17 @@ const addDays = (date: Date, days: number) => {
 const WEEK_DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
 
 export default function WeeklyPlanner({ tasks, onUpdateTask, onSelectTask }: WeeklyPlannerProps) {
-  const [weekStart, setWeekStart] = useState<Date>(() => getMonday(getToday()));
-  const [animationKey, setAnimationKey] = useState(0);
-  const [animClass, setAnimClass] = useState('animate-fade-in');
+  const [weekOffset, setWeekOffset] = useState(0);
 
+  const getWeekStartForOffset = () => {
+    const d = getRealToday();
+    d.setDate(d.getDate() + weekOffset * 7);
+    return getMonday(d);
+  };
+
+  const weekStart = getWeekStartForOffset();
   const weekDates = Array.from({ length: 5 }).map((_, i) => addDays(weekStart, i));
-  const todayISO = formatISO(getToday());
+  const todayISO = formatISO(getRealToday());
 
   // Columns definition: 7 days
   const columns = weekDates.map((date, i) => ({
@@ -95,45 +100,30 @@ export default function WeeklyPlanner({ tasks, onUpdateTask, onSelectTask }: Wee
           <Calendar size={18} className="text-zinc-400" /> 
           <h2 className="text-xs font-bold tracking-[0.2em] text-zinc-400 uppercase">AGENDAMENTO SEMANAL</h2>
         </div>
-        
-        <div className="flex items-center bg-[#121214] p-1 rounded-md border border-zinc-900 gap-1">
+        <div className="flex items-center gap-2">
           <button 
-            onClick={() => {
-              setWeekStart(prev => addDays(prev, -7));
-              setAnimClass('animate-slide-in-right');
-              setAnimationKey(prev => prev + 1);
-            }}
-            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+            onClick={() => setWeekOffset(prev => prev - 1)}
+            className="p-1.5 rounded bg-[#121214] border border-zinc-900 hover:bg-zinc-800 transition-colors"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={16} className="text-zinc-400" />
           </button>
-          
           <button 
-            onClick={() => {
-              setWeekStart(getMonday(getToday()));
-              setAnimClass('animate-fade-in');
-              setAnimationKey(prev => prev + 1);
-            }}
-            className="px-3 py-1 text-[11px] font-medium rounded text-zinc-300 hover:text-white transition-colors"
+            onClick={() => setWeekOffset(0)}
+            className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${weekOffset === 0 ? 'bg-blue-500/20 text-blue-400' : 'bg-[#121214] border border-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
           >
-            Nesta semana
+            Atual
           </button>
-          
           <button 
-            onClick={() => {
-              setWeekStart(prev => addDays(prev, 7));
-              setAnimClass('animate-slide-in');
-              setAnimationKey(prev => prev + 1);
-            }}
-            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+            onClick={() => setWeekOffset(prev => prev + 1)}
+            className="p-1.5 rounded bg-[#121214] border border-zinc-900 hover:bg-zinc-800 transition-colors"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={16} className="text-zinc-400" />
           </button>
         </div>
       </div>
 
       {/* Kanban Board Container */}
-      <div key={animationKey} className={`flex-1 flex overflow-x-auto min-h-0 gap-5 custom-scrollbar pb-4 -mx-2 px-2 ${animClass}`}>
+      <div className="flex-1 flex overflow-x-auto min-h-0 gap-5 custom-scrollbar pb-4 -mx-2 px-2 animate-fade-in">
         {columns.map(column => {
           const colTasks = getColTasks(column.id);
           const isTarget = dragOverColumn === column.id;

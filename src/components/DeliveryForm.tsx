@@ -27,7 +27,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
     if (isSubmitting) return;
     
     const validImageUrls = imageUrls.filter(url => url.trim() !== '');
-    if (validImageUrls.length === 0 || !approverId) return;
+    if (validImageUrls.length === 0 || (users && users.length > 0 && !approverId)) return;
 
     let finalLink = figmaLink.trim();
     if (finalLink && !/^https?:\/\//i.test(finalLink)) {
@@ -226,7 +226,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
 
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
-            <FileText size={12} /> Defesa Criativa
+            <FileText size={12} /> Defesa Criativa (Opcional)
           </label>
           <textarea
             value={creativeDefense}

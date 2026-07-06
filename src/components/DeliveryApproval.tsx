@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check, X, ExternalLink, Image as ImageIcon, Send, Pencil, Trash2, RotateCcw, Maximize2, MessageSquare, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Delivery, DeliveryThreadMessage } from '../types';
+import DeliveryForm from './DeliveryForm';
 import FullscreenImageEditor from './FullscreenImageEditor';
 import { useAuth } from '../context/AuthContext';
 
@@ -29,14 +30,12 @@ export default function DeliveryApproval({
   
   const { currentUser } = useAuth();
   
-  const [newImageUrl, setNewImageUrl] = useState('');
-  const [newDefense, setNewDefense] = useState('');
-
   const [isFullscreenEditorOpen, setIsFullscreenEditorOpen] = useState(false);
   const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
   const [isSubmittingNewVersion, setIsSubmittingNewVersion] = useState(false);
   const [isExpanded, setIsExpanded] = useState(delivery.status !== 'approved');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [selectedRevisionIndex, setSelectedRevisionIndex] = useState<number | null>(null);
 
   const isExpired = new Date(delivery.createdAt).getTime() < Date.now() - 30 * 24 * 60 * 60 * 1000;
 
@@ -136,7 +135,7 @@ export default function DeliveryApproval({
       role: 'manager',
       type: 'feedback',
       action: 'rejected',
-      content: feedback,
+      content: feedback || 'Reprovado sem justificativa',
       annotatedImageUrl: hasAnnotations ? annotatedImages.find(Boolean) : undefined,
       annotatedImageUrls: hasAnnotations ? annotatedImages : undefined,
       revisionNumber: currentRevisionNumber,
@@ -155,7 +154,7 @@ export default function DeliveryApproval({
   };
 
   const handleDesignerReply = (action: 'request_review' | 'will_rework') => {
-    if (!showReplyInput) {
+    if (action === 'request_review' && !showReplyInput) {
       setShowReplyInput(true);
       return;
     }
@@ -164,7 +163,7 @@ export default function DeliveryApproval({
       role: 'designer',
       type: 'reply',
       action: action,
-      content: replyText,
+      content: action === 'will_rework' ? 'Vou refazer a arte.' : replyText,
       editorName: currentUser?.name || 'Designer'
     });
     
@@ -172,71 +171,10 @@ export default function DeliveryApproval({
       status: action === 'will_rework' ? 'reworking' : 'review_requested', 
       thread: newThread 
     });
-    setReplyText('');
-    setShowReplyInput(false);
-  };
-
-  const handleNewSubmission = () => {
-    if (!newImageUrl.trim()) return;
     
-    const newThread = addMessage({
-      role: 'designer',
-      type: 'submission',
-      content: newDefense || 'Nova versão enviada',
-      imageUrl: newImageUrl,
-      editorName: currentUser?.name || 'Designer'
-    });
-    
-    onUpdate(delivery.id, { 
-      status: 'pending', 
-      imageUrl: newImageUrl,
-      annotatedImageUrl: undefined,
-      thread: newThread 
-    });
-    setNewImageUrl('');
-    setNewDefense('');
-    setIsSubmittingNewVersion(false);
-  };
-
-  const handlePasteImage = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        e.preventDefault();
-        const file = items[i].getAsFile();
-        if (!file) continue;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new globalThis.Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            const MAX_DIM = 1920;
-            if (width > MAX_DIM || height > MAX_DIM) {
-              if (width > height) {
-                height = Math.round(height * (MAX_DIM / width));
-                width = MAX_DIM;
-              } else {
-                width = Math.round(width * (MAX_DIM / height));
-                height = MAX_DIM;
-              }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-              setNewImageUrl(dataUrl);
-            }
-          };
-          img.src = event.target?.result as string;
-        };
-        reader.readAsDataURL(file);
-        break;
-      }
+    if (action === 'request_review') {
+      setReplyText('');
+      setShowReplyInput(false);
     }
   };
 
@@ -394,25 +332,65 @@ export default function DeliveryApproval({
                 {(() => {
                   const submissions = thread.filter(t => t.type === 'submission');
                   const revisionCount = Math.max(1, submissions.length);
-                  const latestSubmission = submissions.length > 0 ? submissions[submissions.length - 1] : null;
-                  const isCopyDelivery = !!latestSubmission?.copyText;
+                  
+                  const activeRevisionIndex = selectedRevisionIndex !== null && selectedRevisionIndex < submissions.length 
+                    ? selectedRevisionIndex 
+                    : Math.max(0, submissions.length - 1);
                     
-                  const displayImage = annotatedImages[currentImageIndex] || delivery.annotatedImageUrls?.[currentImageIndex] || delivery.annotatedImageUrl || images[currentImageIndex];
+                  const activeSubmission = submissions[activeRevisionIndex];
+                  
+                  let activeImages: string[] = [];
+                  if (activeSubmission) {
+                    if (activeSubmission.imageUrls && activeSubmission.imageUrls.length > 0) {
+                      activeImages = activeSubmission.imageUrls;
+                    } else if (activeSubmission.imageUrl) {
+                      activeImages = [activeSubmission.imageUrl];
+                    }
+                  }
+                  
+                  if (activeImages.length === 0) {
+                    activeImages = images; // fallback
+                  }
+                  
+                  const isCopyDelivery = !!activeSubmission?.copyText;
+                  
+                  const isLatestRevision = activeRevisionIndex === Math.max(0, submissions.length - 1);
+                    
+                  const displayImage = isLatestRevision 
+                    ? (annotatedImages[currentImageIndex] || delivery.annotatedImageUrls?.[currentImageIndex] || delivery.annotatedImageUrl || activeImages[currentImageIndex])
+                    : activeImages[currentImageIndex];
                   
                   return (
                     <>
-                      <div className="absolute top-3 left-3 z-20 pointer-events-none">
-                        <span className="px-2 py-1 bg-zinc-900/90 text-zinc-300 text-[10px] font-bold rounded uppercase tracking-wider backdrop-blur-sm border border-zinc-700/50 shadow-sm flex items-center gap-1.5">
-                          REV {revisionCount.toString().padStart(2, '0')}
-                        </span>
+                      <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 flex-wrap max-w-[calc(100%-24px)]">
+                        {Array.from({ length: revisionCount }).map((_, i) => {
+                          const isSelected = i === activeRevisionIndex;
+                          return (
+                            <button
+                              key={i}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedRevisionIndex(i);
+                                setCurrentImageIndex(0);
+                              }}
+                              className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider backdrop-blur-sm border shadow-sm transition-colors ${
+                                isSelected 
+                                  ? 'bg-yellow-500 text-yellow-950 border-yellow-500' 
+                                  : 'bg-zinc-900/90 text-zinc-300 border-zinc-700/50 hover:bg-zinc-800'
+                              }`}
+                            >
+                              REV {(i + 1).toString().padStart(2, '0')}
+                            </button>
+                          );
+                        })}
                       </div>
                       
                       {isCopyDelivery ? (
-                        <div className="w-full h-full p-6 overflow-y-auto max-h-full text-zinc-300 text-sm prose prose-invert prose-p:my-1 prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-left">
+                        <div className="w-full h-full p-6 overflow-y-auto max-h-full text-zinc-300 text-sm prose prose-invert prose-p:my-1 prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-left mt-8">
                           <div className="mb-4 font-bold text-pink-400 uppercase tracking-widest text-[10px]">
-                            {latestSubmission.editorName || 'Copy'}
+                            {activeSubmission?.editorName || 'Copy'}
                           </div>
-                          <div dangerouslySetInnerHTML={{ __html: latestSubmission.copyText || '' }} />
+                          <div dangerouslySetInnerHTML={{ __html: activeSubmission?.copyText || '' }} />
                         </div>
                       ) : (
                         <div className="relative w-full h-full flex items-center justify-center">
@@ -425,12 +403,12 @@ export default function DeliveryApproval({
                             className="max-h-full h-full w-auto object-contain block group-hover:brightness-75 transition-all cursor-pointer mx-auto"
                           />
                           
-                          {!annotatedImages[currentImageIndex] && !delivery.annotatedImageUrls?.[currentImageIndex] && !delivery.annotatedImageUrl && images.length > 1 && (
+                          {!(isLatestRevision && annotatedImages[currentImageIndex]) && !(isLatestRevision && delivery.annotatedImageUrls?.[currentImageIndex]) && !(isLatestRevision && delivery.annotatedImageUrl) && activeImages.length > 1 && (
                             <>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1);
+                                  setCurrentImageIndex(prev => prev === 0 ? activeImages.length - 1 : prev - 1);
                                 }}
                                 className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors z-20"
                               >
@@ -439,14 +417,14 @@ export default function DeliveryApproval({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1);
+                                  setCurrentImageIndex(prev => prev === activeImages.length - 1 ? 0 : prev + 1);
                                 }}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors z-20"
                               >
                                 <ChevronRight size={20} />
                               </button>
                               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/40 px-2 py-1 rounded-full">
-                                {images.map((_, idx) => (
+                                {activeImages.map((_, idx) => (
                                   <div 
                                     key={idx} 
                                     className={`w-1.5 h-1.5 rounded-full transition-all ${idx === currentImageIndex ? 'bg-white scale-125' : 'bg-white/40'}`} 
@@ -583,8 +561,7 @@ export default function DeliveryApproval({
                       </button>
                       <button 
                         onClick={handleReject}
-                        disabled={!feedback.trim()}
-                        className="flex items-center justify-center gap-1.5 flex-1 py-2 text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-md transition-colors disabled:opacity-50"
+                        className="flex items-center justify-center gap-1.5 flex-1 py-2 text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-md transition-colors"
                       >
                         <Send size={14} /> Confirmar Reprovação
                       </button>
@@ -630,17 +607,17 @@ export default function DeliveryApproval({
             </form>
 
             {/* DESIGNER: REPROVADO -> ESCOLHER AÇÃO */}
-            {delivery.status === 'rejected' && !disabled && (
+            {(delivery.status === 'rejected' || delivery.status === 'reworking') && !disabled && (
               <div className="flex flex-col gap-4">
                 {showReplyInput ? (
                   <div className="flex flex-col gap-2 animate-slide-down">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                      Sua Resposta
+                      Sua Justificativa
                     </span>
                     <textarea
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Justifique ou faça sua réplica..."
+                      placeholder="Justifique por que a alteração não é necessária..."
                       className="w-full bg-[#121214] border border-zinc-700/50 rounded-md p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50 resize-none min-h-[80px]"
                     />
                     <div className="flex items-center gap-2 mt-2">
@@ -655,24 +632,30 @@ export default function DeliveryApproval({
                         disabled={!replyText.trim()}
                         className="flex-1 py-2 text-xs font-semibold bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 rounded-md transition-colors disabled:opacity-50"
                       >
-                        Solicitar Revisão
-                      </button>
-                      <button 
-                        onClick={() => handleDesignerReply('will_rework')}
-                        disabled={!replyText.trim()}
-                        className="flex-1 py-2 text-xs font-semibold bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 rounded-md transition-colors disabled:opacity-50"
-                      >
-                        Concordar em Refazer
+                        Enviar Justificativa
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <button 
-                    onClick={() => setShowReplyInput(true)}
-                    className="w-full py-2 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-transparent rounded-md transition-colors"
-                  >
-                    <MessageSquare size={14} /> Responder Feedback
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setShowReplyInput(true)}
+                      className="flex-1 py-3 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold border border-transparent rounded-md transition-colors"
+                    >
+                      Justificar
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (delivery.status !== 'reworking') {
+                          handleDesignerReply('will_rework');
+                        }
+                        setIsSubmittingNewVersion(true);
+                      }}
+                      className="flex-1 py-3 flex items-center justify-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-yellow-950 text-xs font-bold border border-transparent rounded-md transition-colors shadow-[0_0_15px_rgba(234,179,8,0.2)]"
+                    >
+                      <RefreshCw size={14} /> Refazer
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -703,54 +686,32 @@ export default function DeliveryApproval({
 
       {/* MODAL: SUBMETER NOVA VERSÃO */}
       {isSubmittingNewVersion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0a0a0c] border border-zinc-800/80 rounded-xl p-6 w-full max-w-lg shadow-2xl animate-scale-in flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-zinc-800/50 pb-3">
-              <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
-                <RefreshCw size={14} /> Submeter Nova Versão
-              </span>
-              <button onClick={() => setIsSubmittingNewVersion(false)} className="text-zinc-500 hover:text-zinc-300">
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="URL da nova imagem ou cole um print (Ctrl+V)..."
-                value={newImageUrl}
-                onChange={(e) => setNewImageUrl(e.target.value)}
-                onPaste={handlePasteImage}
-                className="w-full bg-[#121214] border border-zinc-700/50 rounded-md px-3 py-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50"
-              />
-              {newImageUrl.startsWith('data:image') && (
-                <div className="flex items-center gap-2 p-2 bg-zinc-900/50 rounded border border-zinc-800/50">
-                  <span className="text-[10px] text-emerald-400 font-medium">✨ Imagem carregada da área de transferência</span>
-                  <img src={newImageUrl} alt="Preview" className="h-8 w-auto rounded ml-auto" />
-                </div>
-              )}
-              <textarea
-                placeholder="O que foi alterado nesta versão?"
-                value={newDefense}
-                onChange={(e) => setNewDefense(e.target.value)}
-                className="w-full bg-[#121214] border border-zinc-700/50 rounded-md p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50 resize-none min-h-[100px]"
-              />
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={() => setIsSubmittingNewVersion(false)}
-                  className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleNewSubmission}
-                  disabled={!newImageUrl.trim()}
-                  className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Send size={14} /> Enviar para Aprovação
-                </button>
-              </div>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-3xl my-auto">
+            <DeliveryForm
+              onSave={(data) => {
+                const newThread = addMessage({
+                  role: 'designer',
+                  type: 'submission',
+                  content: data.creativeDefense || 'Nova versão enviada',
+                  imageUrl: data.imageUrls?.[0] || data.imageUrl,
+                  imageUrls: data.imageUrls,
+                  editorName: currentUser?.name || 'Designer'
+                });
+                
+                onUpdate(delivery.id, { 
+                  status: 'pending', 
+                  imageUrl: data.imageUrls?.[0] || data.imageUrl,
+                  imageUrls: data.imageUrls,
+                  figmaLink: data.figmaLink,
+                  annotatedImageUrl: undefined,
+                  annotatedImageUrls: undefined,
+                  thread: newThread 
+                });
+                setIsSubmittingNewVersion(false);
+              }}
+              onCancel={() => setIsSubmittingNewVersion(false)}
+            />
           </div>
         </div>
       )}
