@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { 
   Columns3, 
   List, 
@@ -209,6 +210,8 @@ export default function Sidebar({
                     titlePart = parts[0].trim();
                   }
 
+                  const task = tasks.find(t => t.id === n.taskId);
+
                   return (
                     <div
                       key={n.id}
@@ -229,7 +232,6 @@ export default function Sidebar({
                           return;
                         }
 
-                        const task = tasks.find(t => t.id === n.taskId);
                         if (task && onSelectTask) {
                           onSelectTask(task);
                           
@@ -273,14 +275,21 @@ export default function Sidebar({
                         }
                       }}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                          {getIconForType(n.type, 12)}
-                          <span className="text-[12px] font-medium leading-tight truncate transition-colors text-zinc-500 group-hover:text-zinc-200">
-                            {titlePart}
-                          </span>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 w-full">
+                            {getIconForType(n.type, 12)}
+                            <span className="text-[12px] font-medium leading-tight truncate transition-colors text-zinc-500 group-hover:text-zinc-200">
+                              {titlePart}
+                            </span>
+                          </div>
+                          {task && (
+                            <span className="text-[10px] font-medium text-zinc-600/70 truncate pl-[18px] mt-0.5">
+                              {task.title}
+                            </span>
+                          )}
                         </div>
-                        <div className="shrink-0 flex items-center justify-end min-h-[22px] min-w-[35px]">
+                        <div className="shrink-0 flex items-center justify-end min-h-[22px] min-w-[35px] mt-[-2px]">
                           <span className="text-[10px] text-zinc-500 font-medium group-hover:hidden transition-opacity">
                             {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                           </span>
@@ -335,27 +344,33 @@ export default function Sidebar({
                   setActiveView('home');
                   setCurrentProjectFilter(null);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'home'
-                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    ? 'text-zinc-100'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <Home size={14} className={activeView === 'home' ? 'text-zinc-200' : 'text-zinc-550'} />
-                {!collapsed && <span>Início</span>}
+                {activeView === 'home' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <Home size={14} className={`relative z-10 ${activeView === 'home' ? 'text-zinc-200' : 'text-zinc-550'}`} />
+                {!collapsed && <span className="relative z-10">Início</span>}
               </button>
 
               <button
                 onClick={() => navigateToTasks('board')}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'tasks_board' && activeTaskViewType === 'board'
-                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    ? 'text-zinc-100'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <Columns3 size={14} className={activeView === 'tasks_board' && activeTaskViewType === 'board' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {activeView === 'tasks_board' && activeTaskViewType === 'board' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <Columns3 size={14} className={`relative z-10 ${activeView === 'tasks_board' && activeTaskViewType === 'board' ? 'text-zinc-200' : 'text-zinc-550'}`} />
                 {!collapsed && (
-                  <div className="flex-1 flex items-center justify-between">
+                  <div className="relative z-10 flex-1 flex items-center justify-between">
                     <span>Quadro Kanban</span>
                     <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">{activeTasksCount}</span>
                   </div>
@@ -364,15 +379,18 @@ export default function Sidebar({
 
               <button
                 onClick={() => navigateToTasks('list')}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'tasks_board' && activeTaskViewType === 'list'
-                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    ? 'text-zinc-100'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <List size={14} className={activeView === 'tasks_board' && activeTaskViewType === 'list' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {activeView === 'tasks_board' && activeTaskViewType === 'list' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <List size={14} className={`relative z-10 ${activeView === 'tasks_board' && activeTaskViewType === 'list' ? 'text-zinc-200' : 'text-zinc-550'}`} />
                 {!collapsed && (
-                  <div className="flex-1 flex items-center justify-between">
+                  <div className="relative z-10 flex-1 flex items-center justify-between">
                     <span>Lista Compacta</span>
                     <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30">{tasks.length}</span>
                   </div>
@@ -381,28 +399,34 @@ export default function Sidebar({
 
               <button
                 onClick={() => setActiveView('calendar')}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'calendar'
-                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    ? 'text-zinc-100'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <Calendar size={14} className={activeView === 'calendar' ? 'text-zinc-200' : 'text-zinc-550'} />
-                {!collapsed && <span>Calendário</span>}
+                {activeView === 'calendar' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <Calendar size={14} className={`relative z-10 ${activeView === 'calendar' ? 'text-zinc-200' : 'text-zinc-550'}`} />
+                {!collapsed && <span className="relative z-10">Calendário</span>}
               </button>
 
               {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
 
               <button
                 onClick={() => setActiveView('sienge')}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'sienge'
-                    ? 'bg-blue-500/10 text-blue-300 border border-blue-500/20'
+                    ? 'text-blue-300'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <Receipt size={14} className={activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'} />
-                {!collapsed && <span>Títulos Sienge</span>}
+                {activeView === 'sienge' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-blue-500/10 border border-blue-500/20 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <Receipt size={14} className={`relative z-10 ${activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'}`} />
+                {!collapsed && <span className="relative z-10">Títulos Sienge</span>}
               </button>
 
               {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
@@ -412,15 +436,18 @@ export default function Sidebar({
                   setActiveView('inbox');
                   setCurrentProjectFilter(null);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'inbox'
-                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    ? 'text-zinc-100'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <Inbox size={14} className={activeView === 'inbox' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {activeView === 'inbox' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <Inbox size={14} className={`relative z-10 ${activeView === 'inbox' ? 'text-zinc-200' : 'text-zinc-550'}`} />
                 {!collapsed && (
-                  <div className="flex-1 flex items-center justify-between">
+                  <div className="relative z-10 flex-1 flex items-center justify-between">
                     <span>Caixa de Entrada</span>
                     {myNotifications.length > 0 && (
                       <span className="text-[10px] text-zinc-300 font-medium bg-zinc-800/50 px-2 rounded-full border border-zinc-700/50">{myNotifications.length}</span>
@@ -436,15 +463,18 @@ export default function Sidebar({
                   setActiveView('projects');
                   setCurrentProjectFilter(null);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   activeView === 'projects'
-                    ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                    ? 'text-zinc-100'
                     : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                 }`}
               >
-                <FolderKanban size={14} className={activeView === 'projects' ? 'text-zinc-200' : 'text-zinc-550'} />
+                {activeView === 'projects' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <FolderKanban size={14} className={`relative z-10 ${activeView === 'projects' ? 'text-zinc-200' : 'text-zinc-550'}`} />
                 {!collapsed && (
-                  <div className="flex-1 flex items-center justify-between text-left">
+                  <div className="relative z-10 flex-1 flex items-center justify-between text-left">
                     <span className="truncate pr-2">Empreendimentos</span>
                     <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800/40 px-1.5 py-0.5 rounded border border-zinc-700/30 shrink-0">{projects.length}</span>
                   </div>
@@ -457,14 +487,17 @@ export default function Sidebar({
                     setActiveView('dashboard');
                     setCurrentProjectFilter(null);
                   }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     activeView === 'dashboard'
-                      ? 'bg-zinc-900/80 text-zinc-100 border border-zinc-800/50'
+                      ? 'text-zinc-100'
                       : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                   }`}
                 >
-                  <BarChart2 size={14} className={activeView === 'dashboard' ? 'text-zinc-200' : 'text-zinc-550'} />
-                  {!collapsed && <span>Analytics</span>}
+                  {activeView === 'dashboard' && (
+                    <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                  )}
+                  <BarChart2 size={14} className={`relative z-10 ${activeView === 'dashboard' ? 'text-zinc-200' : 'text-zinc-550'}`} />
+                  {!collapsed && <span className="relative z-10">Analytics</span>}
                 </button>
               )}
 

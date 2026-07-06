@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
   Trash2, 
@@ -1518,12 +1519,18 @@ export default function TaskSheet({
                     <p className="text-xs text-gray-500 italic py-1 pl-1 bg-[#1f2937]/20 rounded p-1 hidden">Nenhuma subtarefa adicionada.</p>
                   )}
                   
+                  <AnimatePresence initial={false}>
                   {subtasks.map((subtask, index) => (
-                    <div 
+                    <motion.div
                       id={`target-${subtask.id}`}
-                      key={subtask.id} 
+                      key={subtask.id}
+                      layout
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.15 }}
                       style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
-                      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50"
+                      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50 overflow-hidden"
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         <button onClick={() => toggleSubtask(subtask.id)} disabled={!!effectiveLock} className="shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
@@ -1544,7 +1551,7 @@ export default function TaskSheet({
                         />
                       </div>
                       {!effectiveLock && (
-                      <div className="flex items-center ml-2 shrink-0 gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className={`flex items-center ml-2 shrink-0 gap-1 transition-opacity ${subtask.assigneeId || subtask.reminderType ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                         {subtask.completed && subtask.completedAt && (
                           <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
                             <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
@@ -1616,8 +1623,9 @@ export default function TaskSheet({
                         </button>
                       </div>
                       )}
-                    </div>
+                    </motion.div>
                   ))}
+                  </AnimatePresence>
 
                   {/* Ghost inline input for adding subtasks */}
                   {!effectiveLock && (

@@ -85,18 +85,22 @@ export default function ReminderBell({
       ? 'text-orange-400'
       : 'text-zinc-600 hover:text-zinc-400';
 
+  const formattedDateTime = reminderDate ? (() => {
+    const [datePart, timePart] = reminderDate.split('T');
+    if (!datePart || !timePart) return '';
+    const [, m, d] = datePart.split('-');
+    return `${d}/${m} ${timePart}`;
+  })() : '';
+
   const labelText =
     isSeen
-      ? '✓'
+      ? (formattedDateTime ? `✓ ${formattedDateTime}` : '✓')
       : reminderType === '3h'
       ? '+3h'
       : reminderType === '1d'
-      ? '+1d'
+      ? (formattedDateTime || '+1d')
       : reminderType === 'custom' && reminderDate
-      ? (() => {
-          const [, m, d] = reminderDate.split('T')[0].split('-');
-          return `${d}/${m}`;
-        })()
+      ? formattedDateTime
       : null;
 
   const labelColor =
@@ -137,9 +141,15 @@ export default function ReminderBell({
         disableAutoScroll={disableAutoScroll}
         enableTime={true}
         forceOpen={forceOpenKey}
+        disablePast={true}
         onChange={(date) => {
           setAwaitingCustomDate(false);
           if (date) {
+            // Se a data for no passado (antes de agora) + 1 minuto de tolerância, evite
+            const selectedTime = new Date(date).getTime();
+            if (selectedTime < Date.now() - 60000) {
+              return; // ignore past dates typed manually
+            }
             onChange({ reminderDate: date, reminderType: 'custom' });
           } else {
             onChange({ reminderDate: undefined, reminderType: undefined });
@@ -148,9 +158,11 @@ export default function ReminderBell({
         trigger={
           <button
             type="button"
-            className={`flex items-center justify-center transition-colors ${bellColor}`}
+            className={`flex items-center justify-center p-1.5 -m-1.5 rounded-md transition-colors hover:bg-white/5 ${bellColor}`}
             title={title}
             onClick={handleClick}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
           >
             {isSeen
               ? <BellOff size={size} className="fill-current" />

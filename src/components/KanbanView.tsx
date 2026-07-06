@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, 
   Clock, 
@@ -575,13 +576,19 @@ export default function KanbanView({
         onMouseMove={handleMouseMove}
         className={`flex-1 flex overflow-x-auto min-h-0 gap-6 select-none ${hideFilters ? 'no-scrollbar p-0 pt-1' : 'scrollbar-minimal p-6'} ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
-        {COLUMNS.map(column => {
+        {COLUMNS.map((column, colIndex) => {
           const colTasks = getColTasks(column.id);
           const isTarget = dragOverColumn === column.id;
           const isQuickAddOpen = quickAddColId === column.id;
 
           return (
-            <div key={column.id} className="relative flex-1 min-w-[320px] max-w-[380px] h-full flex flex-col">
+            <motion.div
+              key={column.id}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, delay: colIndex * 0.03 }}
+              className="relative flex-1 min-w-[320px] max-w-[380px] h-full flex flex-col"
+            >
               <div
                 data-col={column.id}
                 className={`group/column kanban-column w-full h-full rounded-xl border transition-all duration-200 flex flex-col ${
@@ -642,7 +649,7 @@ export default function KanbanView({
                       <span>Sem cards</span>
                     </div>
                   ) : (
-                    <>
+                    <AnimatePresence initial={false}>
                       {colTasks.map((task, cardIndex) => {
                         const project = projects.find(p => p.id === task.projectId);
                         const totalSub = task.subtasks.length;
@@ -667,7 +674,14 @@ export default function KanbanView({
                         const showLineAtEnd = dropIndicator?.colId === column.id && dropIndicator.index >= colTasks.length && cardIndex === colTasks.length - 1;
 
                         return (
-                          <React.Fragment key={task.id}>
+                          <motion.div
+                            key={task.id}
+                            layout={!isDragging}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                          >
                             <DropLine visible={showLineHere} />
 
                             {isCompact ? (
@@ -842,7 +856,7 @@ export default function KanbanView({
 
                             {/* Drop line AFTER last card */}
                             {showLineAtEnd && <DropLine visible={true} />}
-                          </React.Fragment>
+                          </motion.div>
                         );
                       })}
 
@@ -852,7 +866,7 @@ export default function KanbanView({
                           <span>Soltar aqui</span>
                         </div>
                       )}
-                    </>
+                    </AnimatePresence>
                   )}
 
                   {/* New Task Button */}
@@ -874,7 +888,7 @@ export default function KanbanView({
                 <ChevronDown size={20} className="animate-bounce text-zinc-500 opacity-70 drop-shadow-md mt-6" />
               </div>
             )}
-          </div>
+          </motion.div>
           );
         })}
         </div>

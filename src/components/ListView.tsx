@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Inbox, 
   HelpCircle, 
@@ -574,11 +575,17 @@ export default function ListView({
 
       {/* Table Body */}
       <div className="flex flex-col divide-y divide-zinc-900">
+        <AnimatePresence initial={false}>
         {taskList.map(task => {
           const presence = editingMap[task.id];
           return (
-            <div
+            <motion.div
               key={task.id}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               onClick={() => onSelectTask(task)}
               className="relative flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350"
               style={presence ? { borderLeft: `2px solid ${presence.color}` } : undefined}
@@ -602,9 +609,10 @@ export default function ListView({
                   {presence.name.split(' ')[0]}
                 </div>
               )}
-            </div>
+            </motion.div>
           );
         })}
+        </AnimatePresence>
 
         {/* Quick Add inline row */}
         <form onSubmit={handleInlineAddSubmit} className="flex items-center gap-3 px-4 py-2 bg-zinc-950/80">

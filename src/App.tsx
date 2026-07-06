@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Columns3, 
   List, 
@@ -526,8 +527,6 @@ export default function App() {
              triggeredRemindersRef.current.add(reminderId);
              triggeredReminders = [...triggeredReminders, reminderId];
              hasNewTriggers = true;
-             // Mark as seen in DB so the bell turns green
-             patchTask(task.id, { reminderType: 'seen' as any, updatedBy: currentUser.id }).catch(console.error);
            }
         }
 
@@ -554,10 +553,6 @@ export default function App() {
                triggeredRemindersRef.current.add(reminderId);
                triggeredReminders = [...triggeredReminders, reminderId];
                hasNewTriggers = true;
-               // Mark as seen in DB so the bell turns green
-               supabase.from('subtasks').update({ reminder_type: 'seen' }).eq('id', st.id).then(({ error }) => {
-                 if (error) console.error(error);
-               });
              }
            }
         });
@@ -1044,6 +1039,15 @@ export default function App() {
 
         {/* Dynamic Route views rendered here */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
+        <AnimatePresence mode="wait">
+        <motion.div
+          key={`${activeView}-${activeView === 'tasks_board' ? activeTaskViewType : ''}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.16, ease: 'easeOut' }}
+          className="flex-1 flex flex-col overflow-hidden min-h-0"
+        >
           {activeView === 'home' && (
             <HomeView
               tasks={tasks}
@@ -1168,6 +1172,8 @@ export default function App() {
               labels={labels}
             />
           )}
+          </motion.div>
+        </AnimatePresence>
         </div>
       </div>
 

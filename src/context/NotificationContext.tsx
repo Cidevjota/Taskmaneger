@@ -19,6 +19,7 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 import { supabase } from '../lib/supabase';
+import { patchTask } from '../lib/api';
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
@@ -124,6 +125,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const notif = notifications.find(n => n.id === id);
     if (notif) {
       syncUpdate({ ...notif, status: 'viewed', viewedAt: new Date().toISOString() });
+      if (notif.type === 'reminder') {
+        if (notif.targetId === 'reminder' || notif.targetId === notif.taskId) {
+          patchTask(notif.taskId, { reminderType: 'seen' as any, updatedBy: currentUser?.id }).catch(console.error);
+        } else if (notif.targetId && notif.targetId !== 'deadline') {
+          // It's a subtask reminder
+          supabase.from('subtasks').update({ reminder_type: 'seen' }).eq('id', notif.targetId).then(({ error }) => {
+            if (error) console.error(error);
+          });
+        }
+      }
     }
   };
 
@@ -135,6 +146,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const now = new Date().toISOString();
     setNotifications(prev => prev.map(n => n.status !== 'viewed' ? { ...n, status: 'viewed', viewedAt: now } : n));
     
+    activeNotifs.forEach(notif => {
+      if (notif.type === 'reminder') {
+        if (notif.targetId === 'reminder' || notif.targetId === notif.taskId) {
+          patchTask(notif.taskId, { reminderType: 'seen' as any, updatedBy: currentUser.id }).catch(console.error);
+        } else if (notif.targetId && notif.targetId !== 'deadline') {
+          supabase.from('subtasks').update({ reminder_type: 'seen' }).eq('id', notif.targetId).then(({ error }) => {
+            if (error) console.error(error);
+          });
+        }
+      }
+    });
+
     try {
       await Promise.all(activeNotifs.map(n => saveNotification({ ...n, status: 'viewed', viewedAt: now })));
     } catch (e) {

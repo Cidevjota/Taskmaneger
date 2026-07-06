@@ -13,12 +13,13 @@ interface DatePickerProps {
   disableAutoScroll?: boolean;
   forceOpen?: number; // increment to programmatically open picker
   disabled?: boolean;
+  disablePast?: boolean;
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
-export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll, forceOpen, disabled }: DatePickerProps) {
+export default function DatePicker({ value, onChange, trigger, enableTime, onQuickAdd, fullWidth, suggestedDate, align = 'left', disableAutoScroll, forceOpen, disabled, disablePast }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const prevForceOpen = useRef(0);
   useEffect(() => {
@@ -223,15 +224,18 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
                 const isToday = new Date().toDateString() === targetDate.toDateString();
                 const isSuggested = suggestedDate && formattedDate === suggestedDate.split('T')[0] && !isSelected;
 
+                const isPast = disablePast && targetDate.getTime() < new Date(new Date().setHours(0,0,0,0)).getTime();
+
                 return (
                   <button
                     key={i}
                     type="button"
+                    disabled={!slot.isCurrentMonth || isPast}
                     title={isSuggested ? 'Data sugerida' : undefined}
                     onClick={(e) => handleSelectDay(slot.day, slot.monthOffset, e)}
                     className={[
                       'h-7 w-full flex items-center justify-center text-[11px] rounded-md transition-all select-none',
-                      !slot.isCurrentMonth ? 'opacity-20 text-zinc-500 pointer-events-none' : 'text-zinc-300',
+                      (!slot.isCurrentMonth || isPast) ? 'opacity-20 text-zinc-500 pointer-events-none' : 'text-zinc-300',
                       isSelected
                         ? 'bg-blue-600 text-white font-bold shadow-sm shadow-blue-900/40'
                         : isSuggested
@@ -248,26 +252,43 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
               })}
             </div>
 
-            {/* Horário */}
-            {enableTime && (
-              <div className="mt-3 flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2">
-                <span className="text-[10px] text-zinc-500 font-medium flex-1 select-none">Horário</span>
+            {/* Digitar Manualmente */}
+            <div className="mt-3 flex flex-col gap-2 bg-zinc-800/50 rounded-lg px-3 py-2">
+              <span className="text-[10px] text-zinc-500 font-medium select-none">Digitar Data/Hora</span>
+              <div className="flex items-center gap-2">
                 <input
-                  type="time"
-                  value={currentTimePart}
+                  type="date"
+                  value={currentDatePart}
                   onChange={(e) => {
                     e.stopPropagation();
-                    const datePartToUse = currentDatePart || (() => {
-                      const d = new Date();
-                      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                    })();
-                    onChange(`${datePartToUse}T${e.target.value || '09:00'}`);
+                    const newDate = e.target.value;
+                    if (enableTime) {
+                      onChange(`${newDate}T${currentTimePart}`);
+                    } else {
+                      onChange(newDate);
+                    }
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-transparent text-zinc-100 text-[11px] font-mono font-semibold outline-none cursor-pointer [color-scheme:dark] tabular-nums"
+                  className="bg-transparent text-zinc-100 text-[11px] font-mono font-semibold outline-none cursor-text [color-scheme:dark] tabular-nums flex-1"
                 />
+                {enableTime && (
+                  <input
+                    type="time"
+                    value={currentTimePart}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      const datePartToUse = currentDatePart || (() => {
+                        const d = new Date();
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                      })();
+                      onChange(`${datePartToUse}T${e.target.value || '09:00'}`);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-transparent text-zinc-100 text-[11px] font-mono font-semibold outline-none cursor-text [color-scheme:dark] tabular-nums w-20 border-l border-zinc-700 pl-2"
+                  />
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Footer */}

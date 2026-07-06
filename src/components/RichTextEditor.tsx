@@ -467,6 +467,12 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
   const [contents, setContents] = useState<string[]>(() => parseMultiColumnContent(content, columns));
   const [activeIdx, setActiveIdx] = useState(0);
   const editorsRef = useRef<(Editor | null)[]>([null, null, null]);
+  const [prevTaskId, setPrevTaskId] = useState(taskId);
+
+  if (taskId !== prevTaskId) {
+    setPrevTaskId(taskId);
+    setContents(parseMultiColumnContent(content, columns));
+  }
 
   useEffect(() => {
     if (readOnly) {
