@@ -43,7 +43,8 @@ import {
   GitFork,
   Columns,
   Search,
-  Lock
+  Lock,
+  Repeat
 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ReminderBell from './ReminderBell';
@@ -52,6 +53,7 @@ import DesignProperties from './DesignProperties';
 import CopyProperties from './CopyProperties';
 import BudgetProperties from './BudgetProperties';
 import PlanningProperties from './PlanningProperties';
+import RoutineProperties from './RoutineProperties';
 import SocialMediaApproval from './SocialMediaApproval';
 import TaskChat from './TaskChat';
 import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } from '../types';
@@ -426,7 +428,7 @@ const TitleInput = ({ taskId, initialValue, onChange, missingTitle, disabled }: 
   );
 };
 
-const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled }: { subtaskId: string, initialValue: string, onChange: (val: string) => void, onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void, disabled?: boolean }) => {
+const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled, completed, canceled }: { subtaskId: string, initialValue: string, onChange: (val: string) => void, onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void, disabled?: boolean, completed?: boolean, canceled?: boolean }) => {
   const [val, setVal] = useState(initialValue);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -434,7 +436,7 @@ const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled }
     if (disabled) setVal(initialValue);
   }, [initialValue, disabled]);
   
-  useEffect(() => setVal(initialValue), [subtaskId]); // Removed initialValue from here to avoid typing jump if it was an echo.
+  useEffect(() => setVal(initialValue), [subtaskId]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -442,6 +444,13 @@ const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled }
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [val]);
+
+  let textStyle = "text-zinc-300";
+  if (canceled) {
+    textStyle = "text-zinc-500 line-through";
+  } else if (completed) {
+    textStyle = "text-zinc-400"; // Maybe slightly subdued for completed too, but primarily canceled needs line-through
+  }
 
   return (
     <textarea
@@ -459,7 +468,7 @@ const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled }
         if (disabled) return;
         if (onKeyDown) onKeyDown(e);
       }}
-      className={`flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-xs font-normal text-zinc-300 placeholder-zinc-600 resize-none overflow-hidden block w-full py-0 ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}
+      className={`flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-xs font-normal ${textStyle} placeholder-zinc-600 resize-none overflow-hidden block w-full py-0 ${disabled ? 'opacity-70 cursor-not-allowed' : ''} transition-colors`}
       placeholder="Descreva a subtarefa..."
     />
   );
@@ -1068,6 +1077,31 @@ export default function TaskSheet({
           {/* Main Task Panel */}
           <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin border-r border-zinc-900">
           
+          {task.routine?.active && (
+            <div className="mb-4 bg-purple-500/10 border border-purple-500/30 text-purple-400 p-3 rounded-md flex items-center justify-between text-xs animate-pulse">
+              <div className="flex items-center gap-2 font-medium">
+                <Repeat size={14} />
+                <span>Esta tarefa está criando cópias em modo rotina.</span>
+              </div>
+              <button
+                onClick={() => saveChange({ routine: { ...task.routine, active: false } as any })}
+                className="p-1 hover:bg-purple-500/20 rounded transition-colors text-purple-300"
+                title="Desativar Rotina"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {task.routineOriginId && (
+            <div className="mb-4 bg-zinc-800/50 border border-zinc-700 text-zinc-400 p-3 rounded-md flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Repeat size={14} />
+                <span>Esta tarefa foi gerada automaticamente por uma rotina.</span>
+              </div>
+            </div>
+          )}
+
           <div className="mb-2 flex items-start gap-3 relative">
             <div className={`mt-[2px] shrink-0 ${themeTextColor}`}>
               <ThemeIcon size={28} />
@@ -1348,6 +1382,26 @@ export default function TaskSheet({
                   }
                 />
               </div>
+
+              <div id="section-routine" className="flex flex-col gap-1.5 relative min-w-[140px]">
+                <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><Repeat size={13} className="opacity-60" /> Rotina</span>
+                <RoutineProperties
+                  routine={task?.routine}
+                  onChange={(update) => {
+                    if (update && update.active) {
+                      update.originalSnapshot = {
+                        title: titleRef.current,
+                        description: descriptionRef.current,
+                        labels: taskLabels,
+                        projectId: projectId,
+                        priority: priority
+                      };
+                    }
+                    saveChange({ routine: update });
+                  }}
+                  align="left"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-2 border-t border-zinc-900/50 pt-4 mt-1">
@@ -1537,7 +1591,7 @@ export default function TaskSheet({
                           {subtask.completed ? (
                             <CheckSquare size={13} className="text-emerald-400/50" />
                           ) : subtask.canceled ? (
-                            <Square size={13} className="text-red-400/50 line-through" />
+                            <XSquare size={13} className="text-red-400/50" />
                           ) : (
                             <Square size={13} className="text-gray-500 hover:text-gray-300" />
                           )}
@@ -1546,6 +1600,8 @@ export default function TaskSheet({
                           subtaskId={subtask.id}
                           initialValue={subtask.title}
                           disabled={!!effectiveLock}
+                          completed={subtask.completed}
+                          canceled={subtask.canceled}
                           onChange={(val) => handleEditSubtaskTitle(subtask.id, val)}
                           onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
                         />

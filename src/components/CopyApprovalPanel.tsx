@@ -218,7 +218,7 @@ const DynamicDocument = ({ submission, tempHtml, feedbacks, revNum, isCompact, i
       )}
       <div>
         <span className={`text-[10px] font-bold ${revNum > 1 ? 'text-pink-500' : 'text-zinc-500'} uppercase tracking-wide mb-4 block`}>
-          REVISÒO {revNum}
+          REVISÃO {revNum}
         </span>
         <div 
           id={isInteractive ? 'copy-document-container' : undefined}

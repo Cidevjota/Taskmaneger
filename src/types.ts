@@ -194,6 +194,16 @@ export interface TaskTimeTracking {
   reachedImplementationAt?: string;
 }
 
+export interface RoutineConfig {
+  active: boolean;
+  type: 'interval' | 'weekdays';
+  intervalValue?: number; // X for days, weeks, or months
+  intervalUnit?: 'days' | 'weeks' | 'months';
+  weekdays?: number[]; // [1, 2, 3, 4, 5] (Monday to Friday, using 1-7 or 0-6 convention. We'll use 1=Monday...5=Friday)
+  lastDuplicatedAt?: string; // ISO date of last duplication
+  originalSnapshot?: any; // Snapshot of the task when routine was activated
+}
+
 export interface Task {
   id: string; // Internal UUID
   taskCode?: string; // Visual display code (e.g., TSK-123)
@@ -223,6 +233,8 @@ export interface Task {
   reworkCount?: number;
   statusHistory?: StatusHistoryEntry[];
   updatedAt?: string;
+  routine?: RoutineConfig;
+  routineOriginId?: string;
 }
 
 export interface Project {

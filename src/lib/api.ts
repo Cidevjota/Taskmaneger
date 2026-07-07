@@ -60,16 +60,22 @@ export async function fetchTasks(): Promise<Task[]> {
       proposals: t.proposals || [],
       socialMediaApproval: t.social_media_approval,
       timeTracking: t.time_tracking,
-      subtasks: (t.subtasks || []).map((st: any) => ({
-        id: st.id,
-        title: st.title,
-        completed: st.completed,
-        canceled: st.canceled,
-        reminderDate: st.reminder_date,
-        reminderType: st.reminder_type,
-        assigneeId: st.assignee_id,
-        level: st.level
-      })),
+      subtasks: (t.subtasks || [])
+        .map((st: any) => ({
+          id: st.id,
+          title: st.title,
+          completed: st.completed,
+          canceled: st.canceled,
+          reminderDate: st.reminder_date,
+          reminderType: st.reminder_type,
+          assigneeId: st.assignee_id,
+          level: st.level
+        }))
+        .sort((a: any, b: any) => {
+          const numA = parseInt(String(a.id).replace(/\D/g, '')) || 0;
+          const numB = parseInt(String(b.id).replace(/\D/g, '')) || 0;
+          return numA - numB;
+        }),
       labels: extractedLabels
     };
   });

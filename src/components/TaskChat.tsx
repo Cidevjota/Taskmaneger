@@ -207,12 +207,17 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, re
                     </div>
                   )}
                   <p className="text-[13px] text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
-                    {msg.text.split(/(@[\wÀ-ÿ\s]+)/).map((part, i) => {
-                      if (part.startsWith('@')) {
-                        return <span key={i} className={`font-semibold ${theme ? theme.text : 'text-blue-400'}`}>{part}</span>;
-                      }
-                      return part;
-                    })}
+                    {(() => {
+                      if (!allUsers || allUsers.length === 0) return msg.text;
+                      const names = allUsers.map(u => u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                      const regex = new RegExp(`(@(?:${names.join('|')}))`, 'g');
+                      return msg.text.split(regex).map((part, i) => {
+                        if (part.startsWith('@') && allUsers.some(u => `@${u.name}` === part)) {
+                          return <span key={i} className={`font-semibold ${theme ? theme.text : 'text-blue-400'}`}>{part}</span>;
+                        }
+                        return <React.Fragment key={i}>{part}</React.Fragment>;
+                      });
+                    })()}
                   </p>
                 </div>
               </div>

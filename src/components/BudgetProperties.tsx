@@ -24,6 +24,14 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [approverMenuOpenFor, setApproverMenuOpenFor] = useState<string | null>(null);
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [activeMentionForId, setActiveMentionForId] = useState<string | null>(null);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(-1);
+
+  const filteredUsers = allUsers.filter(u => 
+    u.name.toLowerCase().includes(mentionQuery.toLowerCase()) && u.id !== currentUser?.id
+  );
+
   const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const proposalsRef = React.useRef(proposals);
 
@@ -117,6 +125,79 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
     }
   };
 
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>, proposalId: string) => {
+    const val = e.target.value;
+    setCommentInputs(prev => ({ ...prev, [proposalId]: val }));
+
+    const cursorPosition = e.target.selectionStart;
+    const textBeforeCursor = val.substring(0, cursorPosition);
+    
+    const match = textBeforeCursor.match(/@([a-zA-Z0-9_ ]*)$/);
+    if (match) {
+      setActiveMentionForId(proposalId);
+      setMentionQuery(match[1]);
+    } else {
+      setActiveMentionForId(null);
+    }
+  };
+
+  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, proposalId: string) => {
+    if (activeMentionForId === proposalId && filteredUsers.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(prev => Math.min(prev + 1, filteredUsers.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(prev => Math.max(prev - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const selectedIndex = Math.max(0, mentionIndex);
+        handleMentionSelect(filteredUsers[selectedIndex], proposalId);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setActiveMentionForId(null);
+        return;
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAddComment(proposalId);
+    }
+  };
+
+  const handleMentionSelect = (user: any, proposalId: string) => {
+    const textarea = document.getElementById(`comment-input-${proposalId}`) as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const text = commentInputs[proposalId] || '';
+    const cursorPosition = textarea.selectionStart || 0;
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    const textAfterCursor = text.substring(cursorPosition);
+    
+    const lastAtPos = textBeforeCursor.lastIndexOf('@');
+    if (lastAtPos === -1) return;
+
+    const newTextBefore = textBeforeCursor.substring(0, lastAtPos);
+    
+    const newText = `${newTextBefore}@${user.name} ${textAfterCursor}`;
+    setCommentInputs(prev => ({ ...prev, [proposalId]: newText }));
+    setActiveMentionForId(null);
+    setMentionQuery('');
+    setMentionIndex(-1);
+    
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = lastAtPos + user.name.length + 2;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
   const handleAddComment = (proposalId: string) => {
     const text = commentInputs[proposalId]?.trim();
     if (!text) return;
@@ -134,8 +215,22 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
 
     const updatedComments = [...(targetProposal.comments || []), newComment];
     handleUpdateProposal(proposalId, { comments: updatedComments });
+
+    allUsers.forEach(user => {
+      if (user.id !== currentUser?.id && text.includes(`@${user.name}`)) {
+        addNotification({
+          userId: user.id,
+          actorId: currentUser?.id || '',
+          taskId: task.id,
+          type: 'chat_mention',
+          message: `${currentUser?.name} mencionou você no chat da proposta da empresa "${targetProposal.empresa || 'Nova Empresa'}" na tarefa "${task.title}"`,
+          targetId: `proposal-${proposalId}`
+        });
+      }
+    });
     
     setCommentInputs(prev => ({ ...prev, [proposalId]: '' }));
+    setActiveMentionForId(null);
   };
 
   const handleApprovalAction = (proposalId: string, status: 'approved' | 'rejected') => {
@@ -536,7 +631,17 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                             <div className="flex flex-col">
                               <span className="text-[10px] font-semibold text-zinc-300">{c.userName}</span>
                               <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug break-words">
-                                {c.content}
+                                {(() => {
+                                  if (!allUsers || allUsers.length === 0) return c.content;
+                                  const names = allUsers.map(u => u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                                  const regex = new RegExp(`(@(?:${names.join('|')}))`, 'g');
+                                  return c.content.split(regex).map((part, i) => {
+                                    if (part.startsWith('@') && allUsers.some(u => `@${u.name}` === part)) {
+                                      return <span key={i} className={`font-semibold ${themeColor}`}>{part}</span>;
+                                    }
+                                    return <React.Fragment key={i}>{part}</React.Fragment>;
+                                  });
+                                })()}
                               </p>
                             </div>
                           </div>
@@ -547,20 +652,36 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                     </div>
 
                     {/* Chat Input */}
-                    <div className="flex items-end gap-1.5 mt-1">
+                    <div className="flex items-end gap-1.5 mt-1 relative">
                       <textarea
+                        id={`comment-input-${p.id}`}
                         rows={1}
                         value={commentInputs[p.id] || ''}
-                        onChange={(e) => setCommentInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleAddComment(p.id);
-                          }
-                        }}
+                        onChange={(e) => handleCommentChange(e, p.id)}
+                        onKeyDown={(e) => handleCommentKeyDown(e, p.id)}
                         placeholder="Adicionar comentário..."
                         className="flex-1 bg-zinc-950/50 border border-zinc-800/80 rounded-lg p-2 text-[10px] text-zinc-300 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 resize-none min-h-[32px] max-h-[80px]"
                       />
+                      
+                      {activeMentionForId === p.id && filteredUsers.length > 0 && (
+                        <div className="absolute bottom-full left-0 mb-2 w-64 bg-[#18181b] border border-zinc-800 rounded-lg shadow-xl overflow-hidden z-50">
+                          {filteredUsers.map((u, i) => (
+                            <div
+                              key={u.id}
+                              onClick={() => handleMentionSelect(u, p.id)}
+                              className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${
+                                i === mentionIndex || (mentionIndex === -1 && i === 0)
+                                  ? 'bg-zinc-800'
+                                  : 'hover:bg-zinc-800/60'
+                              }`}
+                            >
+                              <img src={u.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+                              <span className="text-xs text-zinc-300 font-medium">{u.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <button
                         onClick={() => handleAddComment(p.id)}
                         disabled={!commentInputs[p.id]?.trim()}
@@ -590,8 +711,63 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
       )}
 
       {activeTab === 'aprovacao' && (
-        <div className="flex flex-col items-center justify-center py-10 text-zinc-600 text-xs italic">
-          Nenhum fluxo de aprovação configurado.
+        <div className="flex flex-col gap-4">
+          {proposals.filter(p => p.approvalStatus && p.approvalStatus !== 'none').length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-zinc-600 text-xs italic">
+              Nenhum fluxo de aprovação configurado.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {proposals.filter(p => p.approvalStatus && p.approvalStatus !== 'none').map(p => {
+                const isApprover = currentUser?.id === p.approverId;
+                const isPending = p.approvalStatus === 'pending';
+                const approverUser = allUsers.find(u => u.id === p.approverId);
+
+                return (
+                  <div key={`approval-${p.id}`} className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Building2 size={16} className="text-zinc-500" />
+                        <div>
+                          <h4 className="text-sm font-semibold text-zinc-200">{p.empresa || 'Empresa não informada'}</h4>
+                          <span className="text-xs text-zinc-500">Valor: {formatCurrency(p.valor)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         {p.approvalStatus === 'pending' && <span className="px-2 py-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-md text-[10px] font-bold uppercase tracking-wider">Pendente</span>}
+                         {p.approvalStatus === 'approved' && <span className="px-2 py-1 bg-green-500/10 text-green-500 border border-green-500/20 rounded-md text-[10px] font-bold uppercase tracking-wider">Aprovado</span>}
+                         {p.approvalStatus === 'rejected' && <span className="px-2 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded-md text-[10px] font-bold uppercase tracking-wider">Reprovado</span>}
+                      </div>
+                    </div>
+                    
+                    {approverUser && (
+                      <div className="flex items-center gap-2 text-xs text-zinc-400">
+                        <img src={approverUser.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+                        <span>Aprovador selecionado: <strong className="text-zinc-300">{approverUser.name}</strong></span>
+                      </div>
+                    )}
+
+                    {isPending && isApprover && (
+                      <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/50">
+                        <button
+                          onClick={() => handleApprovalAction(p.id, 'approved')}
+                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600/20 hover:bg-green-600/40 text-green-500 border border-green-500/30 rounded-md text-xs font-semibold transition-colors"
+                        >
+                          <CheckCircle2 size={14} /> Aprovar
+                        </button>
+                        <button
+                          onClick={() => handleApprovalAction(p.id, 'rejected')}
+                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-500 border border-red-500/30 rounded-md text-xs font-semibold transition-colors"
+                        >
+                          <XCircle size={14} /> Reprovar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
