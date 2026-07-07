@@ -1,7 +1,11 @@
+// @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-ignore
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.42.0";
 
+// @ts-ignore
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+// @ts-ignore
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 async function processRoutines() {
@@ -115,8 +119,10 @@ Deno.cron("Process Routines", "*/15 * * * *", () => {
 
 // Also expose as standard Edge Function for manual triggers or pg_cron
 serve(async (req: Request) => {
+// @ts-ignore
   if (req.method === 'POST') {
     const authHeader = req.headers.get('Authorization');
+    // @ts-ignore
     if (!authHeader || authHeader !== `Bearer ${Deno.env.get('SIENGE_WEBHOOK_TOKEN') || 'sienge-taskmanager-secret-token'}`) {
        // Just basic protection
        if (req.headers.get('X-Cron-Trigger') !== 'true') {
