@@ -178,10 +178,14 @@ export default function CommandBar({
 
   // Add tasks to command items
   tasks.forEach(t => {
+    const cleanSubtitle = t.description 
+      ? t.description.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').substring(0, 120) + (t.description.length > 120 ? '...' : '') 
+      : '';
+
     items.push({
       id: `t-${t.id}`,
-      title: `[${t.id}] ${t.title}`,
-      subtitle: t.description,
+      title: t.title,
+      subtitle: cleanSubtitle,
       category: 'Tarefas',
       icon: <FileCheck2 size={15} className="text-blue-400" />,
       action: () => {
