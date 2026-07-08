@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AppNotification } from '../types';
 import { useAuth } from './AuthContext';
 import { fetchNotifications, saveNotification, deleteArchivedNotifications } from '../lib/api';
+import { isNotificationTypeEnabled } from '../lib/notificationTypes';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -22,7 +23,7 @@ import { supabase } from '../lib/supabase';
 import { patchTask } from '../lib/api';
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const { currentUser } = useAuth();
+  const { currentUser, allUsers } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   useEffect(() => {
@@ -73,13 +74,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const addNotification = async (notif: Omit<AppNotification, 'id' | 'createdAt' | 'status'>) => {
     if (!notif.userId) return;
-    
+
+    // Respect the recipient's notification preferences, if known locally.
+    const recipient = notif.userId === currentUser?.id ? currentUser : allUsers.find(u => u.id === notif.userId);
+    if (recipient && !isNotificationTypeEnabled(recipient.preferences, notif.type, notif.targetId)) return;
+
     // We only perform duplicate check against currently loaded notifications (if target is me)
     // If target is someone else, it's harder to check duplicates efficiently without fetching,
     // but we can just insert it. Let's insert directly.
     const isDuplicate = notifications.some(n => {
       if (n.userId !== notif.userId) return false;
-      if (n.taskId !== notif.taskId || n.type !== notif.type) return false;
+      if (n.taskId !== notif.taskId || n.siengeTitleId !== notif.siengeTitleId || n.type !== notif.type) return false;
       
       if (notif.type === 'deadline') {
         return n.message === notif.message && (new Date().getTime() - new Date(n.createdAt).getTime() < 1000 * 60 * 60 * 24);
@@ -126,8 +131,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (notif) {
       syncUpdate({ ...notif, status: 'viewed', viewedAt: new Date().toISOString() });
       if (notif.type === 'reminder') {
-        if (notif.targetId === 'reminder' || notif.targetId === notif.taskId) {
-          patchTask(notif.taskId, { reminderType: 'seen' as any, updatedBy: currentUser?.id }).catch(console.error);
+        if (notif.targetId === 'sienge_reminder') {
+          supabase.from('sienge_titles').update({ reminder_type: 'seen' }).eq('id', notif.siengeTitleId).then(({ error }) => {
+            if (error) console.error(error);
+          });
+        } else if (notif.targetId === 'reminder' || notif.targetId === notif.taskId) {
+          patchTask(notif.taskId!, { reminderType: 'seen' as any, updatedBy: currentUser?.id }).catch(console.error);
         } else if (notif.targetId && notif.targetId !== 'deadline') {
           // It's a subtask reminder
           supabase.from('subtasks').update({ reminder_type: 'seen' }).eq('id', notif.targetId).then(({ error }) => {
@@ -148,8 +157,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     
     activeNotifs.forEach(notif => {
       if (notif.type === 'reminder') {
-        if (notif.targetId === 'reminder' || notif.targetId === notif.taskId) {
-          patchTask(notif.taskId, { reminderType: 'seen' as any, updatedBy: currentUser.id }).catch(console.error);
+        if (notif.targetId === 'sienge_reminder') {
+          supabase.from('sienge_titles').update({ reminder_type: 'seen' }).eq('id', notif.siengeTitleId).then(({ error }) => {
+            if (error) console.error(error);
+          });
+        } else if (notif.targetId === 'reminder' || notif.targetId === notif.taskId) {
+          patchTask(notif.taskId!, { reminderType: 'seen' as any, updatedBy: currentUser.id }).catch(console.error);
         } else if (notif.targetId && notif.targetId !== 'deadline') {
           supabase.from('subtasks').update({ reminder_type: 'seen' }).eq('id', notif.targetId).then(({ error }) => {
             if (error) console.error(error);

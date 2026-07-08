@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { X, Camera, Save, Loader2 } from 'lucide-react';
+import { X, Camera, Save, Loader2, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { uploadToStorage, UPLOAD_LIMITS } from '../lib/storage';
+import PreferencesModal from './PreferencesModal';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -21,6 +22,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPreferences, setShowPreferences] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -179,7 +181,16 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
           )}
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-zinc-800/50">
+          <div className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-zinc-800/50">
+            <button
+              type="button"
+              onClick={() => setShowPreferences(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 rounded-md transition-colors"
+            >
+              <Settings size={13} />
+              Preferências
+            </button>
+            <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -195,9 +206,11 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
               {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               Salvar Alterações
             </button>
+            </div>
           </div>
         </form>
       </div>
+      {showPreferences && <PreferencesModal onClose={() => setShowPreferences(false)} />}
     </div>
   );
 }

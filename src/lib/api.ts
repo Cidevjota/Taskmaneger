@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, DesignBriefing, CopyBriefing, PlanningBriefing } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -306,6 +306,7 @@ export async function fetchNotifications(userId: string): Promise<AppNotificatio
     userId: n.user_id,
     actorId: n.actor_id,
     taskId: n.task_id,
+    siengeTitleId: n.sienge_title_id,
     type: n.type,
     status: n.status,
     createdAt: n.created_at,
@@ -322,7 +323,8 @@ export async function saveNotification(notif: AppNotification) {
     id: notif.id,
     user_id: notif.userId,
     actor_id: notif.actorId,
-    task_id: notif.taskId,
+    task_id: notif.taskId || null,
+    sienge_title_id: notif.siengeTitleId || null,
     type: notif.type,
     status: notif.status,
     created_at: notif.createdAt,
@@ -437,6 +439,33 @@ export async function saveSiengeTitle(title: SiengeTitle) {
 
 export async function deleteSiengeTitle(id: string) {
   const { error } = await supabase.from('sienge_titles').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Sienge Alçada Config ──────────────────────────────────────
+
+export async function fetchSiengeAlcadaConfig(): Promise<SiengeAlcadaConfig> {
+  const { data, error } = await supabase
+    .from('sienge_alcada_config')
+    .select('*')
+    .eq('id', 'default')
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    alcada1UserId: data?.alcada_1_user_id || undefined,
+    alcada2UserId: data?.alcada_2_user_id || undefined,
+    alcada3UserId: data?.alcada_3_user_id || undefined,
+  };
+}
+
+export async function saveSiengeAlcadaConfig(config: SiengeAlcadaConfig) {
+  const { error } = await supabase.from('sienge_alcada_config').upsert({
+    id: 'default',
+    alcada_1_user_id: config.alcada1UserId || null,
+    alcada_2_user_id: config.alcada2UserId || null,
+    alcada_3_user_id: config.alcada3UserId || null,
+    updated_at: new Date().toISOString(),
+  });
   if (error) throw error;
 }
 

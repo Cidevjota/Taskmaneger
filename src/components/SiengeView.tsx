@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SiengeTitle, SiengeLote, Project } from '../types';
+import { SiengeTitle, SiengeLote, Project, SiengeAlcadaConfig } from '../types';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
 
@@ -8,14 +8,16 @@ interface SiengeViewProps {
   lotes: SiengeLote[];
   projects: Project[];
   currentProjectFilter: string | null;
+  alcadaConfig: SiengeAlcadaConfig;
   onSaveTitle: (title: SiengeTitle) => void;
   onDeleteTitle: (id: string) => void;
   onSaveLote: (lote: SiengeLote) => void;
   onDeleteLote: (id: string) => void;
+  onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
 }
 
 export default function SiengeView({
-  titles, lotes, projects, currentProjectFilter, onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote
+  titles, lotes, projects, currentProjectFilter, alcadaConfig, onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveAlcadaConfig
 }: SiengeViewProps) {
   const [activeTab, setActiveTab] = useState<'titulos' | 'lotes'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
@@ -59,8 +61,10 @@ export default function SiengeView({
             openLotes={openLotes}
             projects={projects}
             currentProjectFilter={currentProjectFilter}
+            alcadaConfig={alcadaConfig}
             onSave={onSaveTitle}
             onDelete={onDeleteTitle}
+            onSaveAlcadaConfig={onSaveAlcadaConfig}
           />
         ) : (
           <SiengeLotes

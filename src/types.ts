@@ -138,8 +138,9 @@ export interface AppNotification {
   id: string;
   userId: string;
   actorId: string;
-  taskId: string;
-  type: 'task_assigned' | 'task_deleted' | 'status_changed' | 'assignee_replaced' | 'properties_changed' | 'feedback_received' | 'rejected' | 'review_requested' | 'approved' | 'reminder' | 'deadline' | 'deadline_changed' | 'approval_pending' | 'chat_mention';
+  taskId?: string;
+  siengeTitleId?: string;
+  type: 'task_assigned' | 'task_deleted' | 'status_changed' | 'assignee_replaced' | 'properties_changed' | 'feedback_received' | 'rejected' | 'review_requested' | 'approved' | 'reminder' | 'deadline' | 'deadline_changed' | 'approval_pending' | 'chat_mention' | 'alcada_pending';
   status: 'unread' | 'read' | 'viewed' | 'postponed' | 'important';
   createdAt: string;
   viewedAt?: string;
@@ -248,6 +249,12 @@ export interface Project {
 export type ViewType = 'home' | 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge' | 'dashboard';
 
 export type SiengeStatus = 'a_lancar' | 'aprovacao_1' | 'aprovacao_2' | 'aprovacao_3' | 'aguardando_pagamento' | 'recusados' | 'pago';
+
+export interface SiengeAlcadaConfig {
+  alcada1UserId?: string;
+  alcada2UserId?: string;
+  alcada3UserId?: string;
+}
 
 export type SiengeLoteStatus = 'aberto' | 'encerrado';
 

@@ -5,7 +5,7 @@ import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
 import DatePicker from './DatePicker';
 import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
-import { withVencimentoOriginal } from '../lib/siengeHelpers';
+import { withVencimentoOriginal, getPositiveAction, showsRejectAction, rejectTargetStatus } from '../lib/siengeHelpers';
 
 interface SiengeTitleModalProps {
   isOpen: boolean;
@@ -215,10 +215,13 @@ export default function SiengeTitleModal({
     }
   };
 
-  const handleMarkPaid = () => {
-    if (!initialData) return;
-    const updated: SiengeTitle = { ...initialData, status: 'pago', updatedAt: new Date().toISOString() };
-    setStatus('pago');
+  const positiveAction = getPositiveAction(status);
+  const showReject = showsRejectAction(status);
+
+  const handlePositiveAction = () => {
+    if (!initialData || !positiveAction) return;
+    const updated: SiengeTitle = { ...initialData, status: positiveAction.nextStatus, updatedAt: new Date().toISOString() };
+    setStatus(positiveAction.nextStatus);
     onSave(updated);
   };
 
@@ -231,9 +234,10 @@ export default function SiengeTitleModal({
     if (!initialData || !rejectReason.trim()) return;
     const trimmed = rejectReason.trim();
     const now = new Date().toISOString();
+    const newStatus = rejectTargetStatus(initialData.status);
     const updated: SiengeTitle = {
       ...initialData,
-      status: 'recusados',
+      status: newStatus,
       motivoRecusa: trimmed,
       motivoRecusaRegistradoEm: now,
       motivoRecusaResolvido: false,
@@ -241,7 +245,7 @@ export default function SiengeTitleModal({
       motivoRecusaObservacao: undefined,
       updatedAt: now,
     };
-    setStatus('recusados');
+    setStatus(newStatus);
     setMotivoRecusaRecord(trimmed);
     setMotivoRecusaRegistradoEm(now);
     setMotivoRecusaResolvido(false);
@@ -262,11 +266,16 @@ export default function SiengeTitleModal({
     const oldVencimento = initialData.vencimento;
     const trimmedObs = resolveObservacao.trim() || undefined;
     const now = new Date().toISOString();
+    // A rejection resolved from 'recusados' (i.e. rejected after clearing every
+    // alçada, at aguardando_pagamento) goes straight back to aguardando_pagamento.
+    // A rejection resolved from 'a_lancar' (rejected during an alçada step) stays
+    // at 'a_lancar' — it must re-enter the alçada flow via the "Lançado" button.
+    const newStatus = initialData.status === 'recusados' ? 'aguardando_pagamento' : 'a_lancar';
     const updated: SiengeTitle = {
       ...initialData,
-      status: 'aguardando_pagamento',
+      status: newStatus,
       vencimento: resolveVencimento,
-      vencimentoOriginal: initialData.vencimentoOriginal || oldVencimento,
+      vencimentoOriginal: newStatus === 'aguardando_pagamento' ? (initialData.vencimentoOriginal || oldVencimento) : initialData.vencimentoOriginal,
       vencimentoHistory: oldVencimento
         ? [...(initialData.vencimentoHistory || []), { vencimento: oldVencimento, changedAt: now, observacao: trimmedObs }]
         : (initialData.vencimentoHistory || []),
@@ -275,7 +284,7 @@ export default function SiengeTitleModal({
       motivoRecusaObservacao: trimmedObs,
       updatedAt: now,
     };
-    setStatus('aguardando_pagamento');
+    setStatus(newStatus);
     setVencimento(resolveVencimento);
     setMotivoRecusaResolvido(true);
     setMotivoRecusaResolvidoEm(now);
@@ -361,24 +370,28 @@ export default function SiengeTitleModal({
                 <span className="text-sm font-semibold text-zinc-100 truncate">{titulo || 'Sem número'}</span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                {status === 'aguardando_pagamento' && (
+                {(positiveAction || showReject) && (
                   <div className="flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={handleMarkPaid}
-                      className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
-                      title="Marcar como Pago"
-                    >
-                      <CheckCircle2 size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRequestReject}
-                      className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-red-400 transition-colors"
-                      title="Recusar título"
-                    >
-                      <XCircle size={14} />
-                    </button>
+                    {positiveAction && (
+                      <button
+                        type="button"
+                        onClick={handlePositiveAction}
+                        className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
+                        title={positiveAction.label}
+                      >
+                        <CheckCircle2 size={14} />
+                      </button>
+                    )}
+                    {showReject && (
+                      <button
+                        type="button"
+                        onClick={handleRequestReject}
+                        className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-red-400 transition-colors"
+                        title="Recusar título"
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    )}
                   </div>
                 )}
                 <span className="px-2 py-0.5 rounded-full bg-zinc-800/80 border border-zinc-700/60 text-[10px] font-semibold text-zinc-300 uppercase tracking-wide">
@@ -410,7 +423,7 @@ export default function SiengeTitleModal({
                     motivoRecusaResolvidoEm && (
                       <span className="text-[9px] font-medium text-zinc-500 shrink-0">{formatDateTime(motivoRecusaResolvidoEm)}</span>
                     )
-                  ) : status === 'recusados' ? (
+                  ) : (status === 'recusados' || status === 'a_lancar') ? (
                     <button
                       type="button"
                       onClick={handleRequestResolve}
@@ -435,7 +448,7 @@ export default function SiengeTitleModal({
                   </div>
                 )}
 
-                {showResolveForm && !motivoRecusaResolvido && status === 'recusados' && (
+                {showResolveForm && !motivoRecusaResolvido && (status === 'recusados' || status === 'a_lancar') && (
                   <div className="flex flex-col gap-2.5 p-2.5 rounded-lg bg-black/20 border border-white/5">
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Novo Vencimento</label>

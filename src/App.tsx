@@ -22,7 +22,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig } from './lib/api';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -138,6 +138,7 @@ export default function App() {
   const { data: labels = [], isLoading: isLabelsLoading } = useQuery({ queryKey: ['labels'], queryFn: fetchLabels, enabled: authReady });
   const { data: siengeTitles = [], isLoading: isSiengeLoading } = useQuery({ queryKey: ['siengeTitles'], queryFn: fetchSiengeTitles, enabled: authReady });
   const { data: siengeLotes = [], isLoading: isLotesLoading } = useQuery({ queryKey: ['siengeLotes'], queryFn: fetchSiengeLotes, enabled: authReady });
+  const { data: siengeAlcadaConfig = {} } = useQuery({ queryKey: ['siengeAlcadaConfig'], queryFn: fetchSiengeAlcadaConfig, enabled: authReady });
 
   const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading;
   
@@ -462,6 +463,7 @@ export default function App() {
           let message = '';
           let details = '';
           let deadlineKey = '';
+          let milestone = '';
 
           const createdAtDate = new Date(task.createdAt.split('T')[0] + 'T00:00:00');
           createdAtDate.setHours(0,0,0,0);
@@ -470,26 +472,32 @@ export default function App() {
           if (diffDays === 3 && totalDurationDays > 3) {
             message = 'Prazo em 3 dias';
             details = `O prazo da tarefa se encerra em 3 dias`;
+            milestone = '3d';
             deadlineKey = `deadline_${task.id}_3d_${task.dueDate}`;
           } else if (diffDays === 1) {
             message = 'Prazo Amanhã';
             details = `O prazo da tarefa se encerra amanhã`;
+            milestone = '1d';
             deadlineKey = `deadline_${task.id}_1d_${task.dueDate}`;
           } else if (diffDays === 0) {
             message = 'Prazo Vencendo Hoje';
             details = `O prazo desta tarefa vence hoje`;
+            milestone = '0d';
             deadlineKey = `deadline_${task.id}_0d_${task.dueDate}`;
           } else if (diffDays === -3) {
             message = 'Prazo Atrasado (3 dias)';
             details = `A tarefa está 3 dias atrasada`;
+            milestone = '-3d';
             deadlineKey = `deadline_${task.id}_-3d_${task.dueDate}`;
           } else if (diffDays === -7) {
             message = 'Prazo Atrasado (7 dias)';
             details = `A tarefa está 7 dias atrasada`;
+            milestone = '-7d';
             deadlineKey = `deadline_${task.id}_-7d_${task.dueDate}`;
           } else if (diffDays === -15) {
             message = 'Prazo Atrasado (15 dias)';
             details = `A tarefa está 15 dias atrasada`;
+            milestone = '-15d';
             deadlineKey = `deadline_${task.id}_-15d_${task.dueDate}`;
           }
 
@@ -499,7 +507,7 @@ export default function App() {
               userId: currentUser.id,
               actorId: 'system',
               taskId: task.id,
-              targetId: 'deadline',
+              targetId: milestone,
               type: 'deadline',
               message,
               details
@@ -568,8 +576,8 @@ export default function App() {
              addNotification({
                userId: currentUser.id,
                actorId: 'system',
-               taskId: title.id,
-               targetId: 'reminder',
+               siengeTitleId: title.id,
+               targetId: 'sienge_reminder',
                type: 'reminder',
                message: 'Lembrete de Título',
                details: `O lembrete para o título "${title.titulo}" foi acionado`
@@ -1136,6 +1144,11 @@ export default function App() {
               lotes={siengeLotes}
               projects={projects}
               currentProjectFilter={currentProjectFilter}
+              alcadaConfig={siengeAlcadaConfig}
+              onSaveAlcadaConfig={async (config) => {
+                queryClient.setQueryData(['siengeAlcadaConfig'], config);
+                await saveSiengeAlcadaConfig(config);
+              }}
               onSaveTitle={async (title) => {
                 queryClient.setQueryData<SiengeTitle[]>(['siengeTitles'], prev => {
                   const exists = (prev || []).find(t => t.id === title.id);

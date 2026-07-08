@@ -3,22 +3,29 @@ import {
   Plus, Hash, DollarSign, Building2, Calendar, Tag, Receipt,
   ChevronRight, AlertTriangle, CheckCircle2, Clock, XCircle,
   Banknote, ArrowRight, Search, SlidersHorizontal, User,
-  LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy
+  LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy, Settings
 } from 'lucide-react';
-import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
+import { SiengeTitle, SiengeStatus, SiengeLote, Project, SiengeAlcadaConfig } from '../types';
 import SiengeTitleModal from './SiengeTitleModal';
+import AlcadaConfigModal from './AlcadaConfigModal';
 import ReminderBell from './ReminderBell';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { fetchSiengeTitleById } from '../lib/api';
-import { siengeDaysOverdue, withVencimentoOriginal } from '../lib/siengeHelpers';
+import {
+  siengeDaysOverdue, withVencimentoOriginal, rejectTargetStatus,
+  getPositiveAction, showsRejectAction, ALCADA_LEVEL_BY_STATUS, alcadaResponsibleId,
+} from '../lib/siengeHelpers';
 
 interface SiengeKanbanProps {
   titles: SiengeTitle[];
   openLotes: SiengeLote[];
   projects: Project[];
   currentProjectFilter: string | null;
+  alcadaConfig: SiengeAlcadaConfig;
   onSave: (title: SiengeTitle) => void;
   onDelete: (id: string) => void;
+  onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
 }
 
 const COLUMNS: { id: SiengeStatus; label: string; shortLabel: string; color: string; dotColor: string; bg: string; border: string; icon: React.ReactNode }[] = [
@@ -135,7 +142,8 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
   const expired = isExpired(title.vencimento);
   const isDueToday = isTodayDate(title.vencimento);
   const isPaid = title.status === 'pago';
-  const showQuickActions = title.status === 'aguardando_pagamento';
+  const positiveAction = getPositiveAction(title.status);
+  const showReject = showsRejectAction(title.status);
   // Always measured against the first vencimento the title ever had while
   // awaiting payment — a rejection being resolved with a new date doesn't
   // reset how late it already is. Never shown once the title is paid.
@@ -162,9 +170,10 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
     onClick();
   };
 
-  const handleMarkPaid = (e: React.MouseEvent) => {
+  const handlePositiveAction = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onUpdateTitle({ ...title, status: 'pago' });
+    if (!positiveAction) return;
+    onUpdateTitle({ ...title, status: positiveAction.nextStatus });
   };
 
   const handleRequestReject = (e: React.MouseEvent) => {
@@ -177,7 +186,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
     if (!motivo.trim()) return;
     onUpdateTitle({
       ...title,
-      status: 'recusados',
+      status: rejectTargetStatus(title.status),
       motivoRecusa: motivo.trim(),
       motivoRecusaRegistradoEm: new Date().toISOString(),
       motivoRecusaResolvido: false,
@@ -277,24 +286,28 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           </span>
         )}
 
-        {showQuickActions && (
+        {(positiveAction || showReject) && (
           <div className="shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={handleMarkPaid}
-              className="flex items-center justify-center w-4 h-4 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
-              title="Marcar como Pago"
-            >
-              <CheckCircle2 size={12} />
-            </button>
-            <button
-              type="button"
-              onClick={handleRequestReject}
-              className="flex items-center justify-center w-4 h-4 rounded text-zinc-500 hover:text-red-400 transition-colors"
-              title="Recusar título"
-            >
-              <XCircle size={12} />
-            </button>
+            {positiveAction && (
+              <button
+                type="button"
+                onClick={handlePositiveAction}
+                className="flex items-center justify-center w-4 h-4 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
+                title={positiveAction.label}
+              >
+                <CheckCircle2 size={12} />
+              </button>
+            )}
+            {showReject && (
+              <button
+                type="button"
+                onClick={handleRequestReject}
+                className="flex items-center justify-center w-4 h-4 rounded text-zinc-500 hover:text-red-400 transition-colors"
+                title="Recusar título"
+              >
+                <XCircle size={12} />
+              </button>
+            )}
           </div>
         )}
 
@@ -409,24 +422,28 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           {formatCurrencyDisplay(title.valor)}
         </span>
         <div className="flex items-center gap-2">
-          {showQuickActions && (
+          {(positiveAction || showReject) && (
             <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={handleMarkPaid}
-                className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
-                title="Marcar como Pago"
-              >
-                <CheckCircle2 size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={handleRequestReject}
-                className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-red-400 transition-colors"
-                title="Recusar título"
-              >
-                <XCircle size={14} />
-              </button>
+              {positiveAction && (
+                <button
+                  type="button"
+                  onClick={handlePositiveAction}
+                  className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
+                  title={positiveAction.label}
+                >
+                  <CheckCircle2 size={14} />
+                </button>
+              )}
+              {showReject && (
+                <button
+                  type="button"
+                  onClick={handleRequestReject}
+                  className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-red-400 transition-colors"
+                  title="Recusar título"
+                >
+                  <XCircle size={14} />
+                </button>
+              )}
             </div>
           )}
           {title.attachments && title.attachments.length > 0 && (
@@ -541,7 +558,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
   );
 }
 
-export default function SiengeKanban({ titles, openLotes, projects, currentProjectFilter, onSave, onDelete }: SiengeKanbanProps) {
+export default function SiengeKanban({ titles, openLotes, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig }: SiengeKanbanProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState<SiengeTitle | null>(null);
   const [modalInitialStatus, setModalInitialStatus] = useState<SiengeStatus>('a_lancar');
@@ -551,12 +568,41 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
   const [search, setSearch] = useState('');
   const [isCompact, setIsCompact] = useState(false);
   const [filterLoteId, setFilterLoteId] = useState<string | 'all'>('all');
+  const [showAlcadaConfig, setShowAlcadaConfig] = useState(false);
+
+  const { currentUser } = useAuth();
+  const { addNotification } = useNotifications();
 
   // Horizontal pan state
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+
+  // Notifies the responsible for the alçada level a title just entered.
+  // No-op if the status didn't actually change or no responsible is configured.
+  const notifyAlcadaIfNeeded = useCallback((title: SiengeTitle, previousStatus?: SiengeStatus) => {
+    if (!previousStatus || previousStatus === title.status) return;
+    const entry = ALCADA_LEVEL_BY_STATUS[title.status];
+    if (!entry) return;
+    const responsibleId = alcadaResponsibleId(alcadaConfig, entry.level);
+    if (!responsibleId) return;
+    addNotification({
+      userId: responsibleId,
+      actorId: currentUser?.id || 'system',
+      siengeTitleId: title.id,
+      targetId: String(entry.level),
+      type: 'alcada_pending',
+      message: `Título aguardando ${entry.label} alçada`,
+      details: `O título "${title.titulo || title.descricao || ''}" está aguardando sua aprovação.`,
+    });
+  }, [alcadaConfig, currentUser, addNotification]);
+
+  const handleUpdateTitle = useCallback((title: SiengeTitle) => {
+    const prev = titles.find(t => t.id === title.id);
+    onSave(title);
+    notifyAlcadaIfNeeded(title, prev?.status);
+  }, [titles, onSave, notifyAlcadaIfNeeded]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
     setDragId(id);
@@ -574,11 +620,11 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
     if (!dragId) return;
     const dragged = titles.find(t => t.id === dragId);
     if (dragged && dragged.status !== targetStatus) {
-      onSave(withVencimentoOriginal({ ...dragged, status: targetStatus, updatedAt: new Date().toISOString() }));
+      handleUpdateTitle(withVencimentoOriginal({ ...dragged, status: targetStatus, updatedAt: new Date().toISOString() }));
     }
     setDragId(null);
     setDropTarget(null);
-  }, [dragId, titles, onSave]);
+  }, [dragId, titles, handleUpdateTitle]);
 
   const handleDragEnd = useCallback(() => {
     setDragId(null);
@@ -631,7 +677,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
   };
 
   const handleSave = (title: SiengeTitle) => {
-    onSave(title);
+    handleUpdateTitle(title);
     setModalOpen(false);
     setEditingTitle(null);
   };
@@ -713,6 +759,13 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
             <span className="hidden sm:inline">{isCompact ? 'Normal' : 'Compacto'}</span>
           </button>
           <button
+            onClick={() => setShowAlcadaConfig(true)}
+            title="Configurar responsáveis por alçada"
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-200 bg-zinc-900/40 border border-zinc-800/50 hover:border-zinc-700 transition-all"
+          >
+            <Settings size={14} />
+          </button>
+          <button
             onClick={() => openNew('a_lancar')}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
           >
@@ -777,7 +830,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
                     onClick={() => openEdit(title)}
                     onDragStart={handleDragStart}
                     isDragging={dragId === title.id}
-                    onUpdateTitle={onSave}
+                    onUpdateTitle={handleUpdateTitle}
                     isCompact={isCompact}
                   />
                 ))}
@@ -812,6 +865,14 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
         openLotes={openLotes}
         projects={projects}
       />
+
+      {showAlcadaConfig && (
+        <AlcadaConfigModal
+          config={alcadaConfig}
+          onClose={() => setShowAlcadaConfig(false)}
+          onSave={onSaveAlcadaConfig}
+        />
+      )}
     </div>
   );
 }
