@@ -69,12 +69,13 @@ export async function fetchTasks(): Promise<Task[]> {
           reminderDate: st.reminder_date,
           reminderType: st.reminder_type,
           assigneeId: st.assignee_id,
-          level: st.level
+          level: st.level,
+          sortOrder: st.sort_order
         }))
         .sort((a: any, b: any) => {
-          const numA = parseInt(String(a.id).replace(/\D/g, '')) || 0;
-          const numB = parseInt(String(b.id).replace(/\D/g, '')) || 0;
-          return numA - numB;
+          const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          const orderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          return orderA - orderB;
         }),
       labels: extractedLabels
     };
@@ -166,7 +167,7 @@ export async function saveTask(task: Task) {
     const keepIds = task.subtasks.map(st => st.id);
     const { error: deleteSubtasksError } = await supabase.from('subtasks').delete().eq('task_id', task.id).not('id', 'in', `(${keepIds.join(',')})`);
     if (deleteSubtasksError) console.error("Error deleting subtasks:", deleteSubtasksError);
-    const subtaskInserts = task.subtasks.map(st => ({
+    const subtaskInserts = task.subtasks.map((st, index) => ({
       id: st.id,
       task_id: task.id,
       title: st.title,
@@ -175,7 +176,8 @@ export async function saveTask(task: Task) {
       reminder_date: st.reminderDate || null,
       reminder_type: st.reminderType || null,
       assignee_id: st.assigneeId || null,
-      level: st.level
+      level: st.level,
+      sort_order: index
     }));
     const { error: upsertSubtasksError } = await supabase.from('subtasks').upsert(subtaskInserts);
     if (upsertSubtasksError) console.error("Error upserting subtasks:", upsertSubtasksError);
@@ -255,7 +257,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
         const keepIds = updates.subtasks.map(st => st.id);
         const { error: deleteError } = await supabase.from('subtasks').delete().eq('task_id', taskId).not('id', 'in', `(${keepIds.join(',')})`);
         if (deleteError) console.error("Error deleting subtasks:", deleteError);
-        const subtaskInserts = updates.subtasks.map(st => ({
+        const subtaskInserts = updates.subtasks.map((st, index) => ({
           id: st.id,
           task_id: taskId,
           title: st.title,
@@ -264,7 +266,8 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
           reminder_date: st.reminderDate || null,
           reminder_type: st.reminderType || null,
           assignee_id: st.assigneeId || null,
-          level: st.level
+          level: st.level,
+          sort_order: index
         }));
         const { error: upsertError } = await supabase.from('subtasks').upsert(subtaskInserts);
         if (upsertError) console.error("Error upserting subtasks:", upsertError);
