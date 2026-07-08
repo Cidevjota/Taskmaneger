@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { 
   X, 
   Trash2, 
@@ -44,7 +44,8 @@ import {
   Columns,
   Search,
   Lock,
-  Repeat
+  Repeat,
+  GripVertical
 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ReminderBell from './ReminderBell';
@@ -471,6 +472,156 @@ const SubtaskInput = ({ subtaskId, initialValue, onChange, onKeyDown, disabled, 
       className={`flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus:outline-none focus:border-0 outline-none text-xs font-normal ${textStyle} placeholder-zinc-600 resize-none overflow-hidden block w-full py-0 ${disabled ? 'opacity-70 cursor-not-allowed' : ''} transition-colors`}
       placeholder="Descreva a subtarefa..."
     />
+  );
+};
+
+const SubtaskRow = ({
+  subtask,
+  index,
+  effectiveLock,
+  sortedUsers,
+  subtaskAssigneeMenuOpenFor,
+  setSubtaskAssigneeMenuOpenFor,
+  onToggle,
+  onEditTitle,
+  onKeyDown,
+  onSetAssignee,
+  onSetReminder,
+  onDelete,
+}: {
+  subtask: Subtask;
+  index: number;
+  effectiveLock?: boolean;
+  sortedUsers: any[];
+  subtaskAssigneeMenuOpenFor: string | null;
+  setSubtaskAssigneeMenuOpenFor: (id: string | null) => void;
+  onToggle: (id: string) => void;
+  onEditTitle: (id: string, val: string) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, index: number, id: string) => void;
+  onSetAssignee: (id: string, userId: string) => void;
+  onSetReminder: (id: string, update: { reminderDate?: string; reminderType?: '3h' | '1d' | 'custom' | 'seen' }) => void;
+  onDelete: (id: string) => void;
+}) => {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      id={`target-${subtask.id}`}
+      value={subtask.id}
+      dragListener={false}
+      dragControls={dragControls}
+      layout
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.15 }}
+      style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
+      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50 overflow-hidden"
+    >
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {!effectiveLock && (
+          <span
+            onPointerDown={(e) => dragControls.start(e)}
+            className="shrink-0 flex items-center justify-center text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity -ml-1"
+            style={{ touchAction: 'none' }}
+            title="Arrastar para reordenar"
+          >
+            <GripVertical size={13} />
+          </span>
+        )}
+        <button onClick={() => onToggle(subtask.id)} disabled={!!effectiveLock} className="shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+          {subtask.completed ? (
+            <CheckSquare size={13} className="text-emerald-400/50" />
+          ) : subtask.canceled ? (
+            <XSquare size={13} className="text-red-400/50" />
+          ) : (
+            <Square size={13} className="text-gray-500 hover:text-gray-300" />
+          )}
+        </button>
+        <SubtaskInput
+          subtaskId={subtask.id}
+          initialValue={subtask.title}
+          disabled={!!effectiveLock}
+          completed={subtask.completed}
+          canceled={subtask.canceled}
+          onChange={(val) => onEditTitle(subtask.id, val)}
+          onKeyDown={(e) => onKeyDown(e, index, subtask.id)}
+        />
+      </div>
+      {!effectiveLock && (
+      <div className={`flex items-center ml-2 shrink-0 gap-1 transition-opacity ${subtask.assigneeId || subtask.reminderType ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        {subtask.completed && subtask.completedAt && (
+          <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
+            <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+            <span>{new Date(subtask.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+        )}
+        {/* Assignee Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setSubtaskAssigneeMenuOpenFor(subtaskAssigneeMenuOpenFor === subtask.id ? null : subtask.id)}
+            className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors hover:bg-zinc-800/80 ${subtask.assigneeId ? '' : 'text-zinc-500 hover:text-blue-400'}`}
+            title={subtask.assigneeId ? "Alterar responsável" : "Definir responsável"}
+          >
+            {subtask.assigneeId ? (
+              <img src={sortedUsers.find(u => u.id === subtask.assigneeId)?.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+            ) : (
+              <UserIcon size={14} />
+            )}
+          </button>
+
+          {subtaskAssigneeMenuOpenFor === subtask.id && (
+            <div className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
+              <div className="px-2 py-1.5 border-b border-zinc-800/80">
+                <span className="text-[10px] font-semibold text-zinc-500 uppercase">Responsável pelo Item</span>
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => onSetAssignee(subtask.id, '')}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left text-zinc-400"
+                >
+                  <UserIcon size={12} />
+                  <span className="text-xs">Remover responsável</span>
+                </button>
+                {sortedUsers.map(u => (
+                  <button
+                    type="button"
+                    key={u.id}
+                    onClick={() => onSetAssignee(subtask.id, u.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left"
+                  >
+                    <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
+                    <span className="text-xs text-zinc-300">{u.name}</span>
+                    {subtask.assigneeId === u.id && <Check size={12} className="text-blue-400 ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Lembrete do item do checklist */}
+        <ReminderBell
+          reminderDate={subtask.reminderDate}
+          reminderType={subtask.reminderType}
+          onChange={(update) => onSetReminder(subtask.id, update)}
+          size={11}
+          showLabel={true}
+          align="right"
+          disableAutoScroll={true}
+        />
+        <button
+          onClick={() => onDelete(subtask.id)}
+          className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80 rounded transition-colors"
+          title="Remover"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+      )}
+    </Reorder.Item>
   );
 };
 
@@ -1572,116 +1723,36 @@ export default function TaskSheet({
                   {subtasks.length === 0 && newSubtaskTitle === '' && (
                     <p className="text-xs text-gray-500 italic py-1 pl-1 bg-[#1f2937]/20 rounded p-1 hidden">Nenhuma subtarefa adicionada.</p>
                   )}
-                  
+
+                  <Reorder.Group
+                    as="div"
+                    axis="y"
+                    values={subtasks.map(s => s.id)}
+                    onReorder={(newIds: string[]) => {
+                      const newSubtasks = newIds.map(id => subtasks.find(s => s.id === id)!).filter(Boolean);
+                      setSubtasks(newSubtasks);
+                    }}
+                  >
                   <AnimatePresence initial={false}>
                   {subtasks.map((subtask, index) => (
-                    <motion.div
-                      id={`target-${subtask.id}`}
+                    <SubtaskRow
                       key={subtask.id}
-                      layout
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.15 }}
-                      style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
-                      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50 overflow-hidden"
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <button onClick={() => toggleSubtask(subtask.id)} disabled={!!effectiveLock} className="shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
-                          {subtask.completed ? (
-                            <CheckSquare size={13} className="text-emerald-400/50" />
-                          ) : subtask.canceled ? (
-                            <XSquare size={13} className="text-red-400/50" />
-                          ) : (
-                            <Square size={13} className="text-gray-500 hover:text-gray-300" />
-                          )}
-                        </button>
-                        <SubtaskInput
-                          subtaskId={subtask.id}
-                          initialValue={subtask.title}
-                          disabled={!!effectiveLock}
-                          completed={subtask.completed}
-                          canceled={subtask.canceled}
-                          onChange={(val) => handleEditSubtaskTitle(subtask.id, val)}
-                          onKeyDown={(e) => handleSubtaskKeyDown(e, index, subtask.id)}
-                        />
-                      </div>
-                      {!effectiveLock && (
-                      <div className={`flex items-center ml-2 shrink-0 gap-1 transition-opacity ${subtask.assigneeId || subtask.reminderType ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        {subtask.completed && subtask.completedAt && (
-                          <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
-                            <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-                            <span>{new Date(subtask.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                        )}
-                        {/* Assignee Dropdown */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setSubtaskAssigneeMenuOpenFor(subtaskAssigneeMenuOpenFor === subtask.id ? null : subtask.id)}
-                            className={`p-1 rounded flex items-center gap-1 text-[10px] font-medium transition-colors hover:bg-zinc-800/80 ${subtask.assigneeId ? '' : 'text-zinc-500 hover:text-blue-400'}`}
-                            title={subtask.assigneeId ? "Alterar responsável" : "Definir responsável"}
-                          >
-                            {subtask.assigneeId ? (
-                              <img src={USERS.find(u => u.id === subtask.assigneeId)?.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
-                            ) : (
-                              <UserIcon size={14} />
-                            )}
-                          </button>
-                          
-                          {subtaskAssigneeMenuOpenFor === subtask.id && (
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
-                              <div className="px-2 py-1.5 border-b border-zinc-800/80">
-                                <span className="text-[10px] font-semibold text-zinc-500 uppercase">Responsável pelo Item</span>
-                              </div>
-                              <div className="max-h-40 overflow-y-auto">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetSubtaskAssignee(subtask.id, '')}
-                                  className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left text-zinc-400"
-                                >
-                                  <UserIcon size={12} />
-                                  <span className="text-xs">Remover responsável</span>
-                                </button>
-                                {sortedUsers.map(u => (
-                                  <button
-                                    type="button"
-                                    key={u.id}
-                                    onClick={() => handleSetSubtaskAssignee(subtask.id, u.id)}
-                                    className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 transition-colors text-left"
-                                  >
-                                    <img src={u.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
-                                    <span className="text-xs text-zinc-300">{u.name}</span>
-                                    {subtask.assigneeId === u.id && <Check size={12} className="text-blue-400 ml-auto" />}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Lembrete do item do checklist */}
-                        <ReminderBell
-                          reminderDate={subtask.reminderDate}
-                          reminderType={subtask.reminderType}
-                          onChange={(update) => handleSetSubtaskReminder(subtask.id, update)}
-                          size={11}
-                          showLabel={true}
-                          align="right"
-                          disableAutoScroll={true}
-                        />
-                        <button
-                          onClick={() => handleDeleteSubtask(subtask.id)}
-                          className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/80 rounded transition-colors"
-                          title="Remover"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                      )}
-                    </motion.div>
+                      subtask={subtask}
+                      index={index}
+                      effectiveLock={!!effectiveLock}
+                      sortedUsers={sortedUsers}
+                      subtaskAssigneeMenuOpenFor={subtaskAssigneeMenuOpenFor}
+                      setSubtaskAssigneeMenuOpenFor={setSubtaskAssigneeMenuOpenFor}
+                      onToggle={toggleSubtask}
+                      onEditTitle={handleEditSubtaskTitle}
+                      onKeyDown={handleSubtaskKeyDown}
+                      onSetAssignee={handleSetSubtaskAssignee}
+                      onSetReminder={handleSetSubtaskReminder}
+                      onDelete={handleDeleteSubtask}
+                    />
                   ))}
                   </AnimatePresence>
+                  </Reorder.Group>
 
                   {/* Ghost inline input for adding subtasks */}
                   {!effectiveLock && (
