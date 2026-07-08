@@ -10,6 +10,7 @@ import SiengeTitleModal from './SiengeTitleModal';
 import ReminderBell from './ReminderBell';
 import { useAuth } from '../context/AuthContext';
 import { fetchSiengeTitleById } from '../lib/api';
+import { siengeDaysOverdue, withVencimentoOriginal } from '../lib/siengeHelpers';
 
 interface SiengeKanbanProps {
   titles: SiengeTitle[];
@@ -127,11 +128,18 @@ interface TitleCardProps {
 function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onUpdateTitle, isCompact }: TitleCardProps) {
   const [isDraggable, setIsDraggable] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [motivo, setMotivo] = useState('');
   const { allUsers } = useAuth();
-  
+
   const expired = isExpired(title.vencimento);
   const isDueToday = isTodayDate(title.vencimento);
   const isPaid = title.status === 'pago';
+  const showQuickActions = title.status === 'aguardando_pagamento';
+  // Always measured against the first vencimento the title ever had while
+  // awaiting payment — a rejection being resolved with a new date doesn't
+  // reset how late it already is. Never shown once the title is paid.
+  const diasAtraso = isPaid ? 0 : siengeDaysOverdue(title.vencimentoOriginal || title.vencimento);
   const resolvedLoteName = title.loteId ? lotes.find(l => l.id === title.loteId)?.nome : title.lote;
   const assignee = title.assigneeId ? allUsers.find(u => u.id === title.assigneeId) : null;
 
@@ -141,7 +149,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
   if (isPaid) {
     badgeColor = 'bg-emerald-900/40 text-emerald-300'; // Verde: pago
   } else if (expired) {
-    badgeColor = 'bg-red-900/40 text-red-300'; // Vermelho: atrasado e não pago
+    badgeColor = 'bg-red-900/50 text-red-400 font-bold'; // Vermelho: atrasado e não pago
   } else if (isDueToday) {
     badgeColor = 'bg-amber-900/40 text-amber-300'; // Amarelo: vence hoje
   }
@@ -154,8 +162,81 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
     onClick();
   };
 
+  const handleMarkPaid = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onUpdateTitle({ ...title, status: 'pago' });
+  };
+
+  const handleRequestReject = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMotivo('');
+    setShowRejectModal(true);
+  };
+
+  const handleConfirmReject = () => {
+    if (!motivo.trim()) return;
+    onUpdateTitle({
+      ...title,
+      status: 'recusados',
+      motivoRecusa: motivo.trim(),
+      motivoRecusaRegistradoEm: new Date().toISOString(),
+      motivoRecusaResolvido: false,
+      motivoRecusaResolvidoEm: undefined,
+      motivoRecusaObservacao: undefined,
+    });
+    setShowRejectModal(false);
+  };
+
+  const rejectModal = showRejectModal && (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      onMouseDown={(e) => { e.stopPropagation(); setShowRejectModal(false); }}
+    >
+      <div
+        className="bg-[#18181b] border border-zinc-800/80 rounded-xl p-5 flex flex-col gap-3 w-full max-w-[380px] shadow-2xl animate-slide-up"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-[15px] font-semibold text-zinc-100 flex items-center gap-2">
+            <XCircle className="text-red-500" size={16} />
+            Recusar Título
+          </h3>
+          <p className="text-[13px] text-zinc-400 mt-1 leading-relaxed">
+            Informe o motivo da recusa. Ele ficará registrado neste título.
+          </p>
+        </div>
+        <textarea
+          autoFocus
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Descreva o motivo da recusa..."
+          rows={3}
+          className="w-full bg-zinc-900/60 border border-red-900/50 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-red-500/30 resize-none"
+        />
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => setShowRejectModal(false)}
+            className="px-3 py-1.5 text-[13px] font-medium text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmReject}
+            disabled={!motivo.trim()}
+            className="px-3 py-1.5 text-[13px] font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
+          >
+            Confirmar Recusa
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (isCompact) {
     return (
+      <>
       <div
         id={`sienge-title-${title.id}`}
         draggable={isDraggable}
@@ -165,7 +246,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
         onClick={handleClick}
         className={`group flex items-center gap-2 bg-[#121214] hover:bg-[#161619] border border-zinc-900/60 hover:border-zinc-800 rounded-md px-2.5 py-1.5 transition-all duration-150 cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0' : ''}`}
       >
-        <span 
+        <span
           className="text-xs text-blue-400 font-mono tracking-wide cursor-pointer shrink-0 hover:text-blue-300 transition-colors"
           title={copied ? "Copiado!" : "Copiar Título"}
           onClick={(e) => {
@@ -181,7 +262,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
         >
           {title.titulo || '-'}
         </span>
-        
+
         <span className="flex-1 text-[11px] font-medium text-zinc-200 truncate min-w-0 cursor-text"
           onMouseEnter={() => handleTextHover(true)}
           onMouseLeave={() => handleTextHover(false)}
@@ -189,6 +270,33 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
         >
           {title.descricao || ''}
         </span>
+
+        {title.vencimento && (
+          <span className={`shrink-0 px-1 py-0.5 rounded text-[9px] tracking-wide ${badgeColor}`}>
+            {formatDate(title.vencimento)}{diasAtraso > 0 ? ` · ${diasAtraso}d atraso` : ''}
+          </span>
+        )}
+
+        {showQuickActions && (
+          <div className="shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={handleMarkPaid}
+              className="flex items-center justify-center w-4 h-4 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
+              title="Marcar como Pago"
+            >
+              <CheckCircle2 size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={handleRequestReject}
+              className="flex items-center justify-center w-4 h-4 rounded text-zinc-500 hover:text-red-400 transition-colors"
+              title="Recusar título"
+            >
+              <XCircle size={12} />
+            </button>
+          </div>
+        )}
 
         <div onClick={(e) => e.stopPropagation()} className="shrink-0">
           <ReminderBell
@@ -201,10 +309,13 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           />
         </div>
       </div>
+      {rejectModal}
+      </>
     );
   }
 
   return (
+    <>
     <div
       id={`sienge-title-${title.id}`}
       draggable={isDraggable}
@@ -277,10 +388,17 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           </div>
         </div>
         {title.vencimento && (
-          <div className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide border border-transparent ${
-            isPaid ? 'border-emerald-500/20' : expired ? 'border-red-500/20' : isDueToday ? 'border-amber-500/20' : 'border-zinc-700/30'
-          } ${badgeColor}`}>
-            {formatDate(title.vencimento)}
+          <div className="flex flex-col items-end gap-0.5">
+            <div className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide border border-transparent ${
+              isPaid ? 'border-emerald-500/20' : expired ? 'border-red-500/20' : isDueToday ? 'border-amber-500/20' : 'border-zinc-700/30'
+            } ${badgeColor}`}>
+              {formatDate(title.vencimento)}
+            </div>
+            {diasAtraso > 0 && (
+              <span className="text-[9px] font-semibold text-red-400/90 tracking-wide">
+                {diasAtraso} {diasAtraso === 1 ? 'dia' : 'dias'} em atraso
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -291,6 +409,26 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           {formatCurrencyDisplay(title.valor)}
         </span>
         <div className="flex items-center gap-2">
+          {showQuickActions && (
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={handleMarkPaid}
+                className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
+                title="Marcar como Pago"
+              >
+                <CheckCircle2 size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={handleRequestReject}
+                className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-red-400 transition-colors"
+                title="Recusar título"
+              >
+                <XCircle size={14} />
+              </button>
+            </div>
+          )}
           {title.attachments && title.attachments.length > 0 && (
             <button
               onClick={(e) => {
@@ -342,6 +480,8 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
         </div>
       </div>
     </div>
+    {rejectModal}
+    </>
   );
 }
 
@@ -434,7 +574,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
     if (!dragId) return;
     const dragged = titles.find(t => t.id === dragId);
     if (dragged && dragged.status !== targetStatus) {
-      onSave({ ...dragged, status: targetStatus, updatedAt: new Date().toISOString() });
+      onSave(withVencimentoOriginal({ ...dragged, status: targetStatus, updatedAt: new Date().toISOString() }));
     }
     setDragId(null);
     setDropTarget(null);

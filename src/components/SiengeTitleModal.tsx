@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, ChevronDown, Paperclip, Plus, User, Loader2 } from 'lucide-react';
+import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, ChevronDown, Paperclip, Plus, User, Loader2, Pencil, Lock, CheckCircle2, XCircle } from 'lucide-react';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
 import DatePicker from './DatePicker';
 import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
+import { withVencimentoOriginal } from '../lib/siengeHelpers';
 
 interface SiengeTitleModalProps {
   isOpen: boolean;
@@ -39,6 +40,12 @@ function parseCurrency(formatted: string): number {
   return parseFloat(cleaned) || 0;
 }
 
+function formatDateTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 export default function SiengeTitleModal({
   isOpen,
   onClose,
@@ -66,7 +73,18 @@ export default function SiengeTitleModal({
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  
+  const [isLocked, setIsLocked] = useState(false);
+  const [motivoRecusaRecord, setMotivoRecusaRecord] = useState<string | undefined>(undefined);
+  const [motivoRecusaRegistradoEm, setMotivoRecusaRegistradoEm] = useState<string | undefined>(undefined);
+  const [motivoRecusaResolvido, setMotivoRecusaResolvido] = useState(false);
+  const [motivoRecusaResolvidoEm, setMotivoRecusaResolvidoEm] = useState<string | undefined>(undefined);
+  const [motivoRecusaObservacaoRecord, setMotivoRecusaObservacaoRecord] = useState<string | undefined>(undefined);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [showResolveForm, setShowResolveForm] = useState(false);
+  const [resolveVencimento, setResolveVencimento] = useState('');
+  const [resolveObservacao, setResolveObservacao] = useState('');
+
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
@@ -89,6 +107,12 @@ export default function SiengeTitleModal({
         setLoteId(initialData.loteId || '');
         setAssigneeId(initialData.assigneeId || '');
         setStatus(initialData.status);
+        setIsLocked(true);
+        setMotivoRecusaRecord(initialData.motivoRecusa);
+        setMotivoRecusaRegistradoEm(initialData.motivoRecusaRegistradoEm);
+        setMotivoRecusaResolvido(!!initialData.motivoRecusaResolvido);
+        setMotivoRecusaResolvidoEm(initialData.motivoRecusaResolvidoEm);
+        setMotivoRecusaObservacaoRecord(initialData.motivoRecusaObservacao);
       } else {
         setTitulo('');
         setDescricao('');
@@ -98,9 +122,20 @@ export default function SiengeTitleModal({
         setLoteId('');
         setAssigneeId('');
         setStatus(initialStatus);
+        setIsLocked(false);
+        setMotivoRecusaRecord(undefined);
+        setMotivoRecusaRegistradoEm(undefined);
+        setMotivoRecusaResolvido(false);
+        setMotivoRecusaResolvidoEm(undefined);
+        setMotivoRecusaObservacaoRecord(undefined);
       }
       setErrors({});
       setShowDeleteConfirm(false);
+      setShowRejectModal(false);
+      setRejectReason('');
+      setShowResolveForm(false);
+      setResolveVencimento('');
+      setResolveObservacao('');
       setPdfFiles([{ id: Date.now().toString(), file: null }]);
     }
   }, [isOpen, initialData, initialStatus]);
@@ -150,27 +185,103 @@ export default function SiengeTitleModal({
 
       const allAttachments = [...(initialData?.attachments || []), ...newAttachments];
 
-      const title: SiengeTitle = {
+      const title: SiengeTitle = withVencimentoOriginal({
         id: titleId,
         titulo: titulo.trim(),
         descricao: descricao.trim() || undefined,
         valor: parseCurrency(valorDisplay),
         empreendimento: empreendimento.trim() || undefined,
         vencimento: vencimento || undefined,
+        vencimentoOriginal: initialData?.vencimentoOriginal,
+        vencimentoHistory: initialData?.vencimentoHistory,
         loteId: loteId || undefined,
         assigneeId: assigneeId || undefined,
         lote: initialData?.lote,
         attachments: allAttachments,
         status,
+        motivoRecusa: motivoRecusaRecord,
+        motivoRecusaRegistradoEm,
+        motivoRecusaResolvido,
+        motivoRecusaResolvidoEm,
+        motivoRecusaObservacao: motivoRecusaObservacaoRecord,
         createdAt: initialData?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      };
+      });
       onSave(title);
     } catch (err: any) {
       setUploadError(err.message || 'Erro ao enviar arquivo.');
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleMarkPaid = () => {
+    if (!initialData) return;
+    const updated: SiengeTitle = { ...initialData, status: 'pago', updatedAt: new Date().toISOString() };
+    setStatus('pago');
+    onSave(updated);
+  };
+
+  const handleRequestReject = () => {
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const handleConfirmReject = () => {
+    if (!initialData || !rejectReason.trim()) return;
+    const trimmed = rejectReason.trim();
+    const now = new Date().toISOString();
+    const updated: SiengeTitle = {
+      ...initialData,
+      status: 'recusados',
+      motivoRecusa: trimmed,
+      motivoRecusaRegistradoEm: now,
+      motivoRecusaResolvido: false,
+      motivoRecusaResolvidoEm: undefined,
+      motivoRecusaObservacao: undefined,
+      updatedAt: now,
+    };
+    setStatus('recusados');
+    setMotivoRecusaRecord(trimmed);
+    setMotivoRecusaRegistradoEm(now);
+    setMotivoRecusaResolvido(false);
+    setMotivoRecusaResolvidoEm(undefined);
+    setMotivoRecusaObservacaoRecord(undefined);
+    setShowRejectModal(false);
+    onSave(updated);
+  };
+
+  const handleRequestResolve = () => {
+    setResolveVencimento('');
+    setResolveObservacao('');
+    setShowResolveForm(true);
+  };
+
+  const handleConfirmResolve = () => {
+    if (!initialData || !resolveVencimento) return;
+    const oldVencimento = initialData.vencimento;
+    const trimmedObs = resolveObservacao.trim() || undefined;
+    const now = new Date().toISOString();
+    const updated: SiengeTitle = {
+      ...initialData,
+      status: 'aguardando_pagamento',
+      vencimento: resolveVencimento,
+      vencimentoOriginal: initialData.vencimentoOriginal || oldVencimento,
+      vencimentoHistory: oldVencimento
+        ? [...(initialData.vencimentoHistory || []), { vencimento: oldVencimento, changedAt: now, observacao: trimmedObs }]
+        : (initialData.vencimentoHistory || []),
+      motivoRecusaResolvido: true,
+      motivoRecusaResolvidoEm: now,
+      motivoRecusaObservacao: trimmedObs,
+      updatedAt: now,
+    };
+    setStatus('aguardando_pagamento');
+    setVencimento(resolveVencimento);
+    setMotivoRecusaResolvido(true);
+    setMotivoRecusaResolvidoEm(now);
+    setMotivoRecusaObservacaoRecord(trimmedObs);
+    setShowResolveForm(false);
+    onSave(updated);
   };
 
   const handleValorInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,6 +310,10 @@ export default function SiengeTitleModal({
     }`;
 
   const handleCloseRequest = () => {
+    if (isLocked) {
+      onClose();
+      return;
+    }
     const hasData = titulo || descricao || valorDisplay || empreendimento || vencimento || loteId || assigneeId || (pdfFiles[0] && pdfFiles[0].file);
     if (hasData) {
       setShowCloseConfirm(true);
@@ -222,8 +337,13 @@ export default function SiengeTitleModal({
             <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
               <Hash size={14} className="text-blue-400" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">
-              {isEditing ? 'Editar Título' : 'Novo Título Sienge'}
+            <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-1.5">
+              {isEditing ? (isLocked ? 'Título Sienge' : 'Editar Título') : 'Novo Título Sienge'}
+              {isEditing && isLocked && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-zinc-800/80 text-zinc-500 text-[9px] font-medium uppercase tracking-wider">
+                  <Lock size={9} /> Somente leitura
+                </span>
+              )}
             </h2>
           </div>
           <button type="button" onClick={handleCloseRequest} className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors">
@@ -232,6 +352,178 @@ export default function SiengeTitleModal({
         </div>
 
         {/* Body */}
+        {isLocked ? (
+          <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[70vh]">
+            {/* Título + Status */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Hash size={13} className="text-blue-400 shrink-0" />
+                <span className="text-sm font-semibold text-zinc-100 truncate">{titulo || 'Sem número'}</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {status === 'aguardando_pagamento' && (
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={handleMarkPaid}
+                      className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-emerald-400 transition-colors"
+                      title="Marcar como Pago"
+                    >
+                      <CheckCircle2 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRequestReject}
+                      className="flex items-center justify-center w-5 h-5 rounded text-zinc-500 hover:text-red-400 transition-colors"
+                      title="Recusar título"
+                    >
+                      <XCircle size={14} />
+                    </button>
+                  </div>
+                )}
+                <span className="px-2 py-0.5 rounded-full bg-zinc-800/80 border border-zinc-700/60 text-[10px] font-semibold text-zinc-300 uppercase tracking-wide">
+                  {STATUS_LABELS[status]}
+                </span>
+              </div>
+            </div>
+
+            {/* Motivo da Recusa — permanece visível como histórico mesmo após o título sair de 'recusados'.
+                Cor/ícone acompanham o estado: vermelho enquanto pendente de ação, neutro (com selo verde) uma vez resolvido. */}
+            {motivoRecusaRecord && (
+              <div className={`flex flex-col gap-2.5 p-3 rounded-lg border transition-colors ${
+                motivoRecusaResolvido ? 'bg-zinc-900/40 border-zinc-800/60' : 'bg-red-950/30 border-red-900/50'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${
+                      motivoRecusaResolvido ? 'bg-emerald-500/15 border-emerald-500/20' : 'bg-red-500/15 border-red-500/20'
+                    }`}>
+                      {motivoRecusaResolvido
+                        ? <CheckCircle2 size={12} className="text-emerald-400" />
+                        : <AlertCircle size={12} className="text-red-400" />}
+                    </div>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider truncate ${motivoRecusaResolvido ? 'text-zinc-400' : 'text-red-400'}`}>
+                      {motivoRecusaResolvido ? 'Recusa Resolvida' : 'Motivo da Recusa'}
+                    </span>
+                  </div>
+                  {motivoRecusaResolvido ? (
+                    motivoRecusaResolvidoEm && (
+                      <span className="text-[9px] font-medium text-zinc-500 shrink-0">{formatDateTime(motivoRecusaResolvidoEm)}</span>
+                    )
+                  ) : status === 'recusados' ? (
+                    <button
+                      type="button"
+                      onClick={handleRequestResolve}
+                      className="text-[9px] font-semibold text-emerald-400 hover:text-emerald-300 uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors shrink-0"
+                    >
+                      Resolver
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-0.5">
+                  <p className={`text-xs leading-relaxed whitespace-pre-wrap ${motivoRecusaResolvido ? 'text-zinc-300' : 'text-red-200/90'}`}>{motivoRecusaRecord}</p>
+                  {motivoRecusaRegistradoEm && (
+                    <span className="text-[9px] text-zinc-500">Recusado em {formatDateTime(motivoRecusaRegistradoEm)}</span>
+                  )}
+                </div>
+
+                {motivoRecusaResolvido && motivoRecusaObservacaoRecord && (
+                  <div className="pt-2 border-t border-zinc-800/60">
+                    <span className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider">Observação da Resolução</span>
+                    <p className="text-xs text-zinc-300 mt-0.5 whitespace-pre-wrap">{motivoRecusaObservacaoRecord}</p>
+                  </div>
+                )}
+
+                {showResolveForm && !motivoRecusaResolvido && status === 'recusados' && (
+                  <div className="flex flex-col gap-2.5 p-2.5 rounded-lg bg-black/20 border border-white/5">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Novo Vencimento</label>
+                      <DatePicker fullWidth value={resolveVencimento} onChange={(date) => setResolveVencimento(date)} />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Observação (opcional)</label>
+                      <textarea
+                        value={resolveObservacao}
+                        onChange={(e) => setResolveObservacao(e.target.value)}
+                        placeholder="O que foi feito para resolver..."
+                        rows={2}
+                        className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-emerald-500/30 resize-none"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={() => setShowResolveForm(false)} className="px-3 py-1.5 text-[12px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors">
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmResolve}
+                        disabled={!resolveVencimento}
+                        className="px-3 py-1.5 text-[12px] font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Confirmar Resolução
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Valor */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor</span>
+              <span className="text-lg font-bold text-white tracking-tight">{`R$ ${valorDisplay || '0,00'}`}</span>
+            </div>
+
+            {/* Grid resumo */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Building2 size={10} /> Empreendimento</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{empreendimento || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Layers size={10} /> Lote</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{openLotes.find(l => l.id === loteId)?.nome || initialData?.lote || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><User size={10} /> Responsável</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{sortedUsers.find(u => u.id === assigneeId)?.name || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Calendar size={10} /> Vencimento</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{vencimento ? vencimento.split('-').reverse().join('/') : '-'}</span>
+              </div>
+            </div>
+
+            {/* Descrição */}
+            {descricao && (
+              <div className="flex flex-col gap-1">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><FileText size={10} /> Descrição</span>
+                <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">{descricao}</p>
+              </div>
+            )}
+
+            {/* Anexos */}
+            {initialData?.attachments && initialData.attachments.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Paperclip size={10} /> Anexos</span>
+                <div className="flex flex-col gap-1.5">
+                  {initialData.attachments.map(att => (
+                    <div key={att.id} className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg border border-zinc-800/60">
+                      <Paperclip size={12} className="text-blue-400 shrink-0" />
+                      <span className="truncate flex-1">{att.name}</span>
+                      {att.url && (
+                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 shrink-0 underline">
+                          Abrir
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[70vh]">
           {/* Row 1: Título (number) */}
           <div className="flex flex-col gap-1.5">
@@ -450,6 +742,7 @@ export default function SiengeTitleModal({
               </label>
               <DatePicker
                 fullWidth
+                disabled={isLocked}
                 value={vencimento}
                 suggestedDate={suggestedDate}
                 onChange={(date) => {
@@ -550,6 +843,7 @@ export default function SiengeTitleModal({
             </div>
           </div>
         </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800/60 bg-zinc-950/40">
@@ -581,17 +875,34 @@ export default function SiengeTitleModal({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={handleCloseRequest} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors">
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={openLotes.length === 0 || isUploading}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
-            >
-              {isUploading && <Loader2 size={12} className="animate-spin" />}
-              {isUploading ? 'Enviando...' : isEditing ? 'Salvar Alterações' : 'Criar Título'}
-            </button>
+            {isLocked ? (
+              <>
+                <button type="button" onClick={handleCloseRequest} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors">
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsLocked(false)}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg shadow-blue-500/20"
+                >
+                  <Pencil size={12} /> Editar
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={handleCloseRequest} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={openLotes.length === 0 || isUploading}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
+                >
+                  {isUploading && <Loader2 size={12} className="animate-spin" />}
+                  {isUploading ? 'Enviando...' : isEditing ? 'Salvar Alterações' : 'Criar Título'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -609,6 +920,53 @@ export default function SiengeTitleModal({
       }}
       onCancel={() => setShowCloseConfirm(false)}
     />
+
+    {showRejectModal && (
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+        onMouseDown={(e) => { e.stopPropagation(); setShowRejectModal(false); }}
+      >
+        <div
+          className="bg-[#18181b] border border-zinc-800/80 rounded-xl p-5 flex flex-col gap-3 w-full max-w-[380px] shadow-2xl animate-slide-up"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div>
+            <h3 className="text-[15px] font-semibold text-zinc-100 flex items-center gap-2">
+              <XCircle className="text-red-500" size={16} />
+              Recusar Título
+            </h3>
+            <p className="text-[13px] text-zinc-400 mt-1 leading-relaxed">
+              Informe o motivo da recusa. Ele ficará registrado neste título.
+            </p>
+          </div>
+          <textarea
+            autoFocus
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Descreva o motivo da recusa..."
+            rows={3}
+            className="w-full bg-zinc-900/60 border border-red-900/50 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-red-500/30 resize-none"
+          />
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowRejectModal(false)}
+              className="px-3 py-1.5 text-[13px] font-medium text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmReject}
+              disabled={!rejectReason.trim()}
+              className="px-3 py-1.5 text-[13px] font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              Confirmar Recusa
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

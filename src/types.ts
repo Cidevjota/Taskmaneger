@@ -261,13 +261,21 @@ export interface SiengeLote {
   prazoPagamento?: string;  // ISO date
 }
 
+export interface SiengeVencimentoHistoryEntry {
+  vencimento: string;    // Previous due date, replaced by a resolution
+  changedAt: string;     // ISO timestamp of the replacement
+  observacao?: string;   // Optional note explaining the change
+}
+
 export interface SiengeTitle {
   id: string;
   titulo: string;
   descricao?: string;
   valor: number;
   empreendimento?: string;
-  vencimento?: string; // ISO date
+  vencimento?: string; // ISO date — current/active due date shown on the card
+  vencimentoOriginal?: string; // ISO date — first due date recorded when the title entered 'aguardando_pagamento'; used to compute true days overdue across rejection/resolution cycles
+  vencimentoHistory?: SiengeVencimentoHistoryEntry[]; // Past due dates, preserved for reporting
   lote?: string;       // legacy text field
   loteId?: string;     // FK to sienge_lotes
   assigneeId?: string; // User responsible
@@ -275,6 +283,11 @@ export interface SiengeTitle {
   reminderType?: '3h' | '1d' | 'custom' | 'seen';
   attachments?: { id: string, name: string, url?: string, data?: string }[];
   status: SiengeStatus;
+  motivoRecusa?: string; // Reason recorded when status is set to 'recusados'
+  motivoRecusaRegistradoEm?: string; // ISO timestamp of when the rejection was recorded
+  motivoRecusaResolvido?: boolean; // True once the rejection reason has been addressed
+  motivoRecusaResolvidoEm?: string; // ISO timestamp of when the rejection was marked resolved
+  motivoRecusaObservacao?: string; // Optional note recorded when marking the rejection as resolved
   createdAt: string;
   updatedAt: string;
 }

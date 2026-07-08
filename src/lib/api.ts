@@ -346,7 +346,7 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, lote, lote_id, assignee_id, reminder_date, reminder_type, status, created_at, updated_at';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, vencimento_original, lote, lote_id, assignee_id, reminder_date, reminder_type, status, created_at, updated_at';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -356,6 +356,11 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     valor: Number(r.valor),
     empreendimento: r.empreendimento,
     vencimento: r.vencimento,
+    vencimentoOriginal: r.vencimento_original,
+    // Left undefined (not defaulted to []) when not selected by the list query,
+    // so saveSiengeTitle can tell "not loaded" apart from "explicitly empty"
+    // and avoid clobbering real history data — same guard used for attachments below.
+    vencimentoHistory: r.vencimento_history,
     lote: r.lote,
     loteId: r.lote_id,
     assigneeId: r.assignee_id,
@@ -363,6 +368,11 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     reminderType: r.reminder_type,
     attachments: attachments ?? r.attachments ?? [],
     status: r.status,
+    motivoRecusa: r.motivo_recusa,
+    motivoRecusaRegistradoEm: r.motivo_recusa_registrado_em,
+    motivoRecusaResolvido: r.motivo_recusa_resolvido,
+    motivoRecusaResolvidoEm: r.motivo_recusa_resolvido_em,
+    motivoRecusaObservacao: r.motivo_recusa_observacao,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -398,13 +408,24 @@ export async function saveSiengeTitle(title: SiengeTitle) {
     valor: title.valor,
     empreendimento: title.empreendimento || null,
     vencimento: title.vencimento || null,
+    vencimento_original: title.vencimentoOriginal || null,
     lote: title.lote || null,
     lote_id: title.loteId || null,
     assignee_id: title.assigneeId || null,
     reminder_date: title.reminderDate || null,
     reminder_type: title.reminderType || null,
     status: title.status,
+    motivo_recusa: title.motivoRecusa || null,
+    motivo_recusa_registrado_em: title.motivoRecusaRegistradoEm || null,
+    motivo_recusa_resolvido: title.motivoRecusaResolvido || false,
+    motivo_recusa_resolvido_em: title.motivoRecusaResolvidoEm || null,
+    motivo_recusa_observacao: title.motivoRecusaObservacao || null,
   };
+  // Only write vencimento_history when explicitly provided, to avoid clobbering
+  // records loaded via the list view (which doesn't fetch this column).
+  if (title.vencimentoHistory !== undefined) {
+    payload.vencimento_history = title.vencimentoHistory;
+  }
   // Only write attachments when they were explicitly loaded (fetchSiengeTitleById),
   // otherwise we'd overwrite real DB data with the empty list default.
   if (title.attachments !== undefined) {
