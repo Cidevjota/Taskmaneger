@@ -516,7 +516,7 @@ const SubtaskRow = ({
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.15 }}
       style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
-      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50 overflow-hidden"
+      className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50"
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {!effectiveLock && (
