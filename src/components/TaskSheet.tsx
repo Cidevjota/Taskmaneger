@@ -503,6 +503,19 @@ const SubtaskRow = ({
   onDelete: (id: string) => void;
 }) => {
   const dragControls = useDragControls();
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (subtaskAssigneeMenuOpenFor === subtask.id && menuRef.current) {
+      setTimeout(() => {
+        menuRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest'
+        });
+      }, 50);
+    }
+  }, [subtaskAssigneeMenuOpenFor, subtask.id]);
 
   return (
     <Reorder.Item
@@ -572,7 +585,7 @@ const SubtaskRow = ({
           </button>
 
           {subtaskAssigneeMenuOpenFor === subtask.id && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
+            <div ref={menuRef} className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
               <div className="px-2 py-1.5 border-b border-zinc-800/80">
                 <span className="text-[10px] font-semibold text-zinc-500 uppercase">Responsável pelo Item</span>
               </div>
@@ -683,7 +696,7 @@ export default function TaskSheet({
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     properties: true,
     description: true,
-    hierarchy: false,
+    hierarchy: true,
     checklist: true,
     designProps: true,
     copyProps: true,

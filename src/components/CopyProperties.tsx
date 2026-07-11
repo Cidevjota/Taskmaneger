@@ -563,11 +563,12 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                       </div>
                     </div>
                   ) : (
-                    <div className="p-4 bg-transparent">
+                    <div className="p-4 bg-transparent resize-y overflow-hidden min-h-[250px]" style={{ height: '400px' }}>
                       <RichTextEditor
                         taskId={editor.id}
                         content={editor.content}
                         variant="borderless"
+                        wrapperClassName="h-full"
                         readOnly={disabled}
                         onChange={(newContent) => {
                           const newEditors = briefingForm.copyEditors!.map(ed => ed.id === editor.id ? { ...ed, content: newContent } : ed);

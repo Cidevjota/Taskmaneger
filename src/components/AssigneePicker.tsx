@@ -11,6 +11,19 @@ export default function AssigneePicker({ value, onChange, trigger }: AssigneePic
   const { allUsers: USERS } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && popoverRef.current) {
+      setTimeout(() => {
+        popoverRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest'
+        });
+      }, 50);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -62,7 +75,7 @@ export default function AssigneePicker({ value, onChange, trigger }: AssigneePic
       )}
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in flex flex-col p-1 max-h-64 overflow-y-auto">
+        <div ref={popoverRef} className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in flex flex-col p-1 max-h-64 overflow-y-auto">
           <div className="px-2 py-1.5 mb-1 border-b border-zinc-800/80 shrink-0 sticky top-0 bg-[#18181b] z-10">
             <span className="text-[10px] font-semibold text-zinc-500 uppercase">Responsável</span>
           </div>
