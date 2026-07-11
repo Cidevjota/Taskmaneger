@@ -11,6 +11,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { TableCell } from '@tiptap/extension-table-cell';
 import Placeholder from '@tiptap/extension-placeholder';
+import Image from '@tiptap/extension-image';
 import {
   Bold,
   Italic,
@@ -410,6 +411,13 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
       TableRow,
       TableHeader,
       TableCell,
+      Image.configure({
+        inline: true,
+        allowBase64: true,
+        HTMLAttributes: {
+          class: 'max-w-full max-h-96 object-contain rounded-md border border-zinc-800/50 my-2',
+        },
+      }),
       Placeholder.configure({
         placeholder: placeholderText,
         emptyEditorClass: 'is-editor-empty',
@@ -426,6 +434,27 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
       attributes: {
         class: 'rte-content h-full outline-none',
         spellcheck: 'false',
+      },
+      transformPastedHTML(html) {
+        try {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const elements = doc.getElementsByTagName('*');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
+            // Remove style and class attributes to strip origin formatting
+            el.removeAttribute('style');
+            el.removeAttribute('class');
+            el.removeAttribute('dir');
+            el.removeAttribute('align');
+            el.removeAttribute('font');
+            el.removeAttribute('color');
+            el.removeAttribute('size');
+            el.removeAttribute('face');
+          }
+          return doc.body.innerHTML;
+        } catch (e) {
+          return html;
+        }
       },
       handleKeyDown(_view, event) {
         const ed = localRef.current;
