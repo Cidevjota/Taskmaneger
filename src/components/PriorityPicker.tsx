@@ -19,17 +19,19 @@ const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon
 export default function PriorityPicker({ value, onChange, trigger }: PriorityPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverPosition, setPopoverPosition] = useState<'top' | 'bottom'>('bottom');
 
   useEffect(() => {
-    if (isOpen && popoverRef.current) {
-      setTimeout(() => {
-        popoverRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'nearest'
-        });
-      }, 50);
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setPopoverPosition('top');
+      } else {
+        setPopoverPosition('bottom');
+      }
     }
   }, [isOpen]);
 
@@ -77,7 +79,7 @@ export default function PriorityPicker({ value, onChange, trigger }: PriorityPic
       )}
 
       {isOpen && (
-        <div ref={popoverRef} className="absolute left-0 top-full mt-1 w-44 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in flex flex-col p-1">
+        <div className={`absolute left-0 ${popoverPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'} w-44 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in flex flex-col p-1`}>
           <div className="px-2 py-1.5 mb-1 border-b border-zinc-800/80">
             <span className="text-[10px] font-semibold text-zinc-500 uppercase">Prioridade</span>
           </div>

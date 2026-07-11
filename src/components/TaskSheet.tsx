@@ -504,16 +504,20 @@ const SubtaskRow = ({
 }) => {
   const dragControls = useDragControls();
   const menuRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [popoverPosition, setPopoverPosition] = useState<'top' | 'bottom'>('bottom');
 
   useEffect(() => {
-    if (subtaskAssigneeMenuOpenFor === subtask.id && menuRef.current) {
-      setTimeout(() => {
-        menuRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'nearest'
-        });
-      }, 50);
+    if (subtaskAssigneeMenuOpenFor === subtask.id && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      
+      if (spaceBelow < 250 && spaceAbove > spaceBelow) {
+        setPopoverPosition('top');
+      } else {
+        setPopoverPosition('bottom');
+      }
     }
   }, [subtaskAssigneeMenuOpenFor, subtask.id]);
 
@@ -570,7 +574,7 @@ const SubtaskRow = ({
           </div>
         )}
         {/* Assignee Dropdown */}
-        <div className="relative">
+        <div className="relative" ref={containerRef}>
           <button
             type="button"
             onClick={() => setSubtaskAssigneeMenuOpenFor(subtaskAssigneeMenuOpenFor === subtask.id ? null : subtask.id)}
@@ -585,7 +589,7 @@ const SubtaskRow = ({
           </button>
 
           {subtaskAssigneeMenuOpenFor === subtask.id && (
-            <div ref={menuRef} className="absolute right-0 top-full mt-1 w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in">
+            <div ref={menuRef} className={`absolute right-0 ${popoverPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'} w-48 bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-50 overflow-hidden animate-fade-in`}>
               <div className="px-2 py-1.5 border-b border-zinc-800/80">
                 <span className="text-[10px] font-semibold text-zinc-500 uppercase">Responsável pelo Item</span>
               </div>

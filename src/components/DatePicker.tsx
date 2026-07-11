@@ -50,18 +50,22 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to ensure popover visibility with comfortable space
+  const [popoverPosition, setPopoverPosition] = useState<'top' | 'bottom'>('bottom');
+
+  // Calculate popover position based on available space
   useEffect(() => {
-    if (isOpen && popoverRef.current && !disableAutoScroll) {
-      setTimeout(() => {
-        popoverRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'nearest'
-        });
-      }, 50);
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      
+      if (spaceBelow < 360 && spaceAbove > spaceBelow) {
+        setPopoverPosition('top');
+      } else {
+        setPopoverPosition('bottom');
+      }
     }
-  }, [isOpen, disableAutoScroll]);
+  }, [isOpen]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -182,7 +186,7 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
 
       {/* Popover */}
       {isOpen && (
-        <div ref={popoverRef} className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-2 w-[252px] bg-[#111113] border border-zinc-800/70 rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 animate-fade-in`}>
+        <div ref={popoverRef} className={`absolute ${popoverPosition === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} ${align === 'right' ? 'right-0' : 'left-0'} w-[252px] bg-[#111113] border border-zinc-800/70 rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 animate-fade-in`}>
 
           {/* Header — mês e navegação */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800/60">
