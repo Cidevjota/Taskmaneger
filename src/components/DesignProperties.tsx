@@ -558,7 +558,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
             <Edit2 size={16} className={themeColor} />
             Copy
           </h4>
-          <div className="flex-1 flex flex-col animate-fade-in bg-[#121214] border border-zinc-800/40 rounded-lg p-3 min-h-[300px]">
+          <div className="flex-1 flex flex-col animate-fade-in bg-[#121214] border border-zinc-800/40 rounded-lg p-3 resize-y overflow-hidden min-h-[300px]" style={{ height: '450px' }}>
             {approvedCopies.length > 0 && (
               <div className="mb-3 border-b border-zinc-800/40 pb-2 relative">
                 <button
@@ -588,12 +588,13 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                 )}
               </div>
             )}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative h-full">
               <RichTextEditor
               taskId={`copy-${task.id}`}
               content={briefingForm.copyContent || ''}
               onChange={handleCopyChange}
               variant="borderless"
+              wrapperClassName="h-full"
               readOnly={disabled}
             />
             </div>
