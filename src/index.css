@@ -189,15 +189,15 @@
 /* Lists */
 .rte-content ul, 
 .rte-content ol {
-  @apply my-4 pl-6;
+  @apply my-4 pl-5;
 }
 
 .rte-content ul {
-  @apply list-disc marker:text-zinc-600;
+  @apply list-disc;
 }
 
 .rte-content ol {
-  @apply list-decimal marker:text-zinc-600;
+  @apply list-decimal;
 }
 
 .rte-content li {

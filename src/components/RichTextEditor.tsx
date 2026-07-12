@@ -52,6 +52,40 @@ const FontSize = Extension.create({
   },
 });
 
+// Extension to allow listItem and taskItem to have style attributes
+const ListItemStyle = Extension.create({
+  name: 'listItemStyle',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['listItem', 'taskItem'],
+        attributes: {
+          color: {
+            default: null,
+            parseHTML: (element) => element.style.color || null,
+            renderHTML: (attributes) => attributes.color ? { style: `color: ${attributes.color}` } : {},
+          },
+          fontWeight: {
+            default: null,
+            parseHTML: (element) => element.style.fontWeight || null,
+            renderHTML: (attributes) => attributes.fontWeight ? { style: `font-weight: ${attributes.fontWeight}` } : {},
+          },
+          fontStyle: {
+            default: null,
+            parseHTML: (element) => element.style.fontStyle || null,
+            renderHTML: (attributes) => attributes.fontStyle ? { style: `font-style: ${attributes.fontStyle}` } : {},
+          },
+          fontSize: {
+            default: null,
+            parseHTML: (element) => element.style.fontSize || null,
+            renderHTML: (attributes) => attributes.fontSize ? { style: `font-size: ${attributes.fontSize}` } : {},
+          },
+        },
+      },
+    ];
+  },
+});
+
 interface RichTextEditorProps {
   taskId: string;
   content: string;
@@ -163,6 +197,10 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
     } else {
       editor.chain().focus().setMark('textStyle', { fontSize: size }).run();
     }
+    setTimeout(() => {
+      if (editor.isActive('listItem')) editor.commands.updateAttributes('listItem', { fontSize: size });
+      if (editor.isActive('taskItem')) editor.commands.updateAttributes('taskItem', { fontSize: size });
+    }, 10);
   };
 
   const groups: ToolbarButton[][] = [
@@ -171,14 +209,28 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
       {
         icon: <Bold size={14} />,
         title: 'Negrito (Ctrl+B)',
-        action: () => toggleMarkKeepingColor(editor, (e) => e.chain().focus().toggleBold().run()),
+        action: () => {
+          toggleMarkKeepingColor(editor, (e) => e.chain().focus().toggleBold().run());
+          setTimeout(() => {
+            const isBold = editor.isActive('bold');
+            if (editor.isActive('listItem')) editor.commands.updateAttributes('listItem', { fontWeight: isBold ? 'bold' : null });
+            if (editor.isActive('taskItem')) editor.commands.updateAttributes('taskItem', { fontWeight: isBold ? 'bold' : null });
+          }, 10);
+        },
         isActive: () => editor.isActive('bold'),
         disabled: () => !editor.can().chain().focus().toggleBold().run(),
       },
       {
         icon: <Italic size={14} />,
         title: 'Itálico (Ctrl+I)',
-        action: () => toggleMarkKeepingColor(editor, (e) => e.chain().focus().toggleItalic().run()),
+        action: () => {
+          toggleMarkKeepingColor(editor, (e) => e.chain().focus().toggleItalic().run());
+          setTimeout(() => {
+            const isItalic = editor.isActive('italic');
+            if (editor.isActive('listItem')) editor.commands.updateAttributes('listItem', { fontStyle: isItalic ? 'italic' : null });
+            if (editor.isActive('taskItem')) editor.commands.updateAttributes('taskItem', { fontStyle: isItalic ? 'italic' : null });
+          }, 10);
+        },
         isActive: () => editor.isActive('italic'),
         disabled: () => !editor.can().chain().focus().toggleItalic().run(),
       },
@@ -307,6 +359,8 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
                 onMouseDown={(e) => {
                   e.preventDefault();
                   editor.chain().focus().setColor(c.hex).run();
+                  if (editor.isActive('listItem')) editor.commands.updateAttributes('listItem', { color: c.hex });
+                  if (editor.isActive('taskItem')) editor.commands.updateAttributes('taskItem', { color: c.hex });
                   setColorOpen(false);
                 }}
                 className="rte-color-swatch"
@@ -318,6 +372,8 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
               onMouseDown={(e) => {
                 e.preventDefault();
                 editor.chain().focus().unsetColor().run();
+                if (editor.isActive('listItem')) editor.commands.updateAttributes('listItem', { color: null });
+                if (editor.isActive('taskItem')) editor.commands.updateAttributes('taskItem', { color: null });
                 setColorOpen(false);
               }}
               className="rte-color-reset"
@@ -453,6 +509,7 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
       TextStyle.configure({ HTMLAttributes: {} }),
       Color.configure({ types: ['textStyle'] }),
       FontSize,
+      ListItemStyle,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -505,16 +562,50 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
       handleKeyDown(_view, event) {
         const ed = localRef.current;
         if (!ed) return false;
+
+        // Tab indentation for lists
+        if (event.key === 'Tab') {
+          const isList = ed.isActive('bulletList') || ed.isActive('orderedList') || ed.isActive('taskList');
+          if (isList) {
+            event.preventDefault();
+            if (event.shiftKey) {
+              if (ed.can().liftListItem('listItem')) ed.chain().focus().liftListItem('listItem').run();
+              else if (ed.can().liftListItem('taskItem')) ed.chain().focus().liftListItem('taskItem').run();
+            } else {
+              if (ed.can().sinkListItem('listItem')) ed.chain().focus().sinkListItem('listItem').run();
+              else if (ed.can().sinkListItem('taskItem')) ed.chain().focus().sinkListItem('taskItem').run();
+            }
+            return true;
+          } else {
+            // Indent text with spaces
+            event.preventDefault();
+            if (!event.shiftKey) {
+              ed.chain().focus().insertContent('\u00A0\u00A0\u00A0\u00A0').run();
+            }
+            return true;
+          }
+        }
+
         const isMod = event.ctrlKey || event.metaKey;
         if (!isMod) return false;
         if (event.key === 'b' || event.key === 'B') {
           event.preventDefault();
           toggleMarkKeepingColor(ed, (e) => e.chain().focus().toggleBold().run());
+          setTimeout(() => {
+            const isBold = ed.isActive('bold');
+            if (ed.isActive('listItem')) ed.commands.updateAttributes('listItem', { fontWeight: isBold ? 'bold' : null });
+            if (ed.isActive('taskItem')) ed.commands.updateAttributes('taskItem', { fontWeight: isBold ? 'bold' : null });
+          }, 10);
           return true;
         }
         if (event.key === 'i' || event.key === 'I') {
           event.preventDefault();
           toggleMarkKeepingColor(ed, (e) => e.chain().focus().toggleItalic().run());
+          setTimeout(() => {
+            const isItalic = ed.isActive('italic');
+            if (ed.isActive('listItem')) ed.commands.updateAttributes('listItem', { fontStyle: isItalic ? 'italic' : null });
+            if (ed.isActive('taskItem')) ed.commands.updateAttributes('taskItem', { fontStyle: isItalic ? 'italic' : null });
+          }, 10);
           return true;
         }
         return false;

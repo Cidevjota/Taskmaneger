@@ -132,6 +132,8 @@ export interface ChatMessage {
   senderId: string;
   text: string;
   timestamp: string;
+  resolved?: boolean;
+  resolvedBy?: string;
 }
 
 export interface AppNotification {

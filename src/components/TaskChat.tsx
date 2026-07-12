@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User as UserIcon } from 'lucide-react';
+import { Send, User as UserIcon, Check } from 'lucide-react';
 import { Task, ChatMessage, SiengeTitle } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -164,6 +164,39 @@ export default function TaskChat({ task, siengeTitle, onUpdate, baseColor = 'blu
     setShowMentions(false);
   };
 
+  const handleResolveMessage = (msg: ChatMessage) => {
+    if (!currentUser) return;
+    
+    const newMessages = chatMessages.map(m => 
+      m.id === msg.id 
+        ? { ...m, resolved: true, resolvedBy: currentUser.id }
+        : m
+    );
+    
+    onUpdate(newMessages);
+
+    // Notify sender
+    if (task) {
+      addNotification({
+        userId: msg.senderId,
+        actorId: currentUser.id,
+        taskId: task.id,
+        type: 'status_changed',
+        message: `${currentUser.name} marcou como resolvida a demanda no chat da tarefa: ${task.title}`,
+        targetId: `task-chat-${task.id}`
+      });
+    } else if (siengeTitle) {
+      addNotification({
+        userId: msg.senderId,
+        actorId: currentUser.id,
+        siengeTitleId: siengeTitle.id,
+        type: 'status_changed',
+        message: `${currentUser.name} marcou como resolvida a demanda no chat do título: ${siengeTitle.titulo}`,
+        targetId: `sienge-chat-${siengeTitle.id}`
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#121214] border border-zinc-800/40 rounded-lg overflow-hidden font-sans">
       {!hideHeader && (
@@ -191,8 +224,14 @@ export default function TaskChat({ task, siengeTitle, onUpdate, baseColor = 'blu
             const isCloseInTime = prevMsg && (new Date(msg.timestamp).getTime() - new Date(prevMsg.timestamp).getTime()) < 5 * 60 * 1000;
             const groupMessages = isSameSender && isCloseInTime;
             
+            const msgDate = new Date(msg.timestamp);
+            const timeStr = msgDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + msgDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+            const isMentioned = currentUser && msg.text.includes(`@${currentUser.name}`);
+            const canResolve = isMentioned && !msg.resolved && currentUser?.id !== msg.senderId;
+            
             return (
-              <div key={msg.id} className={`flex gap-3 w-full ${groupMessages ? 'mt-0' : 'mt-2'}`}>
+              <div key={msg.id} className={`flex gap-3 w-full ${groupMessages ? 'mt-0' : 'mt-2'} group/msg`}>
                 {/* Avatar area */}
                 <div className="flex-shrink-0 w-6 flex flex-col items-center">
                   {!groupMessages ? (
@@ -204,8 +243,8 @@ export default function TaskChat({ task, siengeTitle, onUpdate, baseColor = 'blu
                       </div>
                     )
                   ) : (
-                    <span className="text-[9px] text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    <span className="text-[9px] text-zinc-600 opacity-0 group-hover/msg:opacity-100 transition-opacity whitespace-nowrap">
+                      {timeStr}
                     </span>
                   )}
                 </div>
@@ -217,24 +256,42 @@ export default function TaskChat({ task, siengeTitle, onUpdate, baseColor = 'blu
                       <span className="text-xs font-semibold text-zinc-200">
                         {sender?.name || 'Usuário Desconhecido'}
                       </span>
-                      <span className="text-[10px] text-zinc-500 font-mono">
-                        {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      <span className="text-[10px] text-zinc-500 font-mono whitespace-nowrap">
+                        {timeStr}
                       </span>
                     </div>
                   )}
-                  <p className="text-[13px] text-zinc-300 whitespace-pre-wrap break-words leading-relaxed">
-                    {(() => {
-                      if (!allUsers || allUsers.length === 0) return msg.text;
-                      const names = allUsers.map(u => u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-                      const regex = new RegExp(`(@(?:${names.join('|')}))`, 'g');
-                      return msg.text.split(regex).map((part, i) => {
-                        if (part.startsWith('@') && allUsers.some(u => `@${u.name}` === part)) {
-                          return <span key={i} className={`font-semibold ${theme ? theme.text : 'text-blue-400'}`}>{part}</span>;
-                        }
-                        return <React.Fragment key={i}>{part}</React.Fragment>;
-                      });
-                    })()}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`text-[13px] ${msg.resolved ? 'text-zinc-500 opacity-60' : 'text-zinc-300'} whitespace-pre-wrap break-words leading-relaxed flex-1`}>
+                      {(() => {
+                        if (!allUsers || allUsers.length === 0) return msg.text;
+                        const names = allUsers.map(u => u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+                        const regex = new RegExp(`(@(?:${names.join('|')}))`, 'g');
+                        return msg.text.split(regex).map((part, i) => {
+                          if (part.startsWith('@') && allUsers.some(u => `@${u.name}` === part)) {
+                            return <span key={i} className={`font-semibold ${msg.resolved ? 'text-zinc-500' : (theme ? theme.text : 'text-blue-400')}`}>{part}</span>;
+                          }
+                          return <React.Fragment key={i}>{part}</React.Fragment>;
+                        });
+                      })()}
+                    </p>
+                    
+                    {canResolve && !readOnly && (
+                      <button
+                        onClick={() => handleResolveMessage(msg)}
+                        className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded text-[10px] font-medium shrink-0"
+                        title="Marcar como resolvido"
+                      >
+                        <Check size={12} />
+                        Resolvido
+                      </button>
+                    )}
+                    {msg.resolved && (
+                       <span className="flex items-center gap-1 text-[10px] text-emerald-500/50 shrink-0 select-none" title={`Resolvido por ${allUsers.find(u => u.id === msg.resolvedBy)?.name || 'alguém'}`}>
+                         <Check size={12} /> Resolvido
+                       </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );

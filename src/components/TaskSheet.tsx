@@ -535,18 +535,18 @@ const SubtaskRow = ({
       style={{ marginLeft: `${(subtask.level || 0) * 1.5}rem` }}
       className="flex items-center justify-between py-1 px-1 -mx-1 rounded group transition-colors border-b border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50"
     >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex items-start gap-2 flex-1 min-w-0">
         {!effectiveLock && (
           <span
             onPointerDown={(e) => dragControls.start(e)}
-            className="shrink-0 flex items-center justify-center text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity -ml-1"
+            className="shrink-0 flex items-center justify-center text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity -ml-1 mt-[1.5px]"
             style={{ touchAction: 'none' }}
             title="Arrastar para reordenar"
           >
             <GripVertical size={13} />
           </span>
         )}
-        <button onClick={() => onToggle(subtask.id)} disabled={!!effectiveLock} className="shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+        <button onClick={() => onToggle(subtask.id)} disabled={!!effectiveLock} className="shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed mt-[1.5px]">
           {subtask.completed ? (
             <CheckSquare size={13} className="text-emerald-400/50" />
           ) : subtask.canceled ? (

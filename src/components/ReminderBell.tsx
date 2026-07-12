@@ -114,27 +114,19 @@ export default function ReminderBell({
 
   const title =
     isSeen
-      ? 'Lembrete reconhecido — clique para remover'
+      ? `Concluído: ${formattedDateTime || 'Reconhecido'} (clique para remover)`
       : !reminderType
       ? 'Adicionar lembrete (+3h)'
-      : reminderType === '3h'
-      ? 'Lembrete em 3h — clique para amanhã 8h'
       : awaitingCustomDate
-      ? 'Escolha uma data ou clique novamente para remover o lembrete'
+      ? 'Escolha uma data ou clique novamente para remover'
+      : reminderType === '3h'
+      ? `Lembrete: +3h (clique para amanhã 8h)`
       : reminderType === '1d'
-      ? 'Lembrete amanhã 8h — clique para personalizar'
-      : 'Lembrete personalizado — clique para personalizar';
+      ? `Lembrete: ${formattedDateTime || 'Amanhã 8h'} (clique para personalizar)`
+      : `Lembrete: ${formattedDateTime || 'Personalizado'} (clique para editar)`;
 
   return (
     <div className="inline-flex items-center gap-1">
-      {showLabel && labelText && (
-        <span
-          className={`text-[9px] font-mono font-bold px-1 py-0.5 rounded border cursor-pointer ${labelColor}`}
-          onClick={handleClick}
-        >
-          {labelText}
-        </span>
-      )}
       <DatePicker
         value={reminderDate || ''}
         align={align}
@@ -145,11 +137,8 @@ export default function ReminderBell({
         onChange={(date) => {
           setAwaitingCustomDate(false);
           if (date) {
-            // Se a data for no passado (antes de agora) + 1 minuto de tolerância, evite
             const selectedTime = new Date(date).getTime();
-            if (selectedTime < Date.now() - 60000) {
-              return; // ignore past dates typed manually
-            }
+            if (selectedTime < Date.now() - 60000) return;
             onChange({ reminderDate: date, reminderType: 'custom' });
           } else {
             onChange({ reminderDate: undefined, reminderType: undefined });
