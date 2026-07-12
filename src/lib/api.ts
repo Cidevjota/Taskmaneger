@@ -351,7 +351,7 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, vencimento_original, lote, lote_id, assignee_id, reminder_date, reminder_type, status, created_at, updated_at';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, vencimento_original, lote, lote_id, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -378,6 +378,7 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     motivoRecusaResolvido: r.motivo_recusa_resolvido,
     motivoRecusaResolvidoEm: r.motivo_recusa_resolvido_em,
     motivoRecusaObservacao: r.motivo_recusa_observacao,
+    chatMessages: r.chat_messages,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -426,6 +427,9 @@ export async function saveSiengeTitle(title: SiengeTitle) {
     motivo_recusa_resolvido_em: title.motivoRecusaResolvidoEm || null,
     motivo_recusa_observacao: title.motivoRecusaObservacao || null,
   };
+  if (title.chatMessages !== undefined) {
+    payload.chat_messages = title.chatMessages;
+  }
   // Only write vencimento_history when explicitly provided, to avoid clobbering
   // records loaded via the list view (which doesn't fetch this column).
   if (title.vencimentoHistory !== undefined) {

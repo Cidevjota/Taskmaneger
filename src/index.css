@@ -242,7 +242,8 @@
 
 /* Tables */
 .rte-content table {
-  @apply w-full border-collapse my-5 border border-zinc-800 rounded-sm overflow-hidden table-fixed;
+  @apply w-full border-collapse my-5 border border-zinc-800 rounded-sm overflow-hidden;
+  max-width: 100%;
 }
 
 .rte-content table td,
@@ -261,12 +262,52 @@
 }
 
 .rte-content table .column-resize-handle {
-  @apply absolute -right-1 top-0 bottom-0 w-2 bg-blue-500/50 opacity-0 transition-opacity cursor-col-resize z-10;
+  @apply absolute -right-0.5 top-0 bottom-0 w-1 bg-blue-500/60 opacity-0 transition-opacity cursor-col-resize z-10;
 }
 
 .rte-content table th:hover .column-resize-handle,
 .rte-content table td:hover .column-resize-handle {
   @apply opacity-100;
+}
+
+/* Tiptap tableWrapper — ensures resized tables scroll horizontally if they exceed container width */
+.tableWrapper {
+  @apply overflow-x-auto my-5;
+  max-width: 100%;
+}
+.tableWrapper table {
+  @apply my-0;
+}
+
+/* Table toolbar buttons */
+.rte-tbl-btn {
+  @apply flex items-center gap-0.5 px-1 py-0.5 rounded text-zinc-400 transition-all duration-150 cursor-pointer;
+  font-size: 10px;
+}
+.rte-tbl-btn:hover {
+  @apply bg-zinc-800 text-zinc-200;
+}
+.rte-tbl-btn--add {
+  @apply text-emerald-500/70;
+}
+.rte-tbl-btn--add:hover {
+  @apply bg-emerald-500/15 text-emerald-400;
+}
+.rte-tbl-btn--del {
+  @apply text-zinc-500;
+}
+.rte-tbl-btn--del:hover {
+  @apply bg-red-500/15 text-red-400;
+}
+.rte-tbl-btn--destroy {
+  @apply text-red-500/60 gap-1;
+}
+.rte-tbl-btn--destroy:hover {
+  @apply bg-red-500/15 text-red-400;
+}
+.rte-tbl-plus {
+  @apply opacity-60;
+  margin-left: -2px;
 }
 
 /* Inline Elements */

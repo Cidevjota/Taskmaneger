@@ -289,6 +289,7 @@ export interface SiengeTitle {
   reminderDate?: string;
   reminderType?: '3h' | '1d' | 'custom' | 'seen';
   attachments?: { id: string, name: string, url?: string, data?: string }[];
+  chatMessages?: ChatMessage[];
   status: SiengeStatus;
   motivoRecusa?: string; // Reason recorded when status is set to 'recusados'
   motivoRecusaRegistradoEm?: string; // ISO timestamp of when the rejection was recorded

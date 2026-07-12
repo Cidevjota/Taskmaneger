@@ -21,6 +21,14 @@ import {
   Palette,
   Minus,
   Table as TableIcon,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  Rows3,
+  Columns3,
 } from 'lucide-react';
 
 // Inline font-size extension — teaches TextStyle to carry a `fontSize` attribute.
@@ -114,6 +122,20 @@ const Col3Icon = () => (
 function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | null; columns?: 1|2|3; onColumnsChange?: (c: 1|2|3) => void }) {
   const [isColorOpen, setColorOpen] = useState(false);
   const colorRef = useRef<HTMLDivElement>(null);
+  const [, forceUpdate] = useState(0);
+
+  // Re-render the toolbar whenever the editor's selection or content changes
+  // so that conditional toolbar sections (e.g. table controls) appear/disappear
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => forceUpdate(n => n + 1);
+    editor.on('selectionUpdate', handler);
+    editor.on('transaction', handler);
+    return () => {
+      editor.off('selectionUpdate', handler);
+      editor.off('transaction', handler);
+    };
+  }, [editor]);
 
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -327,16 +349,40 @@ function MenuBar({ editor, columns = 1, onColumnsChange }: { editor: Editor | nu
 
       {/* Table Actions */}
       {editor.isActive('table') && (
-        <div className="flex items-center gap-1 ml-2 bg-zinc-900/50 p-1 rounded-md border border-zinc-800">
-          <button type="button" className="rte-btn !px-2" title="Linha Acima" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addRowBefore().run();}}><span className="text-[9px] font-bold text-zinc-300">L +↑</span></button>
-          <button type="button" className="rte-btn !px-2" title="Linha Abaixo" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addRowAfter().run();}}><span className="text-[9px] font-bold text-zinc-300">L +↓</span></button>
-          <button type="button" className="rte-btn !px-2" title="Excluir Linha" onMouseDown={e => {e.preventDefault(); editor.chain().focus().deleteRow().run();}}><span className="text-[9px] font-bold text-red-400/80">L -</span></button>
-          <div className="w-px h-3 bg-zinc-700 mx-1" />
-          <button type="button" className="rte-btn !px-2" title="Coluna Esquerda" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addColumnBefore().run();}}><span className="text-[9px] font-bold text-zinc-300">C +←</span></button>
-          <button type="button" className="rte-btn !px-2" title="Coluna Direita" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addColumnAfter().run();}}><span className="text-[9px] font-bold text-zinc-300">C +→</span></button>
-          <button type="button" className="rte-btn !px-2" title="Excluir Coluna" onMouseDown={e => {e.preventDefault(); editor.chain().focus().deleteColumn().run();}}><span className="text-[9px] font-bold text-red-400/80">C -</span></button>
-          <div className="w-px h-3 bg-zinc-700 mx-1" />
-          <button type="button" className="rte-btn !px-2" title="Excluir Tabela" onMouseDown={e => {e.preventDefault(); editor.chain().focus().deleteTable().run();}}><span className="text-[9px] font-bold text-red-500">Del Tab</span></button>
+        <div className="flex items-center gap-0.5 ml-2 bg-zinc-900/60 px-1.5 py-0.5 rounded-lg border border-zinc-800/60">
+          {/* Row controls */}
+          <div className="flex items-center gap-0.5 mr-0.5">
+            <span className="text-[8px] font-semibold text-zinc-500 uppercase tracking-wider mr-0.5 select-none">Linha</span>
+            <button type="button" className="rte-tbl-btn rte-tbl-btn--add" title="Adicionar linha acima" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addRowBefore().run();}}>
+              <ArrowUp size={10} /><Plus size={8} className="rte-tbl-plus" />
+            </button>
+            <button type="button" className="rte-tbl-btn rte-tbl-btn--add" title="Adicionar linha abaixo" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addRowAfter().run();}}>
+              <ArrowDown size={10} /><Plus size={8} className="rte-tbl-plus" />
+            </button>
+            <button type="button" className="rte-tbl-btn rte-tbl-btn--del" title="Excluir linha" onMouseDown={e => {e.preventDefault(); editor.chain().focus().deleteRow().run();}}>
+              <Trash2 size={11} />
+            </button>
+          </div>
+          <div className="w-px h-4 bg-zinc-700/60 mx-1" />
+          {/* Column controls */}
+          <div className="flex items-center gap-0.5 mr-0.5">
+            <span className="text-[8px] font-semibold text-zinc-500 uppercase tracking-wider mr-0.5 select-none">Col</span>
+            <button type="button" className="rte-tbl-btn rte-tbl-btn--add" title="Adicionar coluna à esquerda" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addColumnBefore().run();}}>
+              <ArrowLeft size={10} /><Plus size={8} className="rte-tbl-plus" />
+            </button>
+            <button type="button" className="rte-tbl-btn rte-tbl-btn--add" title="Adicionar coluna à direita" onMouseDown={e => {e.preventDefault(); editor.chain().focus().addColumnAfter().run();}}>
+              <ArrowRight size={10} /><Plus size={8} className="rte-tbl-plus" />
+            </button>
+            <button type="button" className="rte-tbl-btn rte-tbl-btn--del" title="Excluir coluna" onMouseDown={e => {e.preventDefault(); editor.chain().focus().deleteColumn().run();}}>
+              <Trash2 size={11} />
+            </button>
+          </div>
+          <div className="w-px h-4 bg-zinc-700/60 mx-1" />
+          {/* Delete table */}
+          <button type="button" className="rte-tbl-btn rte-tbl-btn--destroy" title="Excluir tabela inteira" onMouseDown={e => {e.preventDefault(); editor.chain().focus().deleteTable().run();}}>
+            <Trash2 size={12} />
+            <span className="text-[8px] font-bold">Tabela</span>
+          </button>
         </div>
       )}
     </div>
@@ -407,7 +453,7 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
       TextStyle.configure({ HTMLAttributes: {} }),
       Color.configure({ types: ['textStyle'] }),
       FontSize,
-      Table,
+      Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
       TableCell,

@@ -4,6 +4,7 @@ import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage
 import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
 import DatePicker from './DatePicker';
 import ConfirmModal from './ConfirmModal';
+import TaskChat from './TaskChat';
 import { useAuth } from '../context/AuthContext';
 import { withVencimentoOriginal, getPositiveAction, showsRejectAction, rejectTargetStatus } from '../lib/siengeHelpers';
 
@@ -11,11 +12,13 @@ interface SiengeTitleModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (title: SiengeTitle) => void;
+  onUpdateOnly?: (title: SiengeTitle) => void;
   onDelete?: (id: string) => void;
   initialData?: SiengeTitle | null;
   initialStatus?: SiengeStatus;
   openLotes: SiengeLote[];
   projects: Project[];
+  hideHeader?: boolean;
 }
 
 const STATUS_LABELS: Record<SiengeStatus, string> = {
@@ -50,6 +53,7 @@ export default function SiengeTitleModal({
   isOpen,
   onClose,
   onSave,
+  onUpdateOnly,
   onDelete,
   initialData,
   initialStatus = 'a_lancar',
@@ -535,6 +539,24 @@ export default function SiengeTitleModal({
                 </div>
               </div>
             )}
+
+            {/* Chat do Título */}
+            <div className="mt-2 h-[180px] shrink-0">
+              {initialData && (
+                <TaskChat 
+                  siengeTitle={initialData}
+                  customTitle="Comentários e Recados"
+                    onUpdate={(msgs) => {
+                      if (initialData && onUpdateOnly) {
+                        onUpdateOnly({ ...initialData, chatMessages: msgs });
+                      } else if (initialData) {
+                        onSave({ ...initialData, chatMessages: msgs });
+                      }
+                    }}
+                    baseColor="blue"
+                />
+              )}
+            </div>
           </div>
         ) : (
         <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[70vh]">
@@ -788,7 +810,7 @@ export default function SiengeTitleModal({
             </label>
             <textarea
               value={descricao}
-              onChange={e => { setDescricao(e.target.value); if (errors.descricao) setErrors(p => ({ ...p, descricao: '' })); }}
+              onChange={e => { setDescricao(e.target.value.toUpperCase()); if (errors.descricao) setErrors(p => ({ ...p, descricao: '' })); }}
               placeholder="Descreva o título..."
               rows={3}
               className={`${inputClass('descricao')} resize-none`}

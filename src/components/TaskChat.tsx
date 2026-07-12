@@ -1,18 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, User as UserIcon } from 'lucide-react';
-import { Task, ChatMessage } from '../types';
+import { Task, ChatMessage, SiengeTitle } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 
 interface TaskChatProps {
-  task: Task;
+  task?: Task;
+  siengeTitle?: SiengeTitle;
   onUpdate: (chatMessages: ChatMessage[]) => void;
   baseColor?: string;
   theme?: any;
   readOnly?: boolean;
+  hideHeader?: boolean;
+  customTitle?: string;
 }
 
-export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, readOnly = false }: TaskChatProps) {
+export default function TaskChat({ task, siengeTitle, onUpdate, baseColor = 'blue', theme, readOnly = false, hideHeader = false, customTitle }: TaskChatProps) {
   const [text, setText] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -23,7 +26,7 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, re
   const { currentUser, allUsers } = useAuth();
   const { addNotification } = useNotifications();
 
-  const chatMessages = task.chatMessages || [];
+  const chatMessages = task?.chatMessages || siengeTitle?.chatMessages || [];
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -135,14 +138,25 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, re
     // Parse text to find mentions and send notifications
     allUsers.forEach(user => {
       if (user.id !== currentUser.id && text.includes(`@${user.name}`)) {
-        addNotification({
-          userId: user.id,
-          actorId: currentUser.id,
-          taskId: task.id,
-          type: 'chat_mention',
-          message: `${currentUser.name} marcou você no chat da tarefa: ${task.title}`,
-          targetId: `task-chat-${task.id}`
-        });
+        if (task) {
+          addNotification({
+            userId: user.id,
+            actorId: currentUser.id,
+            taskId: task.id,
+            type: 'chat_mention',
+            message: `${currentUser.name} marcou você no chat da tarefa: ${task.title}`,
+            targetId: `task-chat-${task.id}`
+          });
+        } else if (siengeTitle) {
+          addNotification({
+            userId: user.id,
+            actorId: currentUser.id,
+            siengeTitleId: siengeTitle.id,
+            type: 'chat_mention',
+            message: `${currentUser.name} marcou você no chat do título: ${siengeTitle.titulo}`,
+            targetId: `sienge-chat-${siengeTitle.id}`
+          });
+        }
       }
     });
 
@@ -152,10 +166,12 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, re
 
   return (
     <div className="flex flex-col h-full bg-[#121214] border border-zinc-800/40 rounded-lg overflow-hidden font-sans">
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-zinc-900 bg-[#08080a]">
-        <MessageSquareIcon size={10} className={theme ? theme.text : "text-zinc-500"} opacity={0.7} />
-        <h3 className={`text-[9px] font-medium uppercase tracking-wider opacity-70 ${theme ? theme.text : "text-zinc-500"}`}>Chat</h3>
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-zinc-900 bg-[#08080a]">
+          {!customTitle && <MessageSquareIcon size={10} className={theme ? theme.text : "text-zinc-500"} opacity={0.7} />}
+          <h3 className={`text-[9px] font-medium uppercase tracking-wider opacity-70 ${theme ? theme.text : "text-zinc-500"}`}>{customTitle || 'Chat'}</h3>
+        </div>
+      )}
 
       <div 
         ref={chatContainerRef}
@@ -256,7 +272,7 @@ export default function TaskChat({ task, onUpdate, baseColor = 'blue', theme, re
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Responder... (@ para marcar)"
-              className={`flex-1 bg-transparent border-0 border-b border-zinc-800/50 px-1 py-1.5 text-[13px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-b-2 ${theme ? theme.focusBorder.replace('focus:', '') : 'border-blue-500/50'} resize-none transition-colors`}
+              className="flex-1 bg-transparent border-0 px-1 py-1.5 text-[13px] text-zinc-200 placeholder-zinc-600 focus:outline-none resize-none transition-colors"
               rows={1}
               style={{
                 height: '32px',

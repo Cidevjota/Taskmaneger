@@ -694,6 +694,7 @@ export default function TaskSheet({
   const missingAssignee = !assigneeId;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isFullscreenDesc, setIsFullscreenDesc] = useState(false);
+  const [descEditorKey, setDescEditorKey] = useState(0);
   
   const [prevTaskId, setPrevTaskId] = useState(task?.id);
 
@@ -1689,6 +1690,7 @@ export default function TaskSheet({
               <div className="flex animate-fade-in items-stretch h-[380px] gap-6 overflow-hidden relative w-full">
                 <div className={`flex flex-col h-full transition-all duration-300 ease-in-out shrink-0 min-w-0 ${isChatOpen ? 'w-full md:w-[calc(66.666%-12px)]' : 'w-full'}`}>
                   <RichTextEditor
+                    key={`desc-${descEditorKey}`}
                     taskId={task.id}
                     content={effectiveLock ? (task.description || '') : descriptionRef.current}
                     wrapperClassName="h-full"
@@ -2333,7 +2335,7 @@ export default function TaskSheet({
               </span>
             </div>
             <button
-              onClick={() => setIsFullscreenDesc(false)}
+              onClick={() => { setIsFullscreenDesc(false); setDescEditorKey(k => k + 1); }}
               className="flex items-center gap-2 text-zinc-400 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 px-3 py-1.5 rounded-md transition-colors text-xs font-semibold"
             >
               <Minimize2 size={14} /> Fechar Tela Cheia

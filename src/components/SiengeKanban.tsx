@@ -602,7 +602,10 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
     const prev = titles.find(t => t.id === title.id);
     onSave(title);
     notifyAlcadaIfNeeded(title, prev?.status);
-  }, [titles, onSave, notifyAlcadaIfNeeded]);
+    if (editingTitle?.id === title.id) {
+      setEditingTitle(title);
+    }
+  }, [titles, onSave, notifyAlcadaIfNeeded, editingTitle]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
     setDragId(id);
@@ -859,6 +862,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); setEditingTitle(null); }}
         onSave={handleSave}
+        onUpdateOnly={handleUpdateTitle}
         onDelete={handleDelete}
         initialData={editingTitle}
         initialStatus={modalInitialStatus}
