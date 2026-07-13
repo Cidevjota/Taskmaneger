@@ -374,7 +374,11 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     assigneeId: r.assignee_id,
     reminderDate: r.reminder_date,
     reminderType: r.reminder_type,
-    attachments: attachments ?? r.attachments ?? [],
+    // Only defined when explicitly passed by the caller (fetchSiengeTitleById).
+    // Left undefined for the list query so saveSiengeTitle can tell "not loaded"
+    // apart from "explicitly empty" and won't clobber real attachments — same
+    // guard used for vencimento_history above.
+    attachments,
     status: r.status,
     motivoRecusa: r.motivo_recusa,
     motivoRecusaRegistradoEm: r.motivo_recusa_registrado_em,
@@ -395,7 +399,7 @@ export async function fetchSiengeTitles(): Promise<SiengeTitle[]> {
     .select(SIENGE_TITLE_LIST_COLS)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map((r: any) => mapSiengeTitle(r, []));
+  return (data || []).map((r: any) => mapSiengeTitle(r));
 }
 
 export async function fetchSiengeTitleById(id: string): Promise<SiengeTitle | null> {
@@ -406,7 +410,7 @@ export async function fetchSiengeTitleById(id: string): Promise<SiengeTitle | nu
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapSiengeTitle(data);
+  return mapSiengeTitle(data, data.attachments || []);
 }
 
 export async function saveSiengeTitle(title: SiengeTitle) {
