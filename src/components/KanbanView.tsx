@@ -8,6 +8,7 @@ import {
   AlertTriangle, 
   ArrowUp,
   ArrowDown, 
+  ArrowUpRight,
   ChevronDown,
   ChevronRight,
   ChevronsUp,
@@ -765,6 +766,24 @@ export default function KanbanView({
                                         <span className="truncate max-w-[120px]">{project.name}</span>
                                       </>
                                     )}
+                                    {task.parentTaskId && (() => {
+                                      const parentTask = tasks.find(t => t.id === task.parentTaskId);
+                                      if (!parentTask) return null;
+                                      return (
+                                        <>
+                                          <span className="text-zinc-700 font-sans font-light">|</span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); onSelectTask(parentTask); }}
+                                            className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+                                            title="Ir para tarefa pai"
+                                          >
+                                            <ArrowUpRight size={10} className="shrink-0" />
+                                            <span className="truncate max-w-[100px] normal-case font-sans font-medium">{parentTask.title}</span>
+                                          </button>
+                                        </>
+                                      );
+                                    })()}
                                   </span>
                                   <div className="flex items-center gap-1.5">
                                     {/* Editing indicator badge */}
