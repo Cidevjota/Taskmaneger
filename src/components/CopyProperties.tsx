@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Task, CopyBriefing, Delivery } from '../types';
 import { Edit2, Check, ChevronDown, ChevronRight, Send, Trash2 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
@@ -8,6 +8,7 @@ import DeliveryForm from './DeliveryForm';
 import RichTextEditor from './RichTextEditor';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { fetchTaskBriefings } from '../lib/api';
 
 interface CopyPropertiesProps {
   task: Task;
@@ -186,11 +187,56 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
     return [...array, item];
   };
 
+  // Re-fetches the latest copyBriefing from the server and applies only the
+  // fields the recipe intends to change, so a save from this (possibly stale)
+  // screen never clobbers editors/deliveries that changed elsewhere meanwhile.
+  const saveCopyBriefing = async (
+    recipe: (base: CopyBriefing) => { partial: Partial<CopyBriefing>; taskUpdates?: Partial<Task> }
+  ) => {
+    let base: CopyBriefing = briefingForm;
+    try {
+      const fresh = await fetchTaskBriefings(task.id);
+      if (fresh?.copyBriefing) base = fresh.copyBriefing;
+    } catch {
+      // If the refetch fails, fall back to local state rather than blocking the save.
+    }
+    const { partial, taskUpdates } = recipe(base);
+    const merged = { ...base, ...partial };
+    setBriefingForm(merged);
+    saveChange({ copyBriefing: merged, ...(taskUpdates || {}) });
+    return merged;
+  };
+
   const handleSaveBriefing = () => {
-    const updatedBriefing = { ...briefingForm, isFilled: true };
-    setBriefingForm(updatedBriefing);
     setIsEditing(false);
-    saveChange({ copyBriefing: updatedBriefing });
+    const { copyEditors, deliveries, ...briefingFields } = briefingForm;
+    saveCopyBriefing(() => ({ partial: { ...briefingFields, isFilled: true } }));
+  };
+
+  // Applies a rename/content patch to one editor, keyed by id. Falls back to the
+  // local (not-yet-saved) editor when it doesn't exist in the freshly fetched base yet
+  // (e.g. a brand-new editor whose creation save hasn't landed on the server).
+  const mergeEditorField = (base: CopyBriefing, editorId: string, patch: Partial<{ name: string; content: string }>) => {
+    const baseEditors = base.copyEditors || [];
+    if (baseEditors.some(ed => ed.id === editorId)) {
+      return baseEditors.map(ed => ed.id === editorId ? { ...ed, ...patch } : ed);
+    }
+    const localEditor = briefingForm.copyEditors?.find(ed => ed.id === editorId);
+    return [...baseEditors, { id: editorId, name: '', content: '', ...(localEditor || {}), ...patch }];
+  };
+
+  // Content edits fire on every keystroke — debounce the fetch-merge-save so we don't
+  // hit the network per character while still avoiding a stale full-object overwrite.
+  const editorSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const scheduleEditorContentSave = (editorId: string, newContent: string) => {
+    if (editorSaveTimers.current[editorId]) clearTimeout(editorSaveTimers.current[editorId]);
+    editorSaveTimers.current[editorId] = setTimeout(() => {
+      saveCopyBriefing((base) => {
+        const mergedEditors = mergeEditorField(base, editorId, { content: newContent });
+        const combinedText = mergedEditors.map(ed => `<h3>${ed.name}</h3>${ed.content}`).join('<br/><hr/><br/>');
+        return { partial: { copyEditors: mergedEditors, textoCopy: combinedText } };
+      });
+    }, 800);
   };
 
   const renderChipGroup = (
@@ -537,10 +583,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                             if (e.key === 'Enter' && !disabled) {
                               const val = e.currentTarget.value.trim();
                               if (val) {
-                                const newEditors = briefingForm.copyEditors!.map(ed => ed.id === editor.id ? { ...ed, name: val } : ed);
-                                const updatedBriefing = { ...briefingForm, copyEditors: newEditors };
-                                setBriefingForm(updatedBriefing);
-                                saveChange({ copyBriefing: updatedBriefing });
+                                saveCopyBriefing((base) => ({
+                                  partial: { copyEditors: mergeEditorField(base, editor.id, { name: val }) }
+                                }));
                               }
                             }
                           }}
@@ -550,10 +595,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                           onClick={() => {
                             const val = (document.getElementById(`inline-name-${editor.id}`) as HTMLInputElement).value.trim();
                             if (val) {
-                              const newEditors = briefingForm.copyEditors!.map(ed => ed.id === editor.id ? { ...ed, name: val } : ed);
-                              const updatedBriefing = { ...briefingForm, copyEditors: newEditors };
-                              setBriefingForm(updatedBriefing);
-                              saveChange({ copyBriefing: updatedBriefing });
+                              saveCopyBriefing((base) => ({
+                                partial: { copyEditors: mergeEditorField(base, editor.id, { name: val }) }
+                              }));
                             }
                           }}
                           className="px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-lg border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 transition-colors disabled:opacity-50"
@@ -573,9 +617,8 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                         onChange={(newContent) => {
                           const newEditors = briefingForm.copyEditors!.map(ed => ed.id === editor.id ? { ...ed, content: newContent } : ed);
                           const combinedText = newEditors.map(ed => `<h3>${ed.name}</h3>${ed.content}`).join('<br/><hr/><br/>');
-                          const updatedBriefing = { ...briefingForm, copyEditors: newEditors, textoCopy: combinedText };
-                          setBriefingForm(updatedBriefing);
-                          saveChange({ copyBriefing: updatedBriefing });
+                          setBriefingForm(prev => ({ ...prev, copyEditors: newEditors, textoCopy: combinedText }));
+                          scheduleEditorContentSave(editor.id, newContent);
                         }}
                       />
                     </div>
@@ -742,60 +785,60 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                   >
                     Cancelar
                   </button>
-                  <button 
+                  <button
                     disabled={!selectedCopyEditorId}
                     onClick={() => {
                       const editor = briefingForm.copyEditors?.find(e => e.id === selectedCopyEditorId);
                       if (!editor) return;
 
-                      const now = new Date().toISOString();
-                      let newDeliveries = [...(briefingForm.deliveries || [])];
-                      
-                      if (editingDeliveryId) {
-                        // Normally not editing existing copy submissions like this, but kept for compatibility
-                        newDeliveries = newDeliveries.map(d => 
-                          d.id === editingDeliveryId ? { ...d } : d
-                        );
-                      } else {
-                        const newId = Date.now().toString();
-                        newDeliveries.push({
-                          id: newId,
-                          status: 'pending',
-                          approverId: selectedApproverId || undefined,
-                          thread: [{
-                            id: newId + '-sub',
-                            role: 'designer',
-                            type: 'submission',
-                            content: copyDefense || 'Nova entrega de copy',
-                            copyText: editor.content,
-                            editorName: editor.name,
+                      saveCopyBriefing((base) => {
+                        const now = new Date().toISOString();
+                        let newDeliveries = [...(base.deliveries || [])];
+
+                        if (editingDeliveryId) {
+                          // Normally not editing existing copy submissions like this, but kept for compatibility
+                          newDeliveries = newDeliveries.map(d =>
+                            d.id === editingDeliveryId ? { ...d } : d
+                          );
+                        } else {
+                          const newId = Date.now().toString();
+                          newDeliveries.push({
+                            id: newId,
+                            status: 'pending',
+                            approverId: selectedApproverId || undefined,
+                            thread: [{
+                              id: newId + '-sub',
+                              role: 'designer',
+                              type: 'submission',
+                              content: copyDefense || 'Nova entrega de copy',
+                              copyText: editor.content,
+                              editorName: editor.name,
+                              createdAt: now
+                            }],
                             createdAt: now
-                          }],
-                          createdAt: now
-                        });
-                        
-                        if (selectedApproverId) {
-                          addNotification({
-                            userId: selectedApproverId,
-                            actorId: currentUser?.id || 'system',
-                            taskId: task.id,
-                            type: 'review_requested',
-                            message: 'Aprovação de Copy',
-                            details: `Você foi selecionado para aprovar a copy "${editor.name}" na tarefa "${task.title}".`,
-                            targetId: `copy-delivery-${newId}`
                           });
+
+                          if (selectedApproverId) {
+                            addNotification({
+                              userId: selectedApproverId,
+                              actorId: currentUser?.id || 'system',
+                              taskId: task.id,
+                              type: 'review_requested',
+                              message: 'Aprovação de Copy',
+                              details: `Você foi selecionado para aprovar a copy "${editor.name}" na tarefa "${task.title}".`,
+                              targetId: `copy-delivery-${newId}`
+                            });
+                          }
                         }
-                      }
-                      
-                      const updatedBriefing = { ...briefingForm, deliveries: newDeliveries };
-                      setBriefingForm(updatedBriefing);
-                      
-                      const taskUpdates: Partial<Task> = { copyBriefing: updatedBriefing };
-                      if (task.status !== 'approval') {
-                        taskUpdates.status = 'approval';
-                      }
-                      saveChange(taskUpdates);
-                      
+
+                        const taskUpdates: Partial<Task> = {};
+                        if (task.status !== 'approval') {
+                          taskUpdates.status = 'approval';
+                        }
+
+                        return { partial: { deliveries: newDeliveries }, taskUpdates };
+                      });
+
                       setIsCreatingDelivery(false);
                       setEditingDeliveryId(null);
                       setSelectedCopyEditorId('');
@@ -835,76 +878,76 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                         }
                         onClose={() => setSelectedApprovalDeliveryId(null)}
                         onUpdate={(id, updates) => {
-                          const oldDelivery = briefingForm.deliveries?.find(d => d.id === id);
-                          const newDeliveries = briefingForm.deliveries!.map(d => 
-                            d.id === id ? { ...d, ...updates } : d
-                          );
-                          const updatedBriefing = { ...briefingForm, deliveries: newDeliveries };
-                          setBriefingForm(updatedBriefing);
+                          saveCopyBriefing((base) => {
+                            const oldDelivery = base.deliveries?.find(d => d.id === id);
+                            const newDeliveries = (base.deliveries || []).map(d =>
+                              d.id === id ? { ...d, ...updates } : d
+                            );
 
-                          let taskUpdates: Partial<Task> = { copyBriefing: updatedBriefing };
-                          if (updates.status) {
-                            let newTaskStatus = task.status;
-                            if (updates.status === 'pending' || updates.status === 'review_requested') {
-                              newTaskStatus = 'approval';
-                            } else if (updates.status === 'rejected' || updates.status === 'reworking') {
-                              newTaskStatus = 'rework';
-                            }
-                            
-                            if (updates.status === 'approved') {
-                              const allApproved = newDeliveries && newDeliveries.length > 0 && newDeliveries.every(d => d.status === 'approved');
-                              if (allApproved) {
-                                newTaskStatus = 'implementation';
+                            const taskUpdates: Partial<Task> = {};
+                            if (updates.status) {
+                              let newTaskStatus = task.status;
+                              if (updates.status === 'pending' || updates.status === 'review_requested') {
+                                newTaskStatus = 'approval';
+                              } else if (updates.status === 'rejected' || updates.status === 'reworking') {
+                                newTaskStatus = 'rework';
                               }
-                            }
-                            
-                            if (newTaskStatus !== task.status) {
-                              taskUpdates.status = newTaskStatus;
-                            }
-                          }
-                          
-                          saveChange(taskUpdates);
 
-                          if (updates.status && oldDelivery?.status !== updates.status) {
-                            if (updates.status === 'approved') {
-                              if (task.assigneeId) {
-                                addNotification({
-                                  userId: task.assigneeId,
-                                  actorId: currentUser?.id || '',
-                                  message: 'Copy Aprovada! 🎉',
-                                  details: `A copy da tarefa "${task.title}" foi aprovada.`,
-                                  type: 'approved',
-                                  taskId: task.id,
-                                  targetId: `copy-delivery-${id}`
-                                });
+                              if (updates.status === 'approved') {
+                                const allApproved = newDeliveries.length > 0 && newDeliveries.every(d => d.status === 'approved');
+                                if (allApproved) {
+                                  newTaskStatus = 'implementation';
+                                }
                               }
-                            } else if (updates.status === 'reworking') {
-                              if (task.assigneeId) {
-                                addNotification({
-                                  userId: task.assigneeId,
-                                  actorId: currentUser?.id || '',
-                                  message: 'Reprovação de Copy',
-                                  details: `A copy da tarefa "${task.title}" foi reprovada e precisa de ajustes.`,
-                                  type: 'rejected',
-                                  taskId: task.id,
-                                  targetId: `copy-delivery-${id}`
-                                });
-                              }
-                            } else if (updates.status === 'review_requested') {
-                              const targetUserId = oldDelivery?.approverId;
-                              if (targetUserId) {
-                                addNotification({
-                                  userId: targetUserId,
-                                  actorId: currentUser?.id || '',
-                                  message: 'Revisão Solicitada',
-                                  details: `O redator solicitou revisão da copy na tarefa "${task.title}".`,
-                                  type: 'review_requested',
-                                  taskId: task.id,
-                                  targetId: `copy-delivery-${id}`
-                                });
+
+                              if (newTaskStatus !== task.status) {
+                                taskUpdates.status = newTaskStatus;
                               }
                             }
-                          }
+
+                            if (updates.status && oldDelivery?.status !== updates.status) {
+                              if (updates.status === 'approved') {
+                                if (task.assigneeId) {
+                                  addNotification({
+                                    userId: task.assigneeId,
+                                    actorId: currentUser?.id || '',
+                                    message: 'Copy Aprovada! 🎉',
+                                    details: `A copy da tarefa "${task.title}" foi aprovada.`,
+                                    type: 'approved',
+                                    taskId: task.id,
+                                    targetId: `copy-delivery-${id}`
+                                  });
+                                }
+                              } else if (updates.status === 'reworking') {
+                                if (task.assigneeId) {
+                                  addNotification({
+                                    userId: task.assigneeId,
+                                    actorId: currentUser?.id || '',
+                                    message: 'Reprovação de Copy',
+                                    details: `A copy da tarefa "${task.title}" foi reprovada e precisa de ajustes.`,
+                                    type: 'rejected',
+                                    taskId: task.id,
+                                    targetId: `copy-delivery-${id}`
+                                  });
+                                }
+                              } else if (updates.status === 'review_requested') {
+                                const targetUserId = oldDelivery?.approverId;
+                                if (targetUserId) {
+                                  addNotification({
+                                    userId: targetUserId,
+                                    actorId: currentUser?.id || '',
+                                    message: 'Revisão Solicitada',
+                                    details: `O redator solicitou revisão da copy na tarefa "${task.title}".`,
+                                    type: 'review_requested',
+                                    taskId: task.id,
+                                    targetId: `copy-delivery-${id}`
+                                  });
+                                }
+                              }
+                            }
+
+                            return { partial: { deliveries: newDeliveries }, taskUpdates };
+                          });
                         }}
                       />
                     )}
@@ -993,10 +1036,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
               onChange={e => setNewEditorName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newEditorName.trim()) {
-                  const newEditors = [...(briefingForm.copyEditors || []), { id: Date.now().toString(), name: newEditorName.trim(), content: '' }];
-                  const updatedBriefing = { ...briefingForm, copyEditors: newEditors };
-                  setBriefingForm(updatedBriefing);
-                  saveChange({ copyBriefing: updatedBriefing });
+                  saveCopyBriefing((base) => ({
+                    partial: { copyEditors: [...(base.copyEditors || []), { id: Date.now().toString(), name: newEditorName.trim(), content: '' }] }
+                  }));
                   setNewEditorName('');
                   setShowNamePrompt(false);
                 }
@@ -1014,13 +1056,12 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 onClick={() => {
                   if (newEditorName.trim()) {
-                    const newEditors = [...(briefingForm.copyEditors || []), { id: Date.now().toString(), name: newEditorName.trim(), content: '' }];
-                    const updatedBriefing = { ...briefingForm, copyEditors: newEditors };
-                    setBriefingForm(updatedBriefing);
-                    saveChange({ copyBriefing: updatedBriefing });
+                    saveCopyBriefing((base) => ({
+                      partial: { copyEditors: [...(base.copyEditors || []), { id: Date.now().toString(), name: newEditorName.trim(), content: '' }] }
+                    }));
                     setNewEditorName('');
                     setShowNamePrompt(false);
                   }
@@ -1059,10 +1100,12 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
           message="Tem certeza que deseja excluir esta aprovação de copy? Todo o histórico de revisões será perdido. Esta ação não pode ser desfeita."
           confirmText="Excluir"
           onConfirm={() => {
-            const newDeliveries = briefingForm.deliveries?.filter(d => d.id !== deleteConfirmId) || [];
-            const updatedBriefing = { ...briefingForm, deliveries: newDeliveries };
-            setBriefingForm(updatedBriefing);
-            saveChange({ copyBriefing: updatedBriefing });
+            if (deleteConfirmId) {
+              const idToDelete = deleteConfirmId;
+              saveCopyBriefing((base) => ({
+                partial: { deliveries: (base.deliveries || []).filter(d => d.id !== idToDelete) }
+              }));
+            }
             setDeleteConfirmId(null);
           }}
           onCancel={() => setDeleteConfirmId(null)}

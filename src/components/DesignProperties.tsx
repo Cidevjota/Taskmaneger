@@ -7,6 +7,7 @@ import DeliveryForm from './DeliveryForm';
 import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { fetchTaskBriefings } from '../lib/api';
 
 interface DesignPropertiesProps {
   task: Task;
@@ -169,18 +170,37 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
     return [...array, item];
   };
 
+  // Re-fetches the latest designBriefing from the server and applies only the
+  // fields the recipe intends to change, so a save from this (possibly stale)
+  // screen never clobbers deliveries/fields that changed elsewhere meanwhile.
+  const saveDesignBriefing = async (
+    recipe: (base: DesignBriefing) => { partial: Partial<DesignBriefing>; taskUpdates?: Partial<Task> }
+  ) => {
+    let base: DesignBriefing = briefingForm;
+    try {
+      const fresh = await fetchTaskBriefings(task.id);
+      if (fresh?.designBriefing) base = fresh.designBriefing;
+    } catch {
+      // If the refetch fails, fall back to local state rather than blocking the save.
+    }
+    const { partial, taskUpdates } = recipe(base);
+    const merged = { ...base, ...partial };
+    setBriefingForm(merged);
+    saveChange({ designBriefing: merged, ...(taskUpdates || {}) });
+    return merged;
+  };
+
   const handleSaveBriefing = () => {
-    const updatedBriefing = { ...briefingForm, isFilled: true };
-    setBriefingForm(updatedBriefing);
     setIsEditing(false);
-    saveChange({ designBriefing: updatedBriefing });
+    const { deliveries, ...briefingFields } = briefingForm;
+    saveDesignBriefing(() => ({ partial: { ...briefingFields, isFilled: true } }));
   };
 
   useEffect(() => {
     if (!task) return;
     if (briefingForm.copyContent === task.designBriefing?.copyContent) return;
     const timer = setTimeout(() => {
-      saveChange({ designBriefing: briefingForm });
+      saveDesignBriefing(() => ({ partial: { copyContent: briefingForm.copyContent } }));
     }, 800);
     return () => clearTimeout(timer);
   }, [briefingForm.copyContent]);
@@ -218,7 +238,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
     const selectedCopy = approvedCopies.find(c => c.editorId === editorId);
     if (selectedCopy) {
       setBriefingForm(prev => ({ ...prev, copyContent: selectedCopy.content }));
-      saveChange({ designBriefing: { ...briefingForm, copyContent: selectedCopy.content } });
+      saveDesignBriefing(() => ({ partial: { copyContent: selectedCopy.content } }));
     }
     setIsCopyDropdownOpen(false);
   };
@@ -630,50 +650,51 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                   setEditingDeliveryId(null);
                 }}
                 onSave={(data) => {
-                  let newDeliveries = [...(briefingForm.deliveries || [])];
-                  if (editingDeliveryId) {
-                    newDeliveries = newDeliveries.map(d => 
-                      d.id === editingDeliveryId ? { ...d, ...data } : d
-                    );
-                  } else {
-                    const now = new Date().toISOString();
-                    const newId = Date.now().toString();
-                    newDeliveries.push({
-                      id: newId,
-                      ...data,
-                      status: 'pending',
-                      thread: [{
-                        id: newId + '-sub',
-                        role: 'designer',
-                        type: 'submission',
-                        content: data.creativeDefense || 'Nova entrega',
+                  const wasEditing = !!editingDeliveryId;
+                  saveDesignBriefing((base) => {
+                    let newDeliveries = [...(base.deliveries || [])];
+                    if (editingDeliveryId) {
+                      newDeliveries = newDeliveries.map(d =>
+                        d.id === editingDeliveryId ? { ...d, ...data } : d
+                      );
+                    } else {
+                      const now = new Date().toISOString();
+                      const newId = Date.now().toString();
+                      newDeliveries.push({
+                        id: newId,
+                        ...data,
+                        status: 'pending',
+                        thread: [{
+                          id: newId + '-sub',
+                          role: 'designer',
+                          type: 'submission',
+                          content: data.creativeDefense || 'Nova entrega',
+                          createdAt: now
+                        }],
                         createdAt: now
-                      }],
-                      createdAt: now
-                    } as any);
-                    
-                    if (data.approverId) {
-                      addNotification({
-                        userId: data.approverId,
-                        actorId: currentUser?.id || 'system',
-                        taskId: task.id,
-                        type: 'review_requested',
-                        message: 'Aprovação de Criativo',
-                        details: `Você foi selecionado para aprovar um criativo na tarefa "${task.title}".`,
-                        targetId: `design-delivery-${newId}`
-                      });
+                      } as any);
+
+                      if (data.approverId) {
+                        addNotification({
+                          userId: data.approverId,
+                          actorId: currentUser?.id || 'system',
+                          taskId: task.id,
+                          type: 'review_requested',
+                          message: 'Aprovação de Criativo',
+                          details: `Você foi selecionado para aprovar um criativo na tarefa "${task.title}".`,
+                          targetId: `design-delivery-${newId}`
+                        });
+                      }
                     }
-                  }
-                  
-                  const updated = { ...briefingForm, deliveries: newDeliveries };
-                  setBriefingForm(updated);
-                  
-                  const taskUpdates: Partial<Task> = { designBriefing: updated };
-                  if (!editingDeliveryId && task.status !== 'approval') {
-                    taskUpdates.status = 'approval';
-                  }
-                  saveChange(taskUpdates);
-                  
+
+                    const taskUpdates: Partial<Task> = {};
+                    if (!wasEditing && task.status !== 'approval') {
+                      taskUpdates.status = 'approval';
+                    }
+
+                    return { partial: { deliveries: newDeliveries }, taskUpdates };
+                  });
+
                   setIsCreatingDelivery(false);
                   setEditingDeliveryId(null);
                 }}
@@ -691,84 +712,84 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                         index={i + 1}
                         disabled={disabled}
                         onUpdate={(id, updates) => {
-                        const oldDelivery = briefingForm.deliveries?.find(d => d.id === id);
-                        const newDeliveries = briefingForm.deliveries?.map(d => 
-                          d.id === id ? { ...d, ...updates } : d
-                        );
-                        const updated = { ...briefingForm, deliveries: newDeliveries };
-                        setBriefingForm(updated);
+                        saveDesignBriefing((base) => {
+                          const oldDelivery = base.deliveries?.find(d => d.id === id);
+                          const newDeliveries = (base.deliveries || []).map(d =>
+                            d.id === id ? { ...d, ...updates } : d
+                          );
 
-                        let taskUpdates: Partial<Task> = { designBriefing: updated };
-                        if (updates.status) {
-                          let newTaskStatus = task.status;
-                          if (updates.status === 'pending' || updates.status === 'review_requested') {
-                            newTaskStatus = 'approval';
-                          } else if (updates.status === 'rejected' || updates.status === 'reworking') {
-                            newTaskStatus = 'rework';
-                          }
-                          
-                          if (updates.status === 'approved') {
-                            const allApproved = newDeliveries && newDeliveries.length > 0 && newDeliveries.every(d => d.status === 'approved');
-                            if (allApproved) {
-                              newTaskStatus = 'implementation';
+                          const taskUpdates: Partial<Task> = {};
+                          if (updates.status) {
+                            let newTaskStatus = task.status;
+                            if (updates.status === 'pending' || updates.status === 'review_requested') {
+                              newTaskStatus = 'approval';
+                            } else if (updates.status === 'rejected' || updates.status === 'reworking') {
+                              newTaskStatus = 'rework';
+                            }
+
+                            if (updates.status === 'approved') {
+                              const allApproved = newDeliveries.length > 0 && newDeliveries.every(d => d.status === 'approved');
+                              if (allApproved) {
+                                newTaskStatus = 'implementation';
+                              }
+                            }
+
+                            if (newTaskStatus !== task.status) {
+                              taskUpdates.status = newTaskStatus;
                             }
                           }
-                          
-                          if (newTaskStatus !== task.status) {
-                            taskUpdates.status = newTaskStatus;
-                          }
-                        }
-                        
-                        saveChange(taskUpdates);
 
-                        if (updates.status === 'rejected' && oldDelivery?.status !== 'rejected') {
-                          if (task.assigneeId) {
-                            addNotification({
-                              userId: task.assigneeId,
-                              actorId: currentUser?.id || '',
-                              message: 'Reprovação de Criativo',
-                              details: `O criativo da tarefa "${task.title}" foi reprovado e precisa de ajustes.`,
-                              type: 'rejected',
-                              taskId: task.id,
-                              targetId: `design-delivery-${id}`
-                            });
+                          if (updates.status === 'rejected' && oldDelivery?.status !== 'rejected') {
+                            if (task.assigneeId) {
+                              addNotification({
+                                userId: task.assigneeId,
+                                actorId: currentUser?.id || '',
+                                message: 'Reprovação de Criativo',
+                                details: `O criativo da tarefa "${task.title}" foi reprovado e precisa de ajustes.`,
+                                type: 'rejected',
+                                taskId: task.id,
+                                targetId: `design-delivery-${id}`
+                              });
+                            }
                           }
-                        }
 
-                        if (updates.status === 'approved' && oldDelivery?.status !== 'approved') {
-                          if (task.assigneeId) {
-                            addNotification({
-                              userId: task.assigneeId,
-                              actorId: currentUser?.id || '',
-                              message: 'Criativo Aprovado! 🎉',
-                              details: `O criativo da tarefa "${task.title}" foi aprovado.`,
-                              type: 'approved',
-                              taskId: task.id,
-                              targetId: `design-delivery-${id}`
-                            });
+                          if (updates.status === 'approved' && oldDelivery?.status !== 'approved') {
+                            if (task.assigneeId) {
+                              addNotification({
+                                userId: task.assigneeId,
+                                actorId: currentUser?.id || '',
+                                message: 'Criativo Aprovado! 🎉',
+                                details: `O criativo da tarefa "${task.title}" foi aprovado.`,
+                                type: 'approved',
+                                taskId: task.id,
+                                targetId: `design-delivery-${id}`
+                              });
+                            }
                           }
-                        }
 
-                        if ((updates.status === 'reworking' && oldDelivery?.status !== 'reworking') || 
-                            (updates.status === 'review_requested' && oldDelivery?.status !== 'review_requested')) {
-                          
-                          const rejectMsg = [...(oldDelivery?.thread || [])].reverse().find(t => t.action === 'rejected');
-                          const targetUserId = oldDelivery?.approverId || rejectMsg?.authorId;
+                          if ((updates.status === 'reworking' && oldDelivery?.status !== 'reworking') ||
+                              (updates.status === 'review_requested' && oldDelivery?.status !== 'review_requested')) {
 
-                          if (targetUserId) {
-                            addNotification({
-                              userId: targetUserId,
-                              actorId: currentUser?.id || '',
-                              message: updates.status === 'reworking' ? 'Em Refação' : 'Revisão Solicitada',
-                              details: updates.status === 'reworking' 
-                                ? `O designer concordou em refazer o criativo da tarefa "${task.title}".`
-                                : `O designer solicitou uma revisão da reprovação do criativo na tarefa "${task.title}".`,
-                              type: 'review_requested',
-                              taskId: task.id,
-                              targetId: `design-delivery-${id}`
-                            });
+                            const rejectMsg = [...(oldDelivery?.thread || [])].reverse().find(t => t.action === 'rejected');
+                            const targetUserId = oldDelivery?.approverId || rejectMsg?.authorId;
+
+                            if (targetUserId) {
+                              addNotification({
+                                userId: targetUserId,
+                                actorId: currentUser?.id || '',
+                                message: updates.status === 'reworking' ? 'Em Refação' : 'Revisão Solicitada',
+                                details: updates.status === 'reworking'
+                                  ? `O designer concordou em refazer o criativo da tarefa "${task.title}".`
+                                  : `O designer solicitou uma revisão da reprovação do criativo na tarefa "${task.title}".`,
+                                type: 'review_requested',
+                                taskId: task.id,
+                                targetId: `design-delivery-${id}`
+                              });
+                            }
                           }
-                        }
+
+                          return { partial: { deliveries: newDeliveries }, taskUpdates };
+                        });
                       }}
                       onDelete={(id) => {
                         setDeleteConfirmId(id);
@@ -793,10 +814,10 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
         confirmText="Excluir"
         onConfirm={() => {
           if (deleteConfirmId) {
-            const newDeliveries = briefingForm.deliveries?.filter(d => d.id !== deleteConfirmId);
-            const updated = { ...briefingForm, deliveries: newDeliveries };
-            setBriefingForm(updated);
-            saveChange({ designBriefing: updated });
+            const idToDelete = deleteConfirmId;
+            saveDesignBriefing((base) => ({
+              partial: { deliveries: (base.deliveries || []).filter(d => d.id !== idToDelete) }
+            }));
           }
           setDeleteConfirmId(null);
         }}

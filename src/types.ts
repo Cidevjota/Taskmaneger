@@ -240,6 +240,16 @@ export interface Task {
   routineOriginId?: string;
 }
 
+export interface TaskHistoryEntry {
+  id: string;
+  taskId: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  changedBy: string | null;
+  changedAt: string;
+}
+
 export interface Project {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -11,6 +11,24 @@ export async function fetchLabels(): Promise<Label[]> {
   const { data, error } = await supabase.from('labels').select('*');
   if (error) throw error;
   return data as Label[];
+}
+
+export async function fetchTaskHistory(taskId: string): Promise<TaskHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from('task_history')
+    .select('*')
+    .eq('task_id', taskId)
+    .order('changed_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((h: any): TaskHistoryEntry => ({
+    id: h.id,
+    taskId: h.task_id,
+    field: h.field,
+    oldValue: h.old_value,
+    newValue: h.new_value,
+    changedBy: h.changed_by,
+    changedAt: h.changed_at,
+  }));
 }
 
 // design_briefing / copy_briefing / planning_briefing are excluded here (~13 MB total).

@@ -45,7 +45,8 @@ import {
   Search,
   Lock,
   Repeat,
-  GripVertical
+  GripVertical,
+  History as HistoryIcon
 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import ReminderBell from './ReminderBell';
@@ -57,6 +58,7 @@ import PlanningProperties from './PlanningProperties';
 import RoutineProperties from './RoutineProperties';
 import SocialMediaApproval from './SocialMediaApproval';
 import TaskChat from './TaskChat';
+import TaskHistoryPanel from './TaskHistoryPanel';
 import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
@@ -778,6 +780,7 @@ export default function TaskSheet({
   
   const [compareTaskId, setCompareTaskId] = useState<string | null>(null);
   const [isCompareSearchOpen, setIsCompareSearchOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [compareSearchQuery, setCompareSearchQuery] = useState('');
 
   const [effectiveLock, setEffectiveLock] = useState<EditorPresence | null>(null);
@@ -1207,6 +1210,14 @@ export default function TaskSheet({
                 </div>
               </div>
             )}
+
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40 rounded transition-all"
+              title="Ver histórico de alterações"
+            >
+              <HistoryIcon size={15} />
+            </button>
 
             <div className="w-[1px] h-4 bg-zinc-800 mx-1"></div>
 
@@ -2319,6 +2330,17 @@ export default function TaskSheet({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Painel de Histórico de Alterações */}
+      {isHistoryOpen && (
+        <TaskHistoryPanel
+          taskId={task.id}
+          taskCode={task.taskCode}
+          projects={projects}
+          users={USERS}
+          onClose={() => setIsHistoryOpen(false)}
+        />
       )}
 
       {/* Modal de Tela Cheia para a Descrição */}
