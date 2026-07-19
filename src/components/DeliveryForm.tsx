@@ -6,7 +6,7 @@ import { Check, X, Image as ImageIcon, Link as LinkIcon, FileText, User as UserI
 interface DeliveryFormProps {
   initialData?: Delivery;
   users?: User[];
-  onSave: (deliveryData: Partial<Delivery>) => void;
+  onSave: (deliveryData: Partial<Delivery>) => void | Promise<boolean | void>;
   onCancel: () => void;
 }
 
@@ -22,10 +22,12 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
   const [isApproverSelectOpen, setIsApproverSelectOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    
+
     const validImageUrls = imageUrls.filter(url => url.trim() !== '');
     if (validImageUrls.length === 0 || (users && users.length > 0 && !approverId)) return;
 
@@ -35,14 +37,27 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
     }
 
     setIsSubmitting(true);
-    onSave({
-      imageUrl: validImageUrls[0], // Backwards compatibility
-      imageUrls: validImageUrls,
-      thumbnailUrl: validImageUrls[0], // Em um cenário real, o backend geraria a miniatura
-      figmaLink: finalLink,
-      creativeDefense,
-      approverId: approverId || undefined,
-    });
+    setSubmitError(null);
+    try {
+      const result = await onSave({
+        imageUrl: validImageUrls[0], // Backwards compatibility
+        imageUrls: validImageUrls,
+        thumbnailUrl: validImageUrls[0], // Em um cenário real, o backend geraria a miniatura
+        figmaLink: finalLink,
+        creativeDefense,
+        approverId: approverId || undefined,
+      });
+      // If onSave reports failure explicitly (result === false), keep the form
+      // open so the user doesn't lose their input and can retry.
+      if (result === false) {
+        setSubmitError('Falha ao salvar o criativo. Tente novamente.');
+        setIsSubmitting(false);
+      }
+      // On success the parent is expected to unmount this form.
+    } catch {
+      setSubmitError('Falha ao salvar o criativo. Tente novamente.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -57,6 +72,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <fieldset disabled={isSubmitting} className="contents">
         <div className="flex flex-col gap-3">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
             <ImageIcon size={12} /> {imageUrls.length > 1 ? 'Imagens do Criativo *' : 'Imagem do Criativo *'}
@@ -235,6 +251,13 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
             className="bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50 transition-colors min-h-[80px] resize-y"
           />
         </div>
+        </fieldset>
+
+        {submitError && (
+          <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+            {submitError}
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 mt-2">
           <button
@@ -250,7 +273,9 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
             disabled={imageUrls.filter(u => u.trim() !== '').length === 0 || isSubmitting}
             className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <Check size={14} /> {isSubmitting ? 'Salvando...' : (initialData ? 'Salvar Edição' : 'Cadastrar Criativo')}
+            {isSubmitting
+              ? <><span className="w-3.5 h-3.5 border-2 border-yellow-400/40 border-t-yellow-400 rounded-full animate-spin" /> Salvando...</>
+              : <><Check size={14} /> {initialData ? 'Salvar Edição' : 'Cadastrar Criativo'}</>}
           </button>
         </div>
       </form>

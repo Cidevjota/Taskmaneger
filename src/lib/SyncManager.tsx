@@ -11,6 +11,8 @@ interface SyncOptions {
 interface SyncManagerContextType {
   updateTask: (taskId: string, updates: Partial<Task>, options?: SyncOptions) => void;
   isFieldDirty: (taskId: string, field: keyof Task) => boolean;
+  getPendingField: <K extends keyof Task>(taskId: string, field: K) => Task[K] | undefined;
+  saveImmediately: (taskId: string, updates: Partial<Task>) => Promise<void>;
 }
 
 const SyncManagerContext = createContext<SyncManagerContextType | null>(null);
@@ -43,6 +45,14 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
     return dirtyFieldsRef.current[taskId]?.has(field) || false;
   };
 
+  // Exposes a field's value from the still-unflushed update queue, so callers
+  // that refetch "fresh" state from the server can detect a write that hasn't
+  // landed in the DB yet and avoid basing a new save on stale data (which would
+  // silently overwrite the pending update when it flushes).
+  const getPendingField = <K extends keyof Task>(taskId: string, field: K): Task[K] | undefined => {
+    return pendingUpdatesRef.current[taskId]?.[field] as Task[K] | undefined;
+  };
+
   const executeUpdate = async (taskId: string) => {
     const updates = pendingUpdatesRef.current[taskId];
     if (!updates || Object.keys(updates).length === 0) return;
@@ -60,6 +70,42 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
     } finally {
       // Clear dirty flags once we confirm it was patched
       clearDirty(taskId, updateKeys);
+    }
+  };
+
+  // Bypasses debounce entirely and awaits the actual DB write. Use this for
+  // saves that a notification or other side-effect must not fire ahead of
+  // (e.g. adding a creative for approval) — callers can await confirmation
+  // before unlocking the UI or notifying anyone.
+  const saveImmediately = async (taskId: string, updates: Partial<Task>): Promise<void> => {
+    const updateKeys = Object.keys(updates) as (keyof Task)[];
+    markDirty(taskId, updateKeys);
+
+    // Merge with whatever is still queued so an in-flight debounced write
+    // for this task isn't dropped by this immediate save.
+    const merged: Partial<Task> = { ...pendingUpdatesRef.current[taskId], ...updates };
+    const mergedKeys = Object.keys(merged) as (keyof Task)[];
+
+    queryClient.setQueryData<Task[]>(['tasks'], (oldTasks) => {
+      if (!oldTasks) return oldTasks;
+      return oldTasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
+    });
+
+    if (timersRef.current[taskId]) {
+      clearTimeout(timersRef.current[taskId]);
+      delete timersRef.current[taskId];
+    }
+    delete pendingUpdatesRef.current[taskId];
+
+    try {
+      await patchTask(taskId, merged);
+    } catch (err) {
+      console.error('Failed to sync task immediately:', taskId, err);
+      // Re-queue so a later debounced save can retry it.
+      pendingUpdatesRef.current[taskId] = { ...merged, ...pendingUpdatesRef.current[taskId] };
+      throw err;
+    } finally {
+      clearDirty(taskId, mergedKeys);
     }
   };
 
@@ -100,7 +146,7 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SyncManagerContext.Provider value={{ updateTask, isFieldDirty }}>
+    <SyncManagerContext.Provider value={{ updateTask, isFieldDirty, getPendingField, saveImmediately }}>
       {children}
     </SyncManagerContext.Provider>
   );

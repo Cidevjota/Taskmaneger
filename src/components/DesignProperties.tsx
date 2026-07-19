@@ -8,6 +8,7 @@ import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { fetchTaskBriefings } from '../lib/api';
+import { useSyncManager } from '../lib/SyncManager';
 
 interface DesignPropertiesProps {
   task: Task;
@@ -119,10 +120,14 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
   
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
-  const [isEditing, setIsEditing] = useState(!task.designBriefing?.isFilled && !disabled);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isCopyEditorVisible, setIsCopyEditorVisible] = useState(!!task.designBriefing?.copyContent);
   const [isBriefingCollapsed, setIsBriefingCollapsed] = useState(false);
   const [isCopyDropdownOpen, setIsCopyDropdownOpen] = useState(false);
   const { allUsers: USERS, currentUser } = useAuth();
+  const { getPendingField, saveImmediately } = useSyncManager();
+  const [isSavingDelivery, setIsSavingDelivery] = useState(false);
+  const [deliverySaveError, setDeliverySaveError] = useState<string | null>(null);
   const sortedUsers = currentUser
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
@@ -137,8 +142,22 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
     direcaoCriativa: [],
     direcaoFoco: [],
     inspiracoes: [''],
-    copyContent: ''
+    copyContent: '',
+    copyEditors: []
   });
+
+  const normalizedEditors = briefingForm.copyEditors?.length 
+    ? briefingForm.copyEditors 
+    : (briefingForm.copyContent ? [{ id: 'legacy-copy', name: 'Copy', content: briefingForm.copyContent }] : []);
+
+  const [activeEditorId, setActiveEditorId] = useState<string | null>(normalizedEditors[0]?.id || null);
+  const [editingTabNameId, setEditingTabNameId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeEditorId && normalizedEditors.length > 0) {
+      setActiveEditorId(normalizedEditors[0].id);
+    }
+  }, [normalizedEditors.length, activeEditorId]);
 
   useEffect(() => {
     if (task) {
@@ -152,9 +171,11 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
         direcaoCriativa: [],
         direcaoFoco: [],
         inspiracoes: [''],
-        copyContent: ''
+        copyContent: '',
+        copyEditors: task.designBriefing?.copyEditors || []
       });
-      setIsEditing(!task.designBriefing?.isFilled && !disabled);
+      setIsEditing(false);
+      setIsCopyEditorVisible(!!task.designBriefing?.copyContent || (task.designBriefing?.copyEditors || []).length > 0);
     }
   }, [task.id, task.designBriefing, disabled]);
 
@@ -183,11 +204,55 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
     } catch {
       // If the refetch fails, fall back to local state rather than blocking the save.
     }
+    // A previous saveDesignBriefing call may still be sitting in SyncManager's
+    // debounce queue, not yet flushed to the DB. If we based this save purely on
+    // the DB SELECT above, it would be stale and this save would overwrite that
+    // pending write when it flushes (dropping whatever it added, e.g. a delivery).
+    const pending = getPendingField(task.id, 'designBriefing');
+    if (pending) base = pending;
     const { partial, taskUpdates } = recipe(base);
     const merged = { ...base, ...partial };
     setBriefingForm(merged);
     saveChange({ designBriefing: merged, ...(taskUpdates || {}) });
     return merged;
+  };
+
+  // Used for delivery (creative) changes: approval, rejection, and new
+  // submissions all hinge on this actually landing in the DB, so unlike
+  // saveDesignBriefing this awaits the real write and only calls `notify`
+  // (used to fire approval notifications) after it succeeds. This closes the
+  // window where a notification was sent for a creative that was still
+  // sitting in a debounced, not-yet-persisted save.
+  const saveDeliveryChange = async (
+    recipe: (base: DesignBriefing) => { partial: Partial<DesignBriefing>; taskUpdates?: Partial<Task>; notify?: () => void }
+  ): Promise<boolean> => {
+    let base: DesignBriefing = briefingForm;
+    try {
+      const fresh = await fetchTaskBriefings(task.id);
+      if (fresh?.designBriefing) base = fresh.designBriefing;
+    } catch {
+      // If the refetch fails, fall back to local state rather than blocking the save.
+    }
+    const pending = getPendingField(task.id, 'designBriefing');
+    if (pending) base = pending;
+
+    const { partial, taskUpdates, notify } = recipe(base);
+    const merged = { ...base, ...partial };
+
+    setIsSavingDelivery(true);
+    setDeliverySaveError(null);
+    try {
+      await saveImmediately(task.id, { designBriefing: merged, ...(taskUpdates || {}) });
+      setBriefingForm(merged);
+      notify?.();
+      return true;
+    } catch (err) {
+      console.error('Failed to save delivery change:', err);
+      setDeliverySaveError('Falha ao salvar. Verifique sua conexão e tente novamente.');
+      return false;
+    } finally {
+      setIsSavingDelivery(false);
+    }
   };
 
   const handleSaveBriefing = () => {
@@ -198,12 +263,18 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
 
   useEffect(() => {
     if (!task) return;
-    if (briefingForm.copyContent === task.designBriefing?.copyContent) return;
+    if (JSON.stringify(briefingForm.copyEditors) === JSON.stringify(task.designBriefing?.copyEditors) &&
+        briefingForm.copyContent === task.designBriefing?.copyContent) return;
     const timer = setTimeout(() => {
-      saveDesignBriefing(() => ({ partial: { copyContent: briefingForm.copyContent } }));
+      saveDesignBriefing(() => ({ 
+        partial: { 
+          copyContent: briefingForm.copyContent,
+          copyEditors: briefingForm.copyEditors 
+        } 
+      }));
     }, 800);
     return () => clearTimeout(timer);
-  }, [briefingForm.copyContent]);
+  }, [briefingForm.copyContent, briefingForm.copyEditors]);
 
   const relatedCopyTasks = React.useMemo(() => {
     return allTasks.filter(t => 
@@ -244,7 +315,37 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
   };
 
   const handleCopyChange = (newCopy: string) => {
-    setBriefingForm(prev => ({ ...prev, copyContent: newCopy }));
+    if (!activeEditorId) return;
+    const newEditors = normalizedEditors.map(e => e.id === activeEditorId ? { ...e, content: newCopy } : e);
+    // Maintain backwards compatibility with copyContent for the first tab
+    const firstContent = newEditors[0]?.content || '';
+    setBriefingForm(prev => ({ ...prev, copyEditors: newEditors, copyContent: firstContent }));
+  };
+
+  const handleRenameTab = (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    const newEditors = normalizedEditors.map(e => e.id === id ? { ...e, name: newName.trim() } : e);
+    setBriefingForm(prev => ({ ...prev, copyEditors: newEditors }));
+    setEditingTabNameId(null);
+  };
+
+  const handleAddTab = () => {
+    const newId = Date.now().toString();
+    const newEditors = [...normalizedEditors, { id: newId, name: `Card ${normalizedEditors.length + 1}`, content: '' }];
+    setBriefingForm(prev => ({ ...prev, copyEditors: newEditors }));
+    setActiveEditorId(newId);
+  };
+
+  const handleRemoveTab = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const newEditors = normalizedEditors.filter(e => e.id !== id);
+    setBriefingForm(prev => ({ ...prev, copyEditors: newEditors }));
+    if (activeEditorId === id) {
+      setActiveEditorId(newEditors[0]?.id || null);
+    }
+    if (newEditors.length === 0) {
+      setIsCopyEditorVisible(false);
+    }
   };
 
   const handleFormatChange = (peca: string, formato: string) => {
@@ -412,7 +513,19 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
       <div className="grid grid-cols-2 gap-8 px-5 pt-5 pb-5">
         
         <div className="flex flex-col gap-4">
-          {isEditing ? (
+          {!task.designBriefing?.isFilled && !isEditing ? (
+            <div className="flex flex-col items-center justify-center py-6 border border-dashed border-zinc-800/60 rounded-xl bg-zinc-900/10">
+              <span className="text-zinc-500 text-xs mb-2">Nenhum briefing criado para esta peça</span>
+              {!disabled && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-500/30 text-yellow-500/80 hover:bg-yellow-500/10 hover:border-yellow-500/50 hover:text-yellow-400 transition-colors"
+                >
+                  <Plus size={12} /> Adicionar Briefing
+                </button>
+              )}
+            </div>
+          ) : isEditing ? (
             <div className="flex flex-col gap-4 bg-[#08080a] p-5 rounded-xl border border-zinc-900/50">
               <div className="flex items-center justify-between border-b border-zinc-800/40 pb-3">
                 <h3 className={`text-xs font-semibold font-sans uppercase tracking-wider flex items-center gap-1.5 ${themeColor}`}>
@@ -574,11 +687,88 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
         </div>
 
         <div className="flex flex-col gap-4 h-full">
-          <h4 className="text-sm font-semibold text-zinc-100 mb-4 flex items-center gap-2">
-            <Edit2 size={16} className={themeColor} />
-            Copy
-          </h4>
-          <div className="flex-1 flex flex-col animate-fade-in bg-[#121214] border border-zinc-800/40 rounded-lg p-3 resize-y overflow-hidden min-h-[300px]" style={{ height: '450px' }}>
+
+          {!isCopyEditorVisible ? (
+            <div className="flex flex-col items-center justify-center py-6 border border-dashed border-zinc-800/60 rounded-xl bg-zinc-900/10">
+              <span className="text-zinc-500 text-xs mb-2">Nenhum copy criado para esta peça</span>
+              {!disabled && (
+                <button
+                  onClick={() => {
+                    setIsCopyEditorVisible(true);
+                    if (normalizedEditors.length === 0) {
+                      handleAddTab();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-500/30 text-yellow-500/80 hover:bg-yellow-500/10 hover:border-yellow-500/50 hover:text-yellow-400 transition-colors"
+                >
+                  <Plus size={12} /> Adicionar Copy
+                </button>
+              )}
+            </div>
+          ) : (
+          <div className="flex-1 flex flex-col animate-fade-in bg-[#08080a] border border-zinc-900/60 rounded-xl resize-y overflow-hidden min-h-[300px]" style={{ height: '450px' }}>
+            <div className="flex items-center gap-6 px-5 pt-4 pb-2 bg-transparent border-b border-zinc-800/40 overflow-x-auto overflow-y-hidden custom-scrollbar">
+              {normalizedEditors.map((editor) => {
+                const isActive = activeEditorId === editor.id;
+                return (
+                  <div 
+                    key={editor.id}
+                    onClick={() => {
+                      if (isActive && !disabled) {
+                        setEditingTabNameId(editor.id);
+                      } else {
+                        setActiveEditorId(editor.id);
+                      }
+                    }}
+                    className={`group flex items-center justify-between pb-1 cursor-pointer transition-colors border-b-2 relative -bottom-[9px] ${
+                      isActive 
+                        ? `border-yellow-500/50 text-zinc-100 active` 
+                        : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                    }`}
+                  >
+                    {editingTabNameId === editor.id && !disabled ? (
+                      <input
+                        autoFocus
+                        defaultValue={editor.name}
+                        onBlur={(e) => handleRenameTab(editor.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameTab(editor.id, e.currentTarget.value);
+                          if (e.key === 'Escape') setEditingTabNameId(null);
+                        }}
+                        className="w-full min-w-[120px] bg-transparent outline-none text-sm text-zinc-100 font-medium"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate select-none tracking-wide">
+                          {editor.name}
+                        </span>
+                        {!disabled && (
+                          <button
+                            onClick={(e) => handleRemoveTab(e, editor.id)}
+                            className="flex items-center justify-center w-4 h-4 rounded hover:bg-zinc-800 text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 group-[.active]:opacity-100"
+                            title="Excluir"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {!disabled && (
+                <button
+                  onClick={handleAddTab}
+                  className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-zinc-800/50 text-zinc-500 hover:text-zinc-300 transition-colors ml-1 relative -bottom-[4px]"
+                  title="Novo Copy"
+                >
+                  <Plus size={16} />
+                </button>
+              )}
+            </div>
+            
+            <div className="flex-1 flex flex-col p-5 relative h-full">
             {approvedCopies.length > 0 && (
               <div className="mb-3 border-b border-zinc-800/40 pb-2 relative">
                 <button
@@ -608,17 +798,19 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                 )}
               </div>
             )}
-            <div className="flex-1 relative h-full">
+            <div className="flex-1 relative min-h-0 max-h-[350px] overflow-y-auto custom-scrollbar">
               <RichTextEditor
-              taskId={`copy-${task.id}`}
-              content={briefingForm.copyContent || ''}
+              taskId={`copy-${task.id}-${activeEditorId}`}
+              content={normalizedEditors.find(e => e.id === activeEditorId)?.content || ''}
               onChange={handleCopyChange}
               variant="borderless"
-              wrapperClassName="h-full"
+              wrapperClassName="max-h-[350px]"
               readOnly={disabled}
             />
             </div>
+            </div>
           </div>
+          )}
         </div>
       </div>
 
@@ -628,20 +820,13 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
           <h3 className={`text-xs font-semibold font-sans uppercase tracking-wider flex items-center gap-1.5 ${themeColor}`}>
             Aprovação de Criativos
           </h3>
-          {!isCreatingDelivery && !editingDeliveryId && !disabled && (
-            <button 
-              onClick={() => setIsCreatingDelivery(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-yellow-950 uppercase tracking-wider rounded transition-colors"
-            >
-              + Novo Criativo
-            </button>
-          )}
         </div>
 
         <div className="flex flex-col gap-6 animate-fade-in">
 
             {/* Formulário de Criação / Edição */}
             {(isCreatingDelivery || editingDeliveryId) && (
+              <>
               <DeliveryForm
                 users={sortedUsers}
                 initialData={briefingForm.deliveries?.find(d => d.id === editingDeliveryId)}
@@ -649,10 +834,11 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                   setIsCreatingDelivery(false);
                   setEditingDeliveryId(null);
                 }}
-                onSave={(data) => {
+                onSave={async (data) => {
                   const wasEditing = !!editingDeliveryId;
-                  saveDesignBriefing((base) => {
+                  const success = await saveDeliveryChange((base) => {
                     let newDeliveries = [...(base.deliveries || [])];
+                    let notify: (() => void) | undefined;
                     if (editingDeliveryId) {
                       newDeliveries = newDeliveries.map(d =>
                         d.id === editingDeliveryId ? { ...d, ...data } : d
@@ -675,8 +861,11 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                       } as any);
 
                       if (data.approverId) {
-                        addNotification({
-                          userId: data.approverId,
+                        // Deferred: only actually sent once saveDeliveryChange confirms
+                        // the delivery was persisted, so an approver never gets pinged
+                        // for a creative that isn't in the DB yet.
+                        notify = () => addNotification({
+                          userId: data.approverId!,
                           actorId: currentUser?.id || 'system',
                           taskId: task.id,
                           type: 'review_requested',
@@ -692,27 +881,49 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                       taskUpdates.status = 'approval';
                     }
 
-                    return { partial: { deliveries: newDeliveries }, taskUpdates };
+                    return { partial: { deliveries: newDeliveries }, taskUpdates, notify };
                   });
 
-                  setIsCreatingDelivery(false);
-                  setEditingDeliveryId(null);
+                  if (success) {
+                    setIsCreatingDelivery(false);
+                    setEditingDeliveryId(null);
+                  }
+                  return success;
                 }}
               />
+              {isSavingDelivery && (
+                <div className="flex items-center gap-2 text-xs text-yellow-400/80 -mt-4">
+                  <span className="w-3 h-3 border-2 border-yellow-400/40 border-t-yellow-400 rounded-full animate-spin" />
+                  Salvando criativo...
+                </div>
+              )}
+              {deliverySaveError && (
+                <div className="text-xs text-red-400 -mt-4">{deliverySaveError}</div>
+              )}
+              </>
             )}
 
             {/* Lista de Criativos Detalhados */}
             {!isCreatingDelivery && !editingDeliveryId && (
               briefingForm.deliveries && briefingForm.deliveries.length > 0 ? (
                 <div className="flex flex-col gap-6">
+                  {isSavingDelivery && (
+                    <div className="flex items-center gap-2 text-xs text-yellow-400/80">
+                      <span className="w-3 h-3 border-2 border-yellow-400/40 border-t-yellow-400 rounded-full animate-spin" />
+                      Salvando alterações...
+                    </div>
+                  )}
+                  {deliverySaveError && (
+                    <div className="text-xs text-red-400">{deliverySaveError}</div>
+                  )}
                   {briefingForm.deliveries.map((delivery, i) => (
                     <div key={delivery.id} id={`target-design-delivery-${delivery.id}`}>
                       <DeliveryApproval
                         delivery={delivery}
                         index={i + 1}
-                        disabled={disabled}
+                        disabled={disabled || isSavingDelivery}
                         onUpdate={(id, updates) => {
-                        saveDesignBriefing((base) => {
+                        saveDeliveryChange((base) => {
                           const oldDelivery = base.deliveries?.find(d => d.id === id);
                           const newDeliveries = (base.deliveries || []).map(d =>
                             d.id === id ? { ...d, ...updates } : d
@@ -739,31 +950,33 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                             }
                           }
 
+                          const notifications: (() => void)[] = [];
+
                           if (updates.status === 'rejected' && oldDelivery?.status !== 'rejected') {
                             if (task.assigneeId) {
-                              addNotification({
-                                userId: task.assigneeId,
+                              notifications.push(() => addNotification({
+                                userId: task.assigneeId!,
                                 actorId: currentUser?.id || '',
                                 message: 'Reprovação de Criativo',
                                 details: `O criativo da tarefa "${task.title}" foi reprovado e precisa de ajustes.`,
                                 type: 'rejected',
                                 taskId: task.id,
                                 targetId: `design-delivery-${id}`
-                              });
+                              }));
                             }
                           }
 
                           if (updates.status === 'approved' && oldDelivery?.status !== 'approved') {
                             if (task.assigneeId) {
-                              addNotification({
-                                userId: task.assigneeId,
+                              notifications.push(() => addNotification({
+                                userId: task.assigneeId!,
                                 actorId: currentUser?.id || '',
                                 message: 'Criativo Aprovado! 🎉',
                                 details: `O criativo da tarefa "${task.title}" foi aprovado.`,
                                 type: 'approved',
                                 taskId: task.id,
                                 targetId: `design-delivery-${id}`
-                              });
+                              }));
                             }
                           }
 
@@ -774,7 +987,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                             const targetUserId = oldDelivery?.approverId || rejectMsg?.authorId;
 
                             if (targetUserId) {
-                              addNotification({
+                              notifications.push(() => addNotification({
                                 userId: targetUserId,
                                 actorId: currentUser?.id || '',
                                 message: updates.status === 'reworking' ? 'Em Refação' : 'Revisão Solicitada',
@@ -784,11 +997,15 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                                 type: 'review_requested',
                                 taskId: task.id,
                                 targetId: `design-delivery-${id}`
-                              });
+                              }));
                             }
                           }
 
-                          return { partial: { deliveries: newDeliveries }, taskUpdates };
+                          return {
+                            partial: { deliveries: newDeliveries },
+                            taskUpdates,
+                            notify: notifications.length > 0 ? () => notifications.forEach(n => n()) : undefined
+                          };
                         });
                       }}
                       onDelete={(id) => {
@@ -797,10 +1014,28 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                     />
                   </div>
                   ))}
+                  {!isCreatingDelivery && !editingDeliveryId && !disabled && (
+                    <div className="flex flex-col items-center justify-center py-6 border border-dashed border-zinc-800/60 rounded-xl bg-zinc-900/10">
+                      <button
+                        onClick={() => setIsCreatingDelivery(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-500/30 text-yellow-500/80 hover:bg-yellow-500/10 hover:border-yellow-500/50 hover:text-yellow-400 transition-colors"
+                      >
+                        <Plus size={12} /> Adicionar Criativo
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-zinc-500 animate-fade-in border border-dashed border-zinc-800/60 rounded-lg">
-                  <p className="text-xs">Nenhum criativo foi adicionado ainda.</p>
+                <div className="flex flex-col items-center justify-center py-6 border border-dashed border-zinc-800/60 rounded-xl bg-zinc-900/10">
+                  <span className="text-zinc-500 text-xs mb-2">Nenhum criativo foi adicionado ainda.</span>
+                  {!disabled && (
+                    <button
+                      onClick={() => setIsCreatingDelivery(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-500/30 text-yellow-500/80 hover:bg-yellow-500/10 hover:border-yellow-500/50 hover:text-yellow-400 transition-colors"
+                    >
+                      <Plus size={12} /> Adicionar Criativo
+                    </button>
+                  )}
                 </div>
               )
             )}
@@ -815,7 +1050,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
         onConfirm={() => {
           if (deleteConfirmId) {
             const idToDelete = deleteConfirmId;
-            saveDesignBriefing((base) => ({
+            saveDeliveryChange((base) => ({
               partial: { deliveries: (base.deliveries || []).filter(d => d.id !== idToDelete) }
             }));
           }

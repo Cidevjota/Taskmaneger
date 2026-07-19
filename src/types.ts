@@ -80,6 +80,7 @@ export interface DesignBriefing {
   direcaoFoco?: string[];
   inspiracoes?: string[];
   copyContent?: string;
+  copyEditors?: CopyEditorItem[];
   deliveries?: Delivery[];
 }
 

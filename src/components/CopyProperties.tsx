@@ -9,6 +9,7 @@ import RichTextEditor from './RichTextEditor';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { fetchTaskBriefings } from '../lib/api';
+import { useSyncManager } from '../lib/SyncManager';
 
 interface CopyPropertiesProps {
   task: Task;
@@ -92,6 +93,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
   const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
   
   const { allUsers: USERS, currentUser } = useAuth();
+  const { getPendingField, saveImmediately } = useSyncManager();
+  const [isSavingDelivery, setIsSavingDelivery] = useState(false);
+  const [deliverySaveError, setDeliverySaveError] = useState<string | null>(null);
   const sortedUsers = currentUser
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
@@ -200,11 +204,55 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
     } catch {
       // If the refetch fails, fall back to local state rather than blocking the save.
     }
+    // A previous saveCopyBriefing call may still be sitting in SyncManager's
+    // debounce queue, not yet flushed to the DB. If we based this save purely on
+    // the DB SELECT above, it would be stale and this save would overwrite that
+    // pending write when it flushes (dropping whatever it added, e.g. a delivery).
+    const pending = getPendingField(task.id, 'copyBriefing');
+    if (pending) base = pending;
     const { partial, taskUpdates } = recipe(base);
     const merged = { ...base, ...partial };
     setBriefingForm(merged);
     saveChange({ copyBriefing: merged, ...(taskUpdates || {}) });
     return merged;
+  };
+
+  // Used for delivery (creative) changes: approval, rejection, and new
+  // submissions all hinge on this actually landing in the DB, so unlike
+  // saveCopyBriefing this awaits the real write and only calls `notify`
+  // (used to fire approval notifications) after it succeeds. This closes the
+  // window where a notification was sent for a creative that was still
+  // sitting in a debounced, not-yet-persisted save.
+  const saveDeliveryChange = async (
+    recipe: (base: CopyBriefing) => { partial: Partial<CopyBriefing>; taskUpdates?: Partial<Task>; notify?: () => void }
+  ): Promise<boolean> => {
+    let base: CopyBriefing = briefingForm;
+    try {
+      const fresh = await fetchTaskBriefings(task.id);
+      if (fresh?.copyBriefing) base = fresh.copyBriefing;
+    } catch {
+      // If the refetch fails, fall back to local state rather than blocking the save.
+    }
+    const pending = getPendingField(task.id, 'copyBriefing');
+    if (pending) base = pending;
+
+    const { partial, taskUpdates, notify } = recipe(base);
+    const merged = { ...base, ...partial };
+
+    setIsSavingDelivery(true);
+    setDeliverySaveError(null);
+    try {
+      await saveImmediately(task.id, { copyBriefing: merged, ...(taskUpdates || {}) });
+      setBriefingForm(merged);
+      notify?.();
+      return true;
+    } catch (err) {
+      console.error('Failed to save delivery change:', err);
+      setDeliverySaveError('Falha ao salvar. Verifique sua conexão e tente novamente.');
+      return false;
+    } finally {
+      setIsSavingDelivery(false);
+    }
   };
 
   const handleSaveBriefing = () => {
@@ -786,14 +834,15 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                     Cancelar
                   </button>
                   <button
-                    disabled={!selectedCopyEditorId}
-                    onClick={() => {
+                    disabled={!selectedCopyEditorId || isSavingDelivery}
+                    onClick={async () => {
                       const editor = briefingForm.copyEditors?.find(e => e.id === selectedCopyEditorId);
                       if (!editor) return;
 
-                      saveCopyBriefing((base) => {
+                      const success = await saveDeliveryChange((base) => {
                         const now = new Date().toISOString();
                         let newDeliveries = [...(base.deliveries || [])];
+                        let notify: (() => void) | undefined;
 
                         if (editingDeliveryId) {
                           // Normally not editing existing copy submissions like this, but kept for compatibility
@@ -819,7 +868,10 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                           });
 
                           if (selectedApproverId) {
-                            addNotification({
+                            // Deferred: only sent once saveDeliveryChange confirms the
+                            // delivery was persisted, so an approver never gets pinged
+                            // for a copy that isn't in the DB yet.
+                            notify = () => addNotification({
                               userId: selectedApproverId,
                               actorId: currentUser?.id || 'system',
                               taskId: task.id,
@@ -836,20 +888,27 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                           taskUpdates.status = 'approval';
                         }
 
-                        return { partial: { deliveries: newDeliveries }, taskUpdates };
+                        return { partial: { deliveries: newDeliveries }, taskUpdates, notify };
                       });
 
-                      setIsCreatingDelivery(false);
-                      setEditingDeliveryId(null);
-                      setSelectedCopyEditorId('');
-                      setSelectedApproverId('');
-                      setCopyDefense('');
+                      if (success) {
+                        setIsCreatingDelivery(false);
+                        setEditingDeliveryId(null);
+                        setSelectedCopyEditorId('');
+                        setSelectedApproverId('');
+                        setCopyDefense('');
+                      }
                     }}
                     className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 disabled:opacity-50 transition-colors"
                   >
-                    <Send size={14} /> Enviar copy para aprovação
+                    {isSavingDelivery
+                      ? <><span className="w-3.5 h-3.5 border-2 border-pink-400/40 border-t-pink-400 rounded-full animate-spin" /> Salvando...</>
+                      : <><Send size={14} /> Enviar copy para aprovação</>}
                   </button>
                 </div>
+                {deliverySaveError && (
+                  <div className="text-xs text-red-400">{deliverySaveError}</div>
+                )}
               </div>
             )}
 
@@ -865,9 +924,9 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                       &larr; VOLTAR PARA LISTA
                     </button>
                     {selectedApprovalDeliveryId && briefingForm.deliveries && (
-                      <CopyApprovalPanel 
+                      <CopyApprovalPanel
                         delivery={briefingForm.deliveries.find(d => d.id === selectedApprovalDeliveryId)!}
-                        disabled={disabled}
+                        disabled={disabled || isSavingDelivery}
                         currentText={
                           briefingForm.copyEditors?.find(e => {
                               const delivery = briefingForm.deliveries!.find(d => d.id === selectedApprovalDeliveryId)!;
@@ -878,7 +937,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                         }
                         onClose={() => setSelectedApprovalDeliveryId(null)}
                         onUpdate={(id, updates) => {
-                          saveCopyBriefing((base) => {
+                          saveDeliveryChange((base) => {
                             const oldDelivery = base.deliveries?.find(d => d.id === id);
                             const newDeliveries = (base.deliveries || []).map(d =>
                               d.id === id ? { ...d, ...updates } : d
@@ -905,11 +964,12 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                               }
                             }
 
+                            let notify: (() => void) | undefined;
                             if (updates.status && oldDelivery?.status !== updates.status) {
                               if (updates.status === 'approved') {
                                 if (task.assigneeId) {
-                                  addNotification({
-                                    userId: task.assigneeId,
+                                  notify = () => addNotification({
+                                    userId: task.assigneeId!,
                                     actorId: currentUser?.id || '',
                                     message: 'Copy Aprovada! 🎉',
                                     details: `A copy da tarefa "${task.title}" foi aprovada.`,
@@ -920,8 +980,8 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                                 }
                               } else if (updates.status === 'reworking') {
                                 if (task.assigneeId) {
-                                  addNotification({
-                                    userId: task.assigneeId,
+                                  notify = () => addNotification({
+                                    userId: task.assigneeId!,
                                     actorId: currentUser?.id || '',
                                     message: 'Reprovação de Copy',
                                     details: `A copy da tarefa "${task.title}" foi reprovada e precisa de ajustes.`,
@@ -933,7 +993,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                               } else if (updates.status === 'review_requested') {
                                 const targetUserId = oldDelivery?.approverId;
                                 if (targetUserId) {
-                                  addNotification({
+                                  notify = () => addNotification({
                                     userId: targetUserId,
                                     actorId: currentUser?.id || '',
                                     message: 'Revisão Solicitada',
@@ -946,7 +1006,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
                               }
                             }
 
-                            return { partial: { deliveries: newDeliveries }, taskUpdates };
+                            return { partial: { deliveries: newDeliveries }, taskUpdates, notify };
                           });
                         }}
                       />
@@ -1102,7 +1162,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
           onConfirm={() => {
             if (deleteConfirmId) {
               const idToDelete = deleteConfirmId;
-              saveCopyBriefing((base) => ({
+              saveDeliveryChange((base) => ({
                 partial: { deliveries: (base.deliveries || []).filter(d => d.id !== idToDelete) }
               }));
             }

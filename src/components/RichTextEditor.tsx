@@ -682,7 +682,7 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
   return (
     <div className={`rte-wrapper flex flex-col ${variant === 'borderless' ? 'rte-borderless !border-transparent !bg-transparent' : ''} ${wrapperClassName}`}>
       {!readOnly && <MenuBar editor={activeEditor} columns={columns} onColumnsChange={handleColumnsChange} />}
-      <div className={`flex-1 overflow-y-auto grid ${gridClass} gap-5`}>
+      <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar grid ${gridClass} gap-5`}>
         {Array.from({ length: columns }).map((_, i) => (
           <div key={`${taskId}-col-${i}`} className={`h-full ${i < columns - 1 ? 'border-r border-zinc-800/50 pr-5' : ''}`}>
             <SingleEditor
