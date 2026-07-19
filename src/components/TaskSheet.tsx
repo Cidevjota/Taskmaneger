@@ -872,7 +872,17 @@ export default function TaskSheet({
   const theme = getTheme(baseColor);
   const themeTextColor = theme.text;
 
-  const childTasks = allTasks ? allTasks.filter(t => t.parentTaskId === task?.id) : [];
+  const childTasks = allTasks
+    ? allTasks
+        .filter(t => t.parentTaskId === task?.id)
+        .sort((a, b) => {
+          // Earliest deadline first; tasks without a due date sort last.
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        })
+    : [];
 
   let ThemeIcon = TagIcon;
   if (primaryLabelData?.name === 'Design') ThemeIcon = PenTool;
@@ -1905,7 +1915,16 @@ export default function TaskSheet({
                                  </span>
                                )}
 
-                               <span className="flex items-center gap-1 whitespace-nowrap font-mono tracking-tighter text-[9px] opacity-80">
+                               <span className={`flex items-center gap-1 whitespace-nowrap font-mono tracking-tighter text-[9px] ${(() => {
+                                 if (!t.dueDate || t.status === 'done') return 'opacity-80';
+                                 const msPerDay = 24 * 60 * 60 * 1000;
+                                 const today = new Date(); today.setHours(0, 0, 0, 0);
+                                 const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
+                                 const daysLeft = Math.round((due.getTime() - today.getTime()) / msPerDay);
+                                 if (daysLeft < 0) return 'text-red-400 font-bold opacity-100';
+                                 if (daysLeft <= 5) return 'text-yellow-400 font-bold opacity-100';
+                                 return 'opacity-80';
+                               })()}`}>
                                  {t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR').slice(0, 5) : 'S/P'}
                                </span>
                                <div className="flex items-center shrink-0" title={statusObj.label}>
@@ -1978,9 +1997,9 @@ export default function TaskSheet({
 
                               <div className="flex flex-col pl-8 mt-2 relative">
                                 {/* Level 1: Current Task */}
-                                <div className={`absolute top-[-8px] bottom-1/2 w-[2px] ${theme.line}`} style={{ left: '19px' }} />
-                                <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '19px', width: '13px', transform: 'translateY(-50%)' }} />
-                                
+                                <div className={`absolute top-[-8px] bottom-1/2 w-[2px] ${theme.line}`} style={{ left: '12px' }} />
+                                <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
+
                                 <div className="group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 shadow-md relative z-10">
                                   <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
                                     <div className={`w-[12px] h-[12px] rounded-full ${theme.dotBg} border ${theme.dotBorder} flex items-center justify-center shrink-0`}>
@@ -1997,8 +2016,8 @@ export default function TaskSheet({
                                       const isLast = idx === childTasks.length - 1;
                                       return (
                                         <div key={ct.id} className="relative pl-8">
-                                          <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '19px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
-                                          <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '19px', width: '13px', transform: 'translateY(-50%)' }} />
+                                          <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '12px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
+                                          <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
                                           <div className="relative z-10">
                                             {renderTaskCard(ct, false)}
                                           </div>
@@ -2032,8 +2051,8 @@ export default function TaskSheet({
                                     const isLast = idx === childTasks.length - 1;
                                     return (
                                       <div key={ct.id} className="relative pl-8">
-                                        <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '19px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
-                                        <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '19px', width: '13px', transform: 'translateY(-50%)' }} />
+                                        <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '12px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
+                                        <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
                                         <div className="relative z-10">
                                           {renderTaskCard(ct, false)}
                                         </div>
