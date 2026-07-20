@@ -280,19 +280,29 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
   return (
     <div className="flex flex-col animate-fade-in bg-[#08080a]/40 p-4 rounded-md border border-zinc-900 mt-2">
       {/* Tabs */}
-      <div className="flex border-b border-zinc-800/50 mb-4">
-        <button
-          onClick={() => setActiveTab('propostas')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'propostas' ? `${themeColor} border-b-2 border-current` : 'text-zinc-500 hover:text-zinc-300'}`}
-        >
-          Propostas
-        </button>
-        <button
-          onClick={() => setActiveTab('aprovacao')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'aprovacao' ? `${themeColor} border-b-2 border-current` : 'text-zinc-500 hover:text-zinc-300'}`}
-        >
-          Aprovação
-        </button>
+      <div className="flex items-center justify-between border-b border-zinc-800/50 mb-4">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('propostas')}
+            className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'propostas' ? `${themeColor} border-b-2 border-current` : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Propostas
+          </button>
+          <button
+            onClick={() => setActiveTab('aprovacao')}
+            className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'aprovacao' ? `${themeColor} border-b-2 border-current` : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Aprovação
+          </button>
+        </div>
+        {activeTab === 'propostas' && (
+          <button
+            onClick={handleAddProposal}
+            className="flex items-center gap-1.5 mb-2 px-2.5 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded-md text-[11px] font-semibold text-zinc-300 hover:text-white transition-colors"
+          >
+            <Plus size={12} /> Adicionar Proposta
+          </button>
+        )}
       </div>
 
       {activeTab === 'propostas' && (

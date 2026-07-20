@@ -21,8 +21,8 @@ import { useAuth } from './context/AuthContext';
 import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
-import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig } from './lib/api';
+import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura } from './types';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig } from './lib/api';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -138,9 +138,10 @@ export default function App() {
   const { data: labels = [], isLoading: isLabelsLoading } = useQuery({ queryKey: ['labels'], queryFn: fetchLabels, enabled: authReady });
   const { data: siengeTitles = [], isLoading: isSiengeLoading } = useQuery({ queryKey: ['siengeTitles'], queryFn: fetchSiengeTitles, enabled: authReady });
   const { data: siengeLotes = [], isLoading: isLotesLoading } = useQuery({ queryKey: ['siengeLotes'], queryFn: fetchSiengeLotes, enabled: authReady });
+  const { data: siengeFaturas = [], isLoading: isFaturasLoading } = useQuery({ queryKey: ['siengeFaturas'], queryFn: fetchSiengeFaturas, enabled: authReady });
   const { data: siengeAlcadaConfig = {} } = useQuery({ queryKey: ['siengeAlcadaConfig'], queryFn: fetchSiengeAlcadaConfig, enabled: authReady });
 
-  const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading;
+  const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading || isFaturasLoading;
   
   // Custom Confirm Modal state for task sheet closure
   const [confirmModalData, setConfirmModalData] = useState<{
@@ -390,6 +391,9 @@ export default function App() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_lotes' }, () => {
         queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_faturas' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['siengeFaturas'] });
       })
       .subscribe();
 
@@ -1142,6 +1146,7 @@ export default function App() {
             <SiengeView
               titles={siengeTitles}
               lotes={siengeLotes}
+              faturas={siengeFaturas}
               projects={projects}
               currentProjectFilter={currentProjectFilter}
               alcadaConfig={siengeAlcadaConfig}
@@ -1174,6 +1179,19 @@ export default function App() {
               onDeleteLote={async (id) => {
                 queryClient.setQueryData<SiengeLote[]>(['siengeLotes'], prev => (prev || []).filter(l => l.id !== id));
                 deleteSiengeLote(id).catch(console.error);
+              }}
+              onSaveFatura={async (fatura) => {
+                queryClient.setQueryData<SiengeFatura[]>(['siengeFaturas'], prev => {
+                  const exists = (prev || []).find(f => f.id === fatura.id);
+                  return exists
+                    ? (prev || []).map(f => f.id === fatura.id ? fatura : f)
+                    : [fatura, ...(prev || [])];
+                });
+                saveSiengeFatura(fatura).catch(console.error);
+              }}
+              onDeleteFatura={async (id) => {
+                queryClient.setQueryData<SiengeFatura[]>(['siengeFaturas'], prev => (prev || []).filter(f => f.id !== id));
+                deleteSiengeFatura(id).catch(console.error);
               }}
             />
           )}

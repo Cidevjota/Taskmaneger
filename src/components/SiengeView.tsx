@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { SiengeTitle, SiengeLote, Project, SiengeAlcadaConfig } from '../types';
+import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig } from '../types';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
+import SiengeFaturas from './SiengeFaturas';
 
 interface SiengeViewProps {
   titles: SiengeTitle[];
   lotes: SiengeLote[];
+  faturas: SiengeFatura[];
   projects: Project[];
   currentProjectFilter: string | null;
   alcadaConfig: SiengeAlcadaConfig;
@@ -13,14 +15,18 @@ interface SiengeViewProps {
   onDeleteTitle: (id: string) => void;
   onSaveLote: (lote: SiengeLote) => void;
   onDeleteLote: (id: string) => void;
+  onSaveFatura: (fatura: SiengeFatura) => void;
+  onDeleteFatura: (id: string) => void;
   onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
 }
 
 export default function SiengeView({
-  titles, lotes, projects, currentProjectFilter, alcadaConfig, onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveAlcadaConfig
+  titles, lotes, faturas, projects, currentProjectFilter, alcadaConfig,
+  onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig
 }: SiengeViewProps) {
-  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes'>('titulos');
+  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
+  const openFaturas = faturas.filter(f => f.status === 'aberto');
 
   return (
     <div className="flex flex-col h-full bg-[#08080a]">
@@ -51,6 +57,21 @@ export default function SiengeView({
             </span>
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('faturas')}
+          className={`pb-3 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2 ${
+            activeTab === 'faturas'
+              ? 'text-zinc-100 border-blue-500'
+              : 'text-zinc-500 border-transparent hover:text-zinc-300'
+          }`}
+        >
+          Cartão de Crédito
+          {openFaturas.length > 0 && (
+            <span className="bg-blue-500/20 text-blue-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {openFaturas.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Content Area */}
@@ -59,6 +80,7 @@ export default function SiengeView({
           <SiengeKanban
             titles={titles}
             openLotes={openLotes}
+            openFaturas={openFaturas}
             projects={projects}
             currentProjectFilter={currentProjectFilter}
             alcadaConfig={alcadaConfig}
@@ -66,12 +88,19 @@ export default function SiengeView({
             onDelete={onDeleteTitle}
             onSaveAlcadaConfig={onSaveAlcadaConfig}
           />
-        ) : (
+        ) : activeTab === 'lotes' ? (
           <SiengeLotes
             lotes={lotes}
             titles={titles}
             onSaveLote={onSaveLote}
             onDeleteLote={onDeleteLote}
+          />
+        ) : (
+          <SiengeFaturas
+            faturas={faturas}
+            titles={titles}
+            onSaveFatura={onSaveFatura}
+            onDeleteFatura={onDeleteFatura}
           />
         )}
       </div>

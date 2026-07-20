@@ -53,7 +53,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
 
       if (pendingAvatarFile) {
         const url = await uploadToStorage('avatars', currentUser.id, pendingAvatarFile, UPLOAD_LIMITS.avatar);
-        updates.avatarPreview = url;
+        updates.avatarUrl = url;
       }
 
       const res = await updateProfile(updates, password || undefined);

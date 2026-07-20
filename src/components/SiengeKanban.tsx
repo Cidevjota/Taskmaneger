@@ -5,7 +5,7 @@ import {
   Banknote, ArrowRight, Search, SlidersHorizontal, User,
   LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy, Settings
 } from 'lucide-react';
-import { SiengeTitle, SiengeStatus, SiengeLote, Project, SiengeAlcadaConfig } from '../types';
+import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig } from '../types';
 import SiengeTitleModal from './SiengeTitleModal';
 import AlcadaConfigModal from './AlcadaConfigModal';
 import ReminderBell from './ReminderBell';
@@ -17,9 +17,20 @@ import {
   getPositiveAction, showsRejectAction, ALCADA_LEVEL_BY_STATUS, alcadaResponsibleId,
 } from '../lib/siengeHelpers';
 
+// Not a real status — titles keep 'aguardando_pagamento' in the data so
+// payment/lote logic elsewhere is unaffected. This id only exists to give
+// overdue titles their own column between Aguardando and Recusados.
+const ATRASADOS_COL = 'atrasados' as const;
+type ColumnId = SiengeStatus | typeof ATRASADOS_COL;
+
+function isOverdueAwaitingPayment(title: SiengeTitle): boolean {
+  return title.status === 'aguardando_pagamento' && siengeDaysOverdue(title.vencimentoOriginal || title.vencimento) >= 1;
+}
+
 interface SiengeKanbanProps {
   titles: SiengeTitle[];
   openLotes: SiengeLote[];
+  openFaturas: SiengeFatura[];
   projects: Project[];
   currentProjectFilter: string | null;
   alcadaConfig: SiengeAlcadaConfig;
@@ -28,7 +39,7 @@ interface SiengeKanbanProps {
   onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
 }
 
-const COLUMNS: { id: SiengeStatus; label: string; shortLabel: string; color: string; dotColor: string; bg: string; border: string; icon: React.ReactNode }[] = [
+const COLUMNS: { id: ColumnId; label: string; shortLabel: string; color: string; dotColor: string; bg: string; border: string; icon: React.ReactNode }[] = [
   {
     id: 'a_lancar',
     label: 'A Lançar',
@@ -78,6 +89,16 @@ const COLUMNS: { id: SiengeStatus; label: string; shortLabel: string; color: str
     bg: 'bg-amber-500/5',
     border: 'border-amber-500/20',
     icon: <Banknote size={12} />,
+  },
+  {
+    id: ATRASADOS_COL,
+    label: 'Atrasados',
+    shortLabel: 'Atrasados',
+    color: 'text-orange-400',
+    dotColor: 'bg-orange-500',
+    bg: 'bg-orange-500/5',
+    border: 'border-orange-500/20',
+    icon: <AlertTriangle size={12} />,
   },
   {
     id: 'recusados',
@@ -558,13 +579,13 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
   );
 }
 
-export default function SiengeKanban({ titles, openLotes, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig }: SiengeKanbanProps) {
+export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig }: SiengeKanbanProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState<SiengeTitle | null>(null);
   const [modalInitialStatus, setModalInitialStatus] = useState<SiengeStatus>('a_lancar');
   const [isLoadingTitle, setIsLoadingTitle] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<SiengeStatus | null>(null);
+  const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
   const [search, setSearch] = useState('');
   const [isCompact, setIsCompact] = useState(false);
   const [filterLoteId, setFilterLoteId] = useState<string | 'all'>('all');
@@ -612,15 +633,17 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent, colId: SiengeStatus) => {
+  const handleDragOver = useCallback((e: React.DragEvent, colId: ColumnId) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDropTarget(colId);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, targetStatus: SiengeStatus) => {
+  const handleDrop = useCallback((e: React.DragEvent, targetColId: ColumnId) => {
     e.preventDefault();
     if (!dragId) return;
+    // 'atrasados' isn't a real status — dropping there just means "awaiting payment".
+    const targetStatus: SiengeStatus = targetColId === ATRASADOS_COL ? 'aguardando_pagamento' : targetColId;
     const dragged = titles.find(t => t.id === dragId);
     if (dragged && dragged.status !== targetStatus) {
       handleUpdateTitle(withVencimentoOriginal({ ...dragged, status: targetStatus, updatedAt: new Date().toISOString() }));
@@ -634,9 +657,9 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
     setDropTarget(null);
   }, []);
 
-  const openNew = (status: SiengeStatus) => {
+  const openNew = (colId: ColumnId) => {
     setEditingTitle(null);
-    setModalInitialStatus(status);
+    setModalInitialStatus(colId === ATRASADOS_COL ? 'aguardando_pagamento' : colId);
     setModalOpen(true);
   };
 
@@ -788,7 +811,11 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
         className={`flex-1 flex overflow-x-auto min-h-0 p-5 gap-4 select-none scrollbar-minimal ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
         {COLUMNS.map(col => {
-          const colTitles = filteredTitles.filter(t => t.status === col.id);
+          const colTitles = col.id === ATRASADOS_COL
+            ? filteredTitles.filter(isOverdueAwaitingPayment)
+            : col.id === 'aguardando_pagamento'
+              ? filteredTitles.filter(t => t.status === col.id && !isOverdueAwaitingPayment(t))
+              : filteredTitles.filter(t => t.status === col.id);
           const colValue = colTitles.reduce((sum, t) => sum + t.valor, 0);
           const isDropTarget = dropTarget === col.id;
 
@@ -867,6 +894,7 @@ export default function SiengeKanban({ titles, openLotes, projects, currentProje
         initialData={editingTitle}
         initialStatus={modalInitialStatus}
         openLotes={openLotes}
+        openFaturas={openFaturas}
         projects={projects}
       />
 

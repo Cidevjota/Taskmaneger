@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -372,7 +372,7 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, vencimento_original, lote, lote_id, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -389,6 +389,8 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     vencimentoHistory: r.vencimento_history,
     lote: r.lote,
     loteId: r.lote_id,
+    faturaId: r.fatura_id,
+    motivoDetalhado: r.motivo_detalhado,
     assigneeId: r.assignee_id,
     reminderDate: r.reminder_date,
     reminderType: r.reminder_type,
@@ -442,6 +444,8 @@ export async function saveSiengeTitle(title: SiengeTitle) {
     vencimento_original: title.vencimentoOriginal || null,
     lote: title.lote || null,
     lote_id: title.loteId || null,
+    fatura_id: title.faturaId || null,
+    motivo_detalhado: title.motivoDetalhado || null,
     assignee_id: title.assigneeId || null,
     reminder_date: title.reminderDate || null,
     reminder_type: title.reminderType || null,
@@ -534,5 +538,41 @@ export async function saveSiengeLote(lote: SiengeLote) {
 
 export async function deleteSiengeLote(id: string) {
   const { error } = await supabase.from('sienge_lotes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Sienge Faturas (Cartão de Crédito) ─────────────────────────
+
+export async function fetchSiengeFaturas(): Promise<SiengeFatura[]> {
+  const { data, error } = await supabase
+    .from('sienge_faturas')
+    .select('*')
+    .order('seq', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((r: any): SiengeFatura => ({
+    id: r.id,
+    codigo: r.codigo,
+    status: r.status,
+    createdAt: r.created_at,
+    closedAt: r.closed_at,
+    vencimento: r.vencimento,
+    prazoPagamento: r.prazo_pagamento,
+  }));
+}
+
+export async function saveSiengeFatura(fatura: SiengeFatura) {
+  const { error } = await supabase.from('sienge_faturas').upsert({
+    id: fatura.id,
+    codigo: fatura.codigo,
+    status: fatura.status,
+    vencimento: fatura.vencimento || null,
+    prazo_pagamento: fatura.prazoPagamento || null,
+    closed_at: fatura.closedAt || null,
+  });
+  if (error) throw error;
+}
+
+export async function deleteSiengeFatura(id: string) {
+  const { error } = await supabase.from('sienge_faturas').delete().eq('id', id);
   if (error) throw error;
 }

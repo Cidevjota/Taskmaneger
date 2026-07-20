@@ -4,5 +4,12 @@
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=quyoeoftqackmrjxpreb"
     }
+  },
+  "permissions": {
+    "allow": [
+      "mcp__supabase__list_tables",
+      "mcp__supabase__get_logs",
+      "PowerShell(Get-ChildItem *)"
+    ]
   }
 }

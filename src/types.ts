@@ -281,6 +281,18 @@ export interface SiengeLote {
   prazoPagamento?: string;  // ISO date
 }
 
+// Cartão de Crédito invoice — parallel to SiengeLote, groups titles launched
+// against the credit card instead of a bank-slip payment batch.
+export interface SiengeFatura {
+  id: string;
+  codigo: string; // e.g. "FATJUL001" — FAT + 3-letter month + continuous 3-digit sequence
+  status: SiengeLoteStatus;
+  createdAt: string;
+  closedAt?: string;
+  vencimento?: string;      // ISO date
+  prazoPagamento?: string;  // ISO date
+}
+
 export interface SiengeVencimentoHistoryEntry {
   vencimento: string;    // Previous due date, replaced by a resolution
   changedAt: string;     // ISO timestamp of the replacement
@@ -297,7 +309,9 @@ export interface SiengeTitle {
   vencimentoOriginal?: string; // ISO date — first due date recorded when the title entered 'aguardando_pagamento'; used to compute true days overdue across rejection/resolution cycles
   vencimentoHistory?: SiengeVencimentoHistoryEntry[]; // Past due dates, preserved for reporting
   lote?: string;       // legacy text field
-  loteId?: string;     // FK to sienge_lotes
+  loteId?: string;     // FK to sienge_lotes — mutually exclusive with faturaId
+  faturaId?: string;   // FK to sienge_faturas — set when launched against the credit card instead of a lote
+  motivoDetalhado?: string; // Required extra detail for titles launched against the credit card
   assigneeId?: string; // User responsible
   reminderDate?: string;
   reminderType?: '3h' | '1d' | 'custom' | 'seen';

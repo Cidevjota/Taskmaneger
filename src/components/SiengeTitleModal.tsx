@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, ChevronDown, Paperclip, Plus, User, Loader2, Pencil, Lock, CheckCircle2, XCircle } from 'lucide-react';
+import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, CreditCard, ChevronDown, Paperclip, Plus, User, Loader2, Pencil, Lock, CheckCircle2, XCircle } from 'lucide-react';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
-import { SiengeTitle, SiengeStatus, SiengeLote, Project } from '../types';
+import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project } from '../types';
 import DatePicker from './DatePicker';
 import ConfirmModal from './ConfirmModal';
 import TaskChat from './TaskChat';
@@ -17,6 +17,7 @@ interface SiengeTitleModalProps {
   initialData?: SiengeTitle | null;
   initialStatus?: SiengeStatus;
   openLotes: SiengeLote[];
+  openFaturas: SiengeFatura[];
   projects: Project[];
   hideHeader?: boolean;
 }
@@ -58,6 +59,7 @@ export default function SiengeTitleModal({
   initialData,
   initialStatus = 'a_lancar',
   openLotes,
+  openFaturas,
   projects,
 }: SiengeTitleModalProps) {
   const [titulo, setTitulo] = useState('');
@@ -66,10 +68,14 @@ export default function SiengeTitleModal({
   const [empreendimento, setEmpreendimento] = useState('');
   const [vencimento, setVencimento] = useState('');
   const [loteId, setLoteId] = useState('');
+  const [faturaId, setFaturaId] = useState('');
+  const [motivoDetalhado, setMotivoDetalhado] = useState('');
+  const [paymentMode, setPaymentMode] = useState<'lote' | 'cartao'>('lote');
   const [status, setStatus] = useState<SiengeStatus>(initialStatus);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isLoteDropdownOpen, setIsLoteDropdownOpen] = useState(false);
+  const [isFaturaDropdownOpen, setIsFaturaDropdownOpen] = useState(false);
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
   const [assigneeId, setAssigneeId] = useState('');
@@ -109,6 +115,9 @@ export default function SiengeTitleModal({
         setEmpreendimento(initialData.empreendimento || '');
         setVencimento(initialData.vencimento || '');
         setLoteId(initialData.loteId || '');
+        setFaturaId(initialData.faturaId || '');
+        setMotivoDetalhado(initialData.motivoDetalhado || '');
+        setPaymentMode(initialData.faturaId ? 'cartao' : 'lote');
         setAssigneeId(initialData.assigneeId || '');
         setStatus(initialData.status);
         setIsLocked(true);
@@ -124,6 +133,9 @@ export default function SiengeTitleModal({
         setEmpreendimento('');
         setVencimento('');
         setLoteId('');
+        setFaturaId('');
+        setMotivoDetalhado('');
+        setPaymentMode('lote');
         setAssigneeId('');
         setStatus(initialStatus);
         setIsLocked(false);
@@ -149,7 +161,12 @@ export default function SiengeTitleModal({
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!valorDisplay) newErrors.valor = 'Valor é obrigatório';
-    if (!loteId) newErrors.loteId = 'Lote de pagamento é obrigatório';
+    if (paymentMode === 'lote') {
+      if (!loteId) newErrors.loteId = 'Lote de pagamento é obrigatório';
+    } else {
+      if (!faturaId) newErrors.faturaId = 'Cartão de crédito é obrigatório';
+      if (!motivoDetalhado.trim()) newErrors.motivoDetalhado = 'Motivo detalhado é obrigatório';
+    }
     if (!assigneeId) newErrors.assigneeId = 'Responsável é obrigatório';
     if (!empreendimento.trim()) newErrors.empreendimento = 'Empreendimento é obrigatório';
     if (!vencimento) newErrors.vencimento = 'Vencimento é obrigatório';
@@ -198,7 +215,9 @@ export default function SiengeTitleModal({
         vencimento: vencimento || undefined,
         vencimentoOriginal: initialData?.vencimentoOriginal,
         vencimentoHistory: initialData?.vencimentoHistory,
-        loteId: loteId || undefined,
+        loteId: paymentMode === 'lote' ? (loteId || undefined) : undefined,
+        faturaId: paymentMode === 'cartao' ? (faturaId || undefined) : undefined,
+        motivoDetalhado: paymentMode === 'cartao' ? (motivoDetalhado.trim() || undefined) : undefined,
         assigneeId: assigneeId || undefined,
         lote: initialData?.lote,
         attachments: allAttachments,
@@ -327,7 +346,7 @@ export default function SiengeTitleModal({
       onClose();
       return;
     }
-    const hasData = titulo || descricao || valorDisplay || empreendimento || vencimento || loteId || assigneeId || (pdfFiles[0] && pdfFiles[0].file);
+    const hasData = titulo || descricao || valorDisplay || empreendimento || vencimento || loteId || faturaId || motivoDetalhado || assigneeId || (pdfFiles[0] && pdfFiles[0].file);
     if (hasData) {
       setShowCloseConfirm(true);
     } else {
@@ -499,8 +518,17 @@ export default function SiengeTitleModal({
                 <span className="text-sm text-zinc-200 font-medium truncate">{empreendimento || '-'}</span>
               </div>
               <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Layers size={10} /> Lote</span>
-                <span className="text-sm text-zinc-200 font-medium truncate">{openLotes.find(l => l.id === loteId)?.nome || initialData?.lote || '-'}</span>
+                {paymentMode === 'cartao' ? (
+                  <>
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><CreditCard size={10} /> Cartão de Crédito</span>
+                    <span className="text-sm text-zinc-200 font-medium truncate">{openFaturas.find(f => f.id === faturaId)?.codigo || '-'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Layers size={10} /> Lote</span>
+                    <span className="text-sm text-zinc-200 font-medium truncate">{openLotes.find(l => l.id === loteId)?.nome || initialData?.lote || '-'}</span>
+                  </>
+                )}
               </div>
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><User size={10} /> Responsável</span>
@@ -517,6 +545,14 @@ export default function SiengeTitleModal({
               <div className="flex flex-col gap-1">
                 <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><FileText size={10} /> Descrição</span>
                 <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">{descricao}</p>
+              </div>
+            )}
+
+            {/* Motivo Detalhado (cartão de crédito) */}
+            {paymentMode === 'cartao' && motivoDetalhado && (
+              <div className="flex flex-col gap-1">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><FileText size={10} /> Motivo Detalhado</span>
+                <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">{motivoDetalhado}</p>
               </div>
             )}
 
@@ -575,61 +611,146 @@ export default function SiengeTitleModal({
             />
           </div>
 
-          {/* Lote de Pagamento selector */}
-          <div className="flex flex-col gap-1.5 relative">
-            <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-              <Layers size={11} /> Lote de Pagamento <span className="text-red-400">*</span>
-            </label>
-            {openLotes.length > 0 ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsLoteDropdownOpen(p => !p)}
-                  className={`w-full flex items-center justify-between bg-zinc-900/60 border rounded-lg px-3 py-2.5 text-sm outline-none transition-all hover:bg-zinc-800/60 ${
-                    errors.loteId ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
-                  }`}
-                >
-                  <span className={loteId ? 'text-zinc-100 font-medium' : 'text-zinc-500'}>
-                    {loteId ? openLotes.find(l => l.id === loteId)?.nome : 'Selecione um lote ou cadastre um novo'}
-                  </span>
-                  <ChevronDown size={14} className={`text-zinc-500 transition-transform ${isLoteDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {errors.loteId && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.loteId}</p>}
-                
-                {isLoteDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsLoteDropdownOpen(false)} />
-                    <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
-                      <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                        {openLotes.map(l => (
-                          <button
-                            key={l.id}
-                            type="button"
-                            onClick={() => { setLoteId(l.id); setErrors(p => ({...p, loteId: ''})); setIsLoteDropdownOpen(false); }}
-                            className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                              l.id === loteId
-                                ? 'bg-blue-500/10 text-blue-400'
-                                : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <Layers size={14} className={l.id === loteId ? 'text-blue-500/70' : 'text-zinc-500'} />
-                              <span className="font-medium text-[13px]">{l.nome}</span>
-                            </div>
-                          </button>
-                        ))}
+          {/* Forma de lançamento: Lote de Pagamento vs Cartão de Crédito */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Forma de Lançamento</label>
+            <div className="flex items-center gap-1 p-1 bg-zinc-900/60 border border-zinc-800 rounded-lg">
+              <button
+                type="button"
+                onClick={() => { setPaymentMode('lote'); setErrors(p => ({ ...p, faturaId: '', motivoDetalhado: '' })); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  paymentMode === 'lote' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
+                }`}
+              >
+                <Layers size={12} /> Lote de Pagamento
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPaymentMode('cartao'); setErrors(p => ({ ...p, loteId: '' })); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  paymentMode === 'cartao' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
+                }`}
+              >
+                <CreditCard size={12} /> Cartão de Crédito
+              </button>
+            </div>
+          </div>
+
+          {paymentMode === 'lote' ? (
+            /* Lote de Pagamento selector */
+            <div className="flex flex-col gap-1.5 relative">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <Layers size={11} /> Lote de Pagamento <span className="text-red-400">*</span>
+              </label>
+              {openLotes.length > 0 ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsLoteDropdownOpen(p => !p)}
+                    className={`w-full flex items-center justify-between bg-zinc-900/60 border rounded-lg px-3 py-2.5 text-sm outline-none transition-all hover:bg-zinc-800/60 ${
+                      errors.loteId ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
+                    }`}
+                  >
+                    <span className={loteId ? 'text-zinc-100 font-medium' : 'text-zinc-500'}>
+                      {loteId ? openLotes.find(l => l.id === loteId)?.nome : 'Selecione um lote ou cadastre um novo'}
+                    </span>
+                    <ChevronDown size={14} className={`text-zinc-500 transition-transform ${isLoteDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {errors.loteId && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.loteId}</p>}
+
+                  {isLoteDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsLoteDropdownOpen(false)} />
+                      <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
+                        <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                          {openLotes.map(l => (
+                            <button
+                              key={l.id}
+                              type="button"
+                              onClick={() => { setLoteId(l.id); setErrors(p => ({...p, loteId: ''})); setIsLoteDropdownOpen(false); }}
+                              className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
+                                l.id === loteId
+                                  ? 'bg-blue-500/10 text-blue-400'
+                                  : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Layers size={14} className={l.id === loteId ? 'text-blue-500/70' : 'text-zinc-500'} />
+                                <span className="font-medium text-[13px]">{l.nome}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-medium">
+                  <AlertCircle size={14} />
+                  É necessário cadastrar um lote na aba "Lotes de Pagamento" antes de criar um título.
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Cartão de Crédito (Fatura) selector */}
+              <div className="flex flex-col gap-1.5 relative">
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                  <CreditCard size={11} /> Cartão de Crédito <span className="text-red-400">*</span>
+                </label>
+                {openFaturas.length > 0 ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsFaturaDropdownOpen(p => !p)}
+                      className={`w-full flex items-center justify-between bg-zinc-900/60 border rounded-lg px-3 py-2.5 text-sm outline-none transition-all hover:bg-zinc-800/60 ${
+                        errors.faturaId ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
+                      }`}
+                    >
+                      <span className={faturaId ? 'text-zinc-100 font-medium' : 'text-zinc-500'}>
+                        {faturaId ? openFaturas.find(f => f.id === faturaId)?.codigo : 'Selecione uma fatura ou cadastre uma nova'}
+                      </span>
+                      <ChevronDown size={14} className={`text-zinc-500 transition-transform ${isFaturaDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {errors.faturaId && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.faturaId}</p>}
+
+                    {isFaturaDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsFaturaDropdownOpen(false)} />
+                        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
+                          <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                            {openFaturas.map(f => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => { setFaturaId(f.id); setErrors(p => ({...p, faturaId: ''})); setIsFaturaDropdownOpen(false); }}
+                                className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
+                                  f.id === faturaId
+                                    ? 'bg-blue-500/10 text-blue-400'
+                                    : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <CreditCard size={14} className={f.id === faturaId ? 'text-blue-500/70' : 'text-zinc-500'} />
+                                  <span className="font-medium text-[13px]">{f.codigo}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-medium">
+                    <AlertCircle size={14} />
+                    É necessário cadastrar uma fatura na aba "Cartão de Crédito" antes de criar um título.
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-medium">
-                <AlertCircle size={14} />
-                É necessário cadastrar um lote na aba "Lotes de Pagamento" antes de criar um título.
-              </div>
-            )}
-          </div>
+            </>
+          )}
 
           {/* Responsável */}
           <div className="space-y-1.5 relative">
@@ -818,6 +939,23 @@ export default function SiengeTitleModal({
             {errors.descricao && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.descricao}</p>}
           </div>
 
+          {/* Motivo Detalhado (cartão de crédito) */}
+          {paymentMode === 'cartao' && (
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <FileText size={11} /> Motivo Detalhado <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={motivoDetalhado}
+                onChange={e => { setMotivoDetalhado(e.target.value); if (errors.motivoDetalhado) setErrors(p => ({ ...p, motivoDetalhado: '' })); }}
+                placeholder="Detalhe o motivo desta compra no cartão de crédito..."
+                rows={2}
+                className={`${inputClass('motivoDetalhado')} resize-none`}
+              />
+              {errors.motivoDetalhado && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.motivoDetalhado}</p>}
+            </div>
+          )}
+
           {/* Anexos PDF */}
           <div className="flex flex-col gap-2 mt-1">
             <label className="flex items-center justify-between text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
@@ -930,7 +1068,7 @@ export default function SiengeTitleModal({
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={openLotes.length === 0 || isUploading}
+                  disabled={(paymentMode === 'lote' ? openLotes.length === 0 : openFaturas.length === 0) || isUploading}
                   className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
                 >
                   {isUploading && <Loader2 size={12} className="animate-spin" />}
