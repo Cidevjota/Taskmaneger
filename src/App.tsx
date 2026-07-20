@@ -26,6 +26,7 @@ import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, p
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
+import { startVersionWatcher } from './lib/versionCheck';
 
 import Sidebar from './components/Sidebar';
 import CommandBar from './components/CommandBar';
@@ -70,6 +71,24 @@ export default function App() {
     setToast({ message, id: Date.now() });
     toastTimerRef.current = setTimeout(() => setToast(null), 4000);
   };
+
+  // Forces every open tab to log out and reload once a new deploy lands, so a
+  // stale bundle left open across an update can't keep writing against a
+  // schema/API it no longer matches.
+  useEffect(() => {
+    const stopWatcher = startVersionWatcher(() => {
+      showToast('Uma nova versão do sistema está disponível. Atualizando em instantes...');
+      setTimeout(async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          // Ignore — reload proceeds either way.
+        }
+        window.location.reload();
+      }, 4000);
+    });
+    return stopWatcher;
+  }, []);
 
   // Navigation Routing states
   const [activeView, setActiveView] = useState<ViewType>('home');

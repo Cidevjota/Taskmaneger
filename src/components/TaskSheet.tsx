@@ -728,6 +728,12 @@ export default function TaskSheet({
           newSections[section] = true;
           return newSections;
         });
+        // Chat-mention notifications land on the description section, but the
+        // chat side panel has its own isChatOpen toggle that persists across
+        // task switches — force it open so the mentioned comment is visible.
+        if (targetId && (targetId.startsWith('task-chat-') || targetId.startsWith('sienge-chat-'))) {
+          setIsChatOpen(true);
+        }
         let attempts = 0;
         const tryScroll = () => {
           let el = null;
