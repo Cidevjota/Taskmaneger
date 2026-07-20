@@ -1919,13 +1919,13 @@ export default function TaskSheet({
                                  if (!t.dueDate || t.status === 'done') return 'opacity-80';
                                  const msPerDay = 24 * 60 * 60 * 1000;
                                  const today = new Date(); today.setHours(0, 0, 0, 0);
-                                 const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
+                                 const due = new Date(t.dueDate + 'T00:00:00'); due.setHours(0, 0, 0, 0);
                                  const daysLeft = Math.round((due.getTime() - today.getTime()) / msPerDay);
                                  if (daysLeft < 0) return 'text-red-400 font-bold opacity-100';
                                  if (daysLeft <= 5) return 'text-yellow-400 font-bold opacity-100';
                                  return 'opacity-80';
                                })()}`}>
-                                 {t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR').slice(0, 5) : 'S/P'}
+                                 {t.dueDate ? t.dueDate.split('-').reverse().join('/').slice(0, 5) : 'S/P'}
                                </span>
                                <div className="flex items-center shrink-0" title={statusObj.label}>
                                 {(() => {
