@@ -568,9 +568,9 @@ const SubtaskRow = ({
         />
       </div>
       {!effectiveLock && (
-      <div className={`flex items-center ml-2 shrink-0 gap-1 transition-opacity ${subtask.assigneeId || subtask.reminderType ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-        {subtask.completed && subtask.completedAt && (
-          <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title="Concluído em">
+      <div className={`flex items-center ml-2 shrink-0 gap-1 transition-opacity ${subtask.assigneeId || subtask.reminderType || ((subtask.completed || subtask.canceled) && subtask.completedAt) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        {(subtask.completed || subtask.canceled) && subtask.completedAt && (
+          <div className="flex flex-col items-center justify-center text-[9px] font-mono text-zinc-500 leading-[10px] mr-1" title={subtask.canceled ? "Cancelado em" : "Concluído em"}>
             <span>{new Date(subtask.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
             <span>{new Date(subtask.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
@@ -947,8 +947,8 @@ export default function TaskSheet({
         // Mark as completed and set timestamp
         return { ...s, completed: true, canceled: false, completedAt: new Date().toISOString() };
       } else if (s.completed && !s.canceled) {
-        // Move to canceled, clear timestamp
-        return { ...s, completed: false, canceled: true, completedAt: undefined };
+        // Move to canceled and re-stamp the moment do cancelamento
+        return { ...s, completed: false, canceled: true, completedAt: new Date().toISOString() };
       } else {
         // Reset to neutral
         return { ...s, completed: false, canceled: false, completedAt: undefined };

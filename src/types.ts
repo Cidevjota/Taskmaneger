@@ -23,7 +23,7 @@ export interface Subtask {
   reminderType?: '3h' | '1d' | 'custom' | 'seen';
   assigneeId?: string;
   level?: number;
-  completedAt?: string; // ISO timestamp when marked completed
+  completedAt?: string; // ISO timestamp do último check (concluído ou cancelado)
 }
 
 export interface FormatoPersonalizado {
