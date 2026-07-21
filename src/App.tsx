@@ -26,6 +26,7 @@ import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, p
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
+import { USERS } from './lib/users';
 import { startVersionWatcher } from './lib/versionCheck';
 
 import Sidebar from './components/Sidebar';
@@ -113,6 +114,12 @@ export default function App() {
   // In-memory set of already-fired reminder IDs to prevent duplicate notifications
   // across rapid re-renders before updateProfile() persists to Supabase.
   const triggeredRemindersRef = useRef<Set<string>>(new Set());
+
+  // Revalidação ao voltar para a aba: quando ela ficou oculta e há quanto tempo
+  // foi a última revalidação (evita refetch a cada troca rápida de janela).
+  const hiddenSinceRef = useRef<number | null>(null);
+  const lastRevalidateRef = useRef<number>(Date.now());
+  const hasSubscribedRef = useRef(false);
 
   // Track recently saved task IDs to suppress self-triggered Realtime events
   const recentlySavedRef = useRef<Map<string, number>>(new Map());
@@ -345,6 +352,40 @@ export default function App() {
     };
   }, [isTaskSheetOpen, selectedTask?.id]);
 
+  // Conflito de descrição: o compare-and-swap no banco rejeitou a gravação porque
+  // outra pessoa salvou primeiro. O texto local é descartado (nunca sobrescreve) e
+  // recarregamos do servidor para o editor adotar a versão vigente.
+  useEffect(() => {
+    return syncManager.onDescriptionConflict((taskId) => {
+      const author = tasks.find(t => t.id === taskId)?.updatedBy;
+      const name = author ? USERS.find(u => u.id === author)?.name : null;
+      showToast(name
+        ? `${name} alterou esta descrição enquanto você editava. Sua tela foi atualizada com a versão mais recente.`
+        : 'Esta descrição foi alterada por outra pessoa. Sua tela foi atualizada com a versão mais recente.');
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    });
+  }, [syncManager, queryClient, tasks]);
+
+  // Realtime cai em silêncio quando a aba dorme (notebook fechado, aba em segundo
+  // plano) e refetchOnWindowFocus está desligado — sem isso a tela pode ficar horas
+  // exibindo dados velhos. As duas guardas evitam refetch a cada Alt+Tab.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenSinceRef.current = Date.now();
+        return;
+      }
+      const hiddenFor = hiddenSinceRef.current ? Date.now() - hiddenSinceRef.current : 0;
+      hiddenSinceRef.current = null;
+      if (hiddenFor < 30_000) return;
+      if (Date.now() - lastRevalidateRef.current < 60_000) return;
+      lastRevalidateRef.current = Date.now();
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [queryClient]);
+
   // Setup realtime — per-table filters avoid the schema-wide wildcard that was
   // driving realtime.list_changes() to ~1M calls/day.
   useEffect(() => {
@@ -418,7 +459,18 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_faturas' }, () => {
         queryClient.invalidateQueries({ queryKey: ['siengeFaturas'] });
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Toda reconexão deixa um buraco: os eventos ocorridos enquanto o socket
+        // estava caído não são reenviados. Revalida — menos na primeira conexão,
+        // em que o fetch inicial já cobriu.
+        if (status !== 'SUBSCRIBED') return;
+        if (!hasSubscribedRef.current) {
+          hasSubscribedRef.current = true;
+          return;
+        }
+        lastRevalidateRef.current = Date.now();
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      });
 
     return () => {
       supabase.removeChannel(channel);

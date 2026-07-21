@@ -63,6 +63,7 @@ import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } f
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
+import { useSyncManager } from '../lib/SyncManager';
 
 type EditorPresence = { name: string; avatarUrl?: string; color: string };
 
@@ -667,8 +668,13 @@ export default function TaskSheet({
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
   const { addNotification, notifications } = useNotifications();
+  const { setDescriptionBase, onDescriptionConflict } = useSyncManager();
   const titleRef = useRef(task?.title || '');
   const descriptionRef = useRef(task?.description || '');
+  // Última descrição conhecida como vinda do servidor. Serve para dois fins:
+  // detectar se o texto no editor tem edições locais ainda não salvas, e não
+  // reprocessar o mesmo valor a cada render.
+  const lastServerDescRef = useRef<string | null>(null);
   const titleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const descTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [status, setStatus] = useState<TaskStatus>(task?.status || 'todo');
@@ -699,6 +705,9 @@ export default function TaskSheet({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isFullscreenDesc, setIsFullscreenDesc] = useState(false);
   const [descEditorKey, setDescEditorKey] = useState(0);
+  // Autoriza o editor a substituir seu conteúdo pelo do servidor (ver camada A
+  // em RichTextEditor). Só é incrementado quando não há edição local pendente.
+  const [descSyncToken, setDescSyncToken] = useState(0);
   
   const [prevTaskId, setPrevTaskId] = useState(task?.id);
 
@@ -839,6 +848,9 @@ export default function TaskSheet({
     setIsSyncing(newSyncing);
     titleRef.current = task?.title || '';
     descriptionRef.current = task?.description || '';
+    // Outra tarefa: zera a referência para o efeito de sync tratar como carga
+    // inicial e registrar a base nova (senão compararia com o texto da anterior).
+    lastServerDescRef.current = null;
     setStatus(task?.status || 'todo');
     setPriority(task?.priority || 'no_priority');
     setProjectId(task?.projectId || '');
@@ -861,6 +873,39 @@ export default function TaskSheet({
       setSubtasks(task.subtasks || []);
     }
   }, [task, effectiveLock]);
+
+  // Camada A — adota no editor a descrição que chegou do servidor (Realtime ou
+  // refetch). Sem isto o editor congela no texto do momento em que abriu, e o
+  // primeiro clique reenvia esse texto obsoleto por cima do de quem editou depois.
+  useEffect(() => {
+    if (!task) return;
+    const server = task.description || '';
+    const previousServer = lastServerDescRef.current;
+    if (server === previousServer) return;
+
+    // Se o texto no editor já divergia do último valor do servidor, o usuário tem
+    // edições locais em aberto: não sobrescreve. O guard da camada C decide quem
+    // fica quando esse texto for gravado.
+    const hasLocalEdits = previousServer !== null && descriptionRef.current !== previousServer;
+    if (hasLocalEdits) return;
+
+    lastServerDescRef.current = server;
+    setDescriptionBase(task.id, server);
+    if (server === descriptionRef.current) return;
+    descriptionRef.current = server;
+    setDescSyncToken(t => t + 1);
+  }, [task?.id, task?.description]);
+
+  // O write local foi recusado pelo guard (camada C): o texto no editor está
+  // baseado numa versão que já não existe. Zerar a referência faz o efeito acima
+  // tratar o próximo valor do servidor como carga inicial e adotá-lo, em vez de
+  // preservar edições locais que nunca serão aceitas.
+  useEffect(() => {
+    return onDescriptionConflict((taskId) => {
+      if (taskId !== task?.id) return;
+      lastServerDescRef.current = null;
+    });
+  }, [onDescriptionConflict, task?.id]);
 
   useEffect(() => {
     if (task && task.status && task.status !== status) {
@@ -1739,6 +1784,7 @@ export default function TaskSheet({
                     wrapperClassName="h-full"
                     columns={descColumns as 1|2|3}
                     readOnly={!!effectiveLock}
+                    syncToken={descSyncToken}
                     onColumnsChange={(c) => setDescColumns(c)}
                     onChange={(newContent) => {
                       descriptionRef.current = newContent;
@@ -2409,10 +2455,14 @@ export default function TaskSheet({
               taskId={task.id}
               content={effectiveLock ? (task.description || '') : descriptionRef.current}
               readOnly={!!effectiveLock}
+              syncToken={descSyncToken}
               onChange={(newContent) => {
                 descriptionRef.current = newContent;
                 if (descTimerRef.current) clearTimeout(descTimerRef.current);
-                descTimerRef.current = setTimeout(() => saveChange({ description: newContent }), 800);
+                descTimerRef.current = setTimeout(() => {
+                  descTimerRef.current = null;
+                  saveChange({ description: newContent });
+                }, 800);
               }}
               variant="borderless"
             />

@@ -8,6 +8,7 @@ import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { fetchTaskBriefings } from '../lib/api';
+import { uploadDeliveryImages } from '../lib/deliveryImages';
 import { useSyncManager } from '../lib/SyncManager';
 
 interface DesignPropertiesProps {
@@ -239,11 +240,16 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
     if (pending) base = pending;
 
     const { partial, taskUpdates, notify } = recipe(base);
-    const merged = { ...base, ...partial };
 
     setIsSavingDelivery(true);
     setDeliverySaveError(null);
     try {
+      // Pasted screenshots and rejection annotations come in as base64 data URLs.
+      // Push them to Storage first so the briefing column only ever stores links —
+      // otherwise it grows to megabytes and stalls the approval screen on open.
+      const deliveries = await uploadDeliveryImages(task.id, partial.deliveries);
+      const merged = { ...base, ...partial, ...(deliveries ? { deliveries } : {}) };
+
       await saveImmediately(task.id, { designBriefing: merged, ...(taskUpdates || {}) });
       setBriefingForm(merged);
       notify?.();

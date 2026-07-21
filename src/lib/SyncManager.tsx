@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useRef, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { patchTask } from './api';
+import { patchTask, TaskConflictError } from './api';
 import { Task } from '../types';
 
 interface SyncOptions {
@@ -13,6 +13,8 @@ interface SyncManagerContextType {
   isFieldDirty: (taskId: string, field: keyof Task) => boolean;
   getPendingField: <K extends keyof Task>(taskId: string, field: K) => Task[K] | undefined;
   saveImmediately: (taskId: string, updates: Partial<Task>) => Promise<void>;
+  setDescriptionBase: (taskId: string, description: string) => void;
+  onDescriptionConflict: (handler: (taskId: string) => void) => () => void;
 }
 
 const SyncManagerContext = createContext<SyncManagerContextType | null>(null);
@@ -28,6 +30,37 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
   
   // Accumulate changes before sending to API
   const pendingUpdatesRef = useRef<Record<string, Partial<Task>>>({});
+
+  // Última descrição que sabemos estar gravada no banco, por tarefa. É a base do
+  // compare-and-swap em patchTask: sem ela, um editor com conteúdo obsoleto
+  // sobrescreve silenciosamente o que outra pessoa escreveu. Preenchida pela UI
+  // (ao carregar/adotar o texto do servidor) e atualizada a cada write confirmado.
+  const descriptionBasesRef = useRef<Record<string, string>>({});
+  const conflictHandlersRef = useRef<Set<(taskId: string) => void>>(new Set());
+
+  const setDescriptionBase = (taskId: string, description: string) => {
+    descriptionBasesRef.current[taskId] = description;
+  };
+
+  const onDescriptionConflict = (handler: (taskId: string) => void) => {
+    conflictHandlersRef.current.add(handler);
+    return () => { conflictHandlersRef.current.delete(handler); };
+  };
+
+  // Monta as opções do patch. Só ativa o guard quando a UI registrou uma base
+  // para a tarefa — writes que não passam por um editor seguem sem verificação.
+  const patchOptionsFor = (taskId: string, updates: Partial<Task>) =>
+    (updates.description !== undefined && taskId in descriptionBasesRef.current)
+      ? { descriptionBase: descriptionBasesRef.current[taskId] }
+      : {};
+
+  const handleConflict = (taskId: string) => {
+    // A base local é inútil agora: o banco tem uma versão que nunca vimos.
+    // Descartamos o write (re-enfileirar só repetiria a sobrescrita) e deixamos
+    // o handler recarregar do servidor.
+    delete descriptionBasesRef.current[taskId];
+    conflictHandlersRef.current.forEach(h => h(taskId));
+  };
 
   const markDirty = (taskId: string, fields: (keyof Task)[]) => {
     if (!dirtyFieldsRef.current[taskId]) {
@@ -62,11 +95,18 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
     const updateKeys = Object.keys(updates) as (keyof Task)[];
 
     try {
-      await patchTask(taskId, updates);
+      await patchTask(taskId, updates, patchOptionsFor(taskId, updates));
+      if (updates.description !== undefined) {
+        descriptionBasesRef.current[taskId] = updates.description ?? '';
+      }
     } catch (err) {
-      console.error('Failed to sync task:', taskId, err);
-      // Re-queue on failure (simplistic retry)
-      pendingUpdatesRef.current[taskId] = { ...updates, ...pendingUpdatesRef.current[taskId] };
+      if (err instanceof TaskConflictError) {
+        handleConflict(taskId);
+      } else {
+        console.error('Failed to sync task:', taskId, err);
+        // Re-queue on failure (simplistic retry)
+        pendingUpdatesRef.current[taskId] = { ...updates, ...pendingUpdatesRef.current[taskId] };
+      }
     } finally {
       // Clear dirty flags once we confirm it was patched
       clearDirty(taskId, updateKeys);
@@ -98,11 +138,18 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
     delete pendingUpdatesRef.current[taskId];
 
     try {
-      await patchTask(taskId, merged);
+      await patchTask(taskId, merged, patchOptionsFor(taskId, merged));
+      if (merged.description !== undefined) {
+        descriptionBasesRef.current[taskId] = merged.description ?? '';
+      }
     } catch (err) {
-      console.error('Failed to sync task immediately:', taskId, err);
-      // Re-queue so a later debounced save can retry it.
-      pendingUpdatesRef.current[taskId] = { ...merged, ...pendingUpdatesRef.current[taskId] };
+      if (err instanceof TaskConflictError) {
+        handleConflict(taskId);
+      } else {
+        console.error('Failed to sync task immediately:', taskId, err);
+        // Re-queue so a later debounced save can retry it.
+        pendingUpdatesRef.current[taskId] = { ...merged, ...pendingUpdatesRef.current[taskId] };
+      }
       throw err;
     } finally {
       clearDirty(taskId, mergedKeys);
@@ -146,7 +193,7 @@ export function SyncManagerProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SyncManagerContext.Provider value={{ updateTask, isFieldDirty, getPendingField, saveImmediately }}>
+    <SyncManagerContext.Provider value={{ updateTask, isFieldDirty, getPendingField, saveImmediately, setDescriptionBase, onDescriptionConflict }}>
       {children}
     </SyncManagerContext.Provider>
   );

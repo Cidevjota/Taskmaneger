@@ -95,6 +95,12 @@ interface RichTextEditorProps {
   columns?: 1 | 2 | 3;
   onColumnsChange?: (cols: 1 | 2 | 3) => void;
   readOnly?: boolean;
+  // Incrementado pelo pai quando `content` traz texto novo vindo do servidor que
+  // deve substituir o que está no editor. Fora do modo readOnly o editor ignora
+  // mudanças de `content` (senão atropelaria quem está digitando) — este token é
+  // o único sinal que autoriza a substituição. O pai só o incrementa quando não
+  // há edição local pendente.
+  syncToken?: number;
 }
 
 const COLORS = [
@@ -493,9 +499,10 @@ interface SingleEditorProps {
   editorRefCallback: (editor: Editor | null) => void;
   placeholderText?: string;
   readOnly?: boolean;
+  syncToken?: number;
 }
 
-function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, placeholderText = 'Escreva sobre o que é essa tarefa...', readOnly }: SingleEditorProps) {
+function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, placeholderText = 'Escreva sobre o que é essa tarefa...', readOnly, syncToken = 0 }: SingleEditorProps) {
   const localRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
@@ -626,10 +633,22 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
     }
   }, [content, readOnly, editor]);
 
+  // Adota texto novo do servidor em modo de edição. Sem `emitUpdate: false` isto
+  // dispararia onChange e o conteúdo remoto voltaria ao banco como se fosse edição
+  // local. Roda só quando o token muda — nunca por mudança de `content` sozinha.
+  const lastAppliedTokenRef = useRef(syncToken);
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || readOnly) return;
+    if (syncToken === lastAppliedTokenRef.current) return;
+    lastAppliedTokenRef.current = syncToken;
+    if (editor.getHTML() === content) return;
+    editor.commands.setContent(content || '', { emitUpdate: false });
+  }, [syncToken, content, readOnly, editor]);
+
   return <EditorContent editor={editor} className="h-full min-h-[150px]" />;
 }
 
-export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '', columns = 1, onColumnsChange, readOnly }: RichTextEditorProps) {
+export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '', columns = 1, onColumnsChange, readOnly, syncToken = 0 }: RichTextEditorProps) {
   const [contents, setContents] = useState<string[]>(() => parseMultiColumnContent(content, columns));
   const [activeIdx, setActiveIdx] = useState(0);
   const editorsRef = useRef<(Editor | null)[]>([null, null, null]);
@@ -645,6 +664,13 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
       setContents(parseMultiColumnContent(content, columns));
     }
   }, [content, readOnly, columns]);
+
+  // Em modo de edição, `contents` só é realimentado a partir das props quando o
+  // pai autoriza via syncToken (texto novo do servidor, sem edição local pendente).
+  useEffect(() => {
+    if (readOnly || syncToken === 0) return;
+    setContents(parseMultiColumnContent(content, columns));
+  }, [syncToken]);
 
   const handleEditorChange = (index: number, html: string) => {
     setContents(prev => {
@@ -689,6 +715,7 @@ export default function RichTextEditor({ taskId, content, onChange, variant = 'd
               taskId={`${taskId}-col-${i}`}
               content={contents[i] || ''}
               readOnly={readOnly}
+              syncToken={syncToken}
               onChange={(html) => handleEditorChange(i, html)}
               onFocus={() => setActiveIdx(i)}
               editorRefCallback={(ed) => { editorsRef.current[i] = ed; }}

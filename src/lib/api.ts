@@ -211,7 +211,24 @@ export async function saveTask(task: Task) {
   }
 }
 
-export async function patchTask(taskId: string, updates: Partial<Task>) {
+// Lançado quando um write de descrição é rejeitado porque o texto no banco já não
+// é o mesmo que o editor carregou — ou seja, outra pessoa salvou no meio do caminho.
+// O chamador deve descartar o write (nunca re-enfileirar) e recarregar do servidor.
+export class TaskConflictError extends Error {
+  constructor(public taskId: string) {
+    super(`Descrição da tarefa ${taskId} foi alterada por outro usuário`);
+    this.name = 'TaskConflictError';
+  }
+}
+
+interface PatchOptions {
+  // Descrição que o editor tinha como base. Quando informada, a gravação vira um
+  // compare-and-swap: o UPDATE só casa se a linha ainda contiver esse texto.
+  // Atômico e sem request extra — o próprio UPDATE faz a verificação.
+  descriptionBase?: string | null;
+}
+
+export async function patchTask(taskId: string, updates: Partial<Task>, opts: PatchOptions = {}) {
   // Wait for any pending save for this task
   while (taskSaveLocks[taskId]) {
     try {
@@ -250,7 +267,36 @@ export async function patchTask(taskId: string, updates: Partial<Task>) {
     if (updates.socialMediaApproval !== undefined) dbUpdates.social_media_approval = updates.socialMediaApproval;
     if (updates.timeTracking !== undefined) dbUpdates.time_tracking = updates.timeTracking;
 
-    if (Object.keys(dbUpdates).length > 0) {
+    const guardDescription = dbUpdates.description !== undefined && opts.descriptionBase !== undefined;
+
+    if (guardDescription) {
+      // Separa a descrição do resto: só ela precisa do compare-and-swap, e um
+      // conflito nela não deve derrubar a gravação dos demais campos.
+      const { description, ...rest } = dbUpdates;
+
+      if (Object.keys(rest).length > 0) {
+        const { error } = await supabase.from('tasks').update(rest).eq('id', taskId);
+        if (error) {
+          console.error("Error patching task:", error);
+          throw error;
+        }
+      }
+
+      const base = opts.descriptionBase;
+      let query = supabase.from('tasks').update({ description }).eq('id', taskId);
+      // Descrição vazia pode estar gravada como '' ou NULL — para o usuário é a
+      // mesma coisa, então o guard aceita as duas formas.
+      query = (base === null || base === '')
+        ? query.or('description.is.null,description.eq.')
+        : query.eq('description', base);
+
+      const { data, error } = await query.select('id');
+      if (error) {
+        console.error("Error patching task description:", error);
+        throw error;
+      }
+      if (!data || data.length === 0) throw new TaskConflictError(taskId);
+    } else if (Object.keys(dbUpdates).length > 0) {
       const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
       if (error) {
         console.error("Error patching task:", error);
