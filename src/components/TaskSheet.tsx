@@ -81,6 +81,7 @@ interface TaskSheetProps {
   editingBy?: EditorPresence;
   editingMap?: Record<string, EditorPresence>;
   cooldown?: { name: string, expiresAt: number };
+  briefingsLoading?: boolean;
 }
 
 const priorities: { value: TaskPriority; label: string; badgeStyle: string; icon: React.ReactNode }[] = [
@@ -658,7 +659,8 @@ export default function TaskSheet({
   isCompareChild = false,
   editingBy,
   editingMap,
-  cooldown
+  cooldown,
+  briefingsLoading = false
 }: TaskSheetProps) {
   const { allUsers: USERS, currentUser } = useAuth();
   const sortedUsers = currentUser
@@ -735,13 +737,20 @@ export default function TaskSheet({
           setIsChatOpen(true);
         }
         let attempts = 0;
+        let scrolledToFallback = false;
+        // Deliveries/creatives live in the on-demand briefing columns, which can take
+        // several seconds to arrive. 15 tries (1.5s) gave up long before the target
+        // element existed, so the user landed on an empty section. Keep polling for
+        // the real target for ~8s, while scrolling to the section right away so the
+        // wait happens with the loading skeleton in view.
+        const MAX_ATTEMPTS = 80;
         const tryScroll = () => {
           let el = null;
           let fallbackEl = document.getElementById(`section-${section}`);
-          
+
           if (targetId && targetId !== section && targetId !== task?.id) {
             el = document.getElementById(`target-${targetId}`);
-            
+
             // Try to find by title if targetId is missing but we know it's a subtask (old notifications)
             if (!el && (!targetId || targetId === 'checklist')) {
               // This is handled below or we can't reliably do it here without the notification payload
@@ -754,16 +763,23 @@ export default function TaskSheet({
             setTimeout(() => {
               el.classList.remove('animate-highlight-glow', 'rounded-md');
             }, 2200);
-          } else if (targetId && attempts < 15) {
-            attempts++;
-            setTimeout(tryScroll, 100);
-          } else if (fallbackEl) {
+            return;
+          }
+
+          // Target not in the DOM yet: park the viewport on the section so the
+          // loading state is visible, then keep waiting for the target itself.
+          if (fallbackEl && !scrolledToFallback) {
+            scrolledToFallback = true;
             fallbackEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            fallbackEl.classList.add('animate-highlight-glow', 'rounded-md');
-            setTimeout(() => {
-              fallbackEl.classList.remove('animate-highlight-glow', 'rounded-md');
-            }, 2200);
-          } else if (attempts < 15) {
+            if (!targetId) {
+              fallbackEl.classList.add('animate-highlight-glow', 'rounded-md');
+              setTimeout(() => {
+                fallbackEl.classList.remove('animate-highlight-glow', 'rounded-md');
+              }, 2200);
+            }
+          }
+
+          if (attempts < MAX_ATTEMPTS) {
             attempts++;
             setTimeout(tryScroll, 100);
           }
@@ -2190,7 +2206,7 @@ export default function TaskSheet({
                 Painel de Design & Aprovação
               </button>
               <div className={`animate-fade-in ${openSections.designProps ? 'block' : 'hidden'}`}>
-                <DesignProperties task={task} allTasks={allTasks} saveChange={saveChange} themeColor={themeTextColor} disabled={!!effectiveLock} />
+                <DesignProperties task={task} allTasks={allTasks} saveChange={saveChange} themeColor={themeTextColor} disabled={!!effectiveLock} briefingsLoading={briefingsLoading} />
               </div>
             </div>
           )}

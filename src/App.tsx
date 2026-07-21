@@ -173,7 +173,11 @@ export default function App() {
   // Selecting & filtering active scopes
   const [currentProjectFilter, setCurrentProjectFilter] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  
+  // True while the on-demand briefing columns (design/copy/planning) are still
+  // in flight for the open task. The creative approval UI reads this to show a
+  // skeleton instead of an empty state, which otherwise looks like "nothing to approve".
+  const [areBriefingsLoading, setAreBriefingsLoading] = useState(false);
+
   // Modal togglers
   const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
@@ -862,7 +866,10 @@ export default function App() {
   const handleSelectTask = useCallback(async (task: Task) => {
     setSelectedTask(task);
     setIsTaskSheetOpen(true);
-    // Load briefing columns on-demand (excluded from fetchTasks to save bandwidth)
+    // Load briefing columns on-demand (excluded from fetchTasks to save bandwidth).
+    // These carry base64 creative images and can take several seconds, so the flag
+    // lets the UI say "carregando" instead of rendering an empty approval section.
+    setAreBriefingsLoading(true);
     try {
       const briefings = await fetchTaskBriefings(task.id);
       if (briefings) {
@@ -870,6 +877,8 @@ export default function App() {
       }
     } catch {
       // Non-blocking — briefing sections will just appear empty
+    } finally {
+      setAreBriefingsLoading(false);
     }
   }, []);
 
@@ -1242,6 +1251,7 @@ export default function App() {
         editingBy={selectedTask ? editingMap[selectedTask.id] : undefined}
         cooldown={selectedTask ? cooldownMap[selectedTask.id] : undefined}
         editingMap={editingMap}
+        briefingsLoading={areBriefingsLoading}
       />
 
       {/* Cmd+K global Command Palette overlay popover */}

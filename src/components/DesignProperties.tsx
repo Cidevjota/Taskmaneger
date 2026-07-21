@@ -16,6 +16,8 @@ interface DesignPropertiesProps {
   saveChange: (updates: Partial<Task>) => void;
   themeColor?: string;
   disabled?: boolean;
+  /** Briefing columns still loading from the DB — creatives are not known yet. */
+  briefingsLoading?: boolean;
 }
 
 const OBJETIVOS_OPTIONS = [
@@ -114,7 +116,7 @@ const DIRECAO_CRIATIVA_OPTIONS = [
 
 type TabId = 'copy' | 'aprovacao';
 
-export default function DesignProperties({ task, allTasks = [], saveChange, themeColor = 'text-blue-500', disabled = false }: DesignPropertiesProps) {
+export default function DesignProperties({ task, allTasks = [], saveChange, themeColor = 'text-blue-500', disabled = false, briefingsLoading = false }: DesignPropertiesProps) {
   const [isCreatingDelivery, setIsCreatingDelivery] = useState(false);
   const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
   
@@ -905,7 +907,18 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
 
             {/* Lista de Criativos Detalhados */}
             {!isCreatingDelivery && !editingDeliveryId && (
-              briefingForm.deliveries && briefingForm.deliveries.length > 0 ? (
+              // The creatives live in design_briefing, which is fetched on demand and
+              // carries base64 images — it can take seconds. Until it lands we must not
+              // render "nenhum criativo", which reads as "there is nothing to approve".
+              briefingsLoading && !(briefingForm.deliveries && briefingForm.deliveries.length > 0) ? (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <span className="w-3 h-3 border-2 border-zinc-700 border-t-yellow-500 rounded-full animate-spin" />
+                    Carregando criativos...
+                  </div>
+                  <div className="h-[280px] rounded-xl border border-zinc-800/60 bg-zinc-900/20 animate-pulse" />
+                </div>
+              ) : briefingForm.deliveries && briefingForm.deliveries.length > 0 ? (
                 <div className="flex flex-col gap-6">
                   {isSavingDelivery && (
                     <div className="flex items-center gap-2 text-xs text-yellow-400/80">
