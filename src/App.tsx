@@ -508,6 +508,100 @@ export default function App() {
     };
   }, [queryClient]);
 
+  // Realtime via BROADCAST (tasks/subtasks/task_labels).
+  // O postgres_changes acima ficava mudo com o canal lotado (9 inscrições), então
+  // a sincronização entre usuários só chegava por F5/polling. Broadcast é o caminho
+  // recomendado pela Supabase (baixa latência) — os triggers no banco publicam no
+  // tópico 'tasks-changes' a cada INSERT/UPDATE/DELETE. O postgres_changes + polling
+  // seguem ativos como fallback; podem ser removidos quando este caminho for validado.
+  useEffect(() => {
+    if (!currentUser) return;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
+    const invalidateTasksDebounced = () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }, 400);
+    };
+
+    const applyBroadcast = (msg: any) => {
+      // realtime.send entrega o objeto que montamos no trigger em msg.payload.
+      // Guarda contra dupla-aninhamento dependendo da versão do realtime.
+      const p = msg?.payload?.record !== undefined || msg?.payload?.operation !== undefined
+        ? msg.payload
+        : (msg?.payload?.payload ?? msg?.payload ?? {});
+      const table = p.table;
+      const op = p.operation;
+      const record = p.record;
+      const oldRecord = p.old_record;
+      const sm = syncManagerRef.current;
+
+      if (table === 'tasks') {
+        if (op === 'INSERT') {
+          // Precisa de refetch para trazer os joins (labels/subtasks).
+          invalidateTasksDebounced();
+        } else if (op === 'DELETE') {
+          const delId = oldRecord?.id;
+          if (delId) queryClient.setQueryData<Task[]>(['tasks'], (old) => old?.filter(t => t.id !== delId) ?? []);
+        } else if (op === 'UPDATE') {
+          const raw = record;
+          if (!raw) return;
+          queryClient.setQueryData<Task[]>(['tasks'], (old) => {
+            if (!old) return old;
+            return old.map(t => {
+              if (t.id !== raw.id) return t;
+              return {
+                ...t,
+                ...(sm.isFieldDirty(t.id, 'status')      ? {} : { status:      raw.status }),
+                ...(sm.isFieldDirty(t.id, 'priority')    ? {} : { priority:    raw.priority }),
+                ...(sm.isFieldDirty(t.id, 'title')       ? {} : { title:       raw.title }),
+                ...(sm.isFieldDirty(t.id, 'assigneeId')  ? {} : { assigneeId:  raw.assignee_id }),
+                ...(sm.isFieldDirty(t.id, 'dueDate')     ? {} : { dueDate:     raw.due_date }),
+                ...(sm.isFieldDirty(t.id, 'plannedDate') ? {} : { plannedDate: raw.planned_date }),
+                ...(sm.isFieldDirty(t.id, 'reminderDate')? {} : { reminderDate:raw.reminder_date }),
+                ...(sm.isFieldDirty(t.id, 'reminderType')? {} : { reminderType:raw.reminder_type }),
+                ...(sm.isFieldDirty(t.id, 'projectId')   ? {} : { projectId:   raw.project_id }),
+                ...(sm.isFieldDirty(t.id, 'description') ? {} : { description: raw.description }),
+                updatedBy: raw.updated_by,
+              };
+            });
+          });
+        }
+      } else if (table === 'subtasks' || table === 'task_labels') {
+        const taskId = record?.task_id || oldRecord?.task_id;
+        // Pula eventos das nossas próprias gravações (evita refetch redundante).
+        if (taskId && recentlySavedRef.current.has(taskId)) return;
+        invalidateTasksDebounced();
+      }
+    };
+
+    (async () => {
+      // Canal privado exige o JWT do usuário no cliente de realtime.
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (token) supabase.realtime.setAuth(token);
+      if (cancelled) return;
+
+      channel = supabase
+        .channel('tasks-changes', { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, applyBroadcast)
+        .on('broadcast', { event: 'UPDATE' }, applyBroadcast)
+        .on('broadcast', { event: 'DELETE' }, applyBroadcast)
+        .subscribe((status, err) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            console.warn(`[Realtime] tasks-changes (broadcast): ${status}`, err ?? '');
+          }
+        });
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [queryClient, currentUser?.id]);
+
   // Track task changes to generate notifications
   useEffect(() => {
     if (isFirstRender.current || !currentUser) {
