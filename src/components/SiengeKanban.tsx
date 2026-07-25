@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   Plus, Hash, DollarSign, Building2, Calendar, Tag, Receipt,
   ChevronRight, AlertTriangle, CheckCircle2, Clock, XCircle,
@@ -37,6 +37,10 @@ interface SiengeKanbanProps {
   onSave: (title: SiengeTitle) => void;
   onDelete: (id: string) => void;
   onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
+  // Presença nos títulos (mesmo sistema das tasks): mapa id→editor e callback para
+  // anunciar qual título este usuário tem aberto para edição.
+  editingMap?: Record<string, { name: string; avatarUrl?: string; color: string }>;
+  onTitlePresence?: (titleId: string | null) => void;
 }
 
 const COLUMNS: { id: ColumnId; label: string; shortLabel: string; color: string; dotColor: string; bg: string; border: string; icon: React.ReactNode }[] = [
@@ -579,7 +583,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
   );
 }
 
-export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig }: SiengeKanbanProps) {
+export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig, editingMap = {}, onTitlePresence }: SiengeKanbanProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState<SiengeTitle | null>(null);
   const [modalInitialStatus, setModalInitialStatus] = useState<SiengeStatus>('a_lancar');
@@ -656,6 +660,14 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
     setDragId(null);
     setDropTarget(null);
   }, []);
+
+  // Presença: anuncia qual título este usuário tem aberto para edição (só títulos já
+  // existentes — um título novo ainda não salvo não pode estar em edição por outro).
+  useEffect(() => {
+    onTitlePresence?.(modalOpen && editingTitle ? editingTitle.id : null);
+  }, [modalOpen, editingTitle?.id]);
+  // Ao sair da tela do Sienge (desmontar), libera a presença.
+  useEffect(() => () => { onTitlePresence?.(null); }, []);
 
   const openNew = (colId: ColumnId) => {
     setEditingTitle(null);
@@ -896,6 +908,7 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
         openLotes={openLotes}
         openFaturas={openFaturas}
         projects={projects}
+        editingBy={editingTitle ? editingMap[editingTitle.id] : undefined}
       />
 
       {showAlcadaConfig && (

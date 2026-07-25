@@ -20,6 +20,9 @@ interface SiengeTitleModalProps {
   openFaturas: SiengeFatura[];
   projects: Project[];
   hideHeader?: boolean;
+  // Presença: quando outro usuário já está editando este título, o modal fica
+  // travado em somente-leitura (bloqueio, igual às tasks) para evitar sobrescrita.
+  editingBy?: { name: string; avatarUrl?: string; color: string };
 }
 
 const STATUS_LABELS: Record<SiengeStatus, string> = {
@@ -61,6 +64,7 @@ export default function SiengeTitleModal({
   openLotes,
   openFaturas,
   projects,
+  editingBy,
 }: SiengeTitleModalProps) {
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -104,6 +108,15 @@ export default function SiengeTitleModal({
   const suggestedDate = selectedLote?.prazoPagamento;
 
   const isEditing = !!initialData;
+  // Alguém já está editando este título (via presença). Enquanto durar, ninguém
+  // mais consegue destravar o formulário — evita duas pessoas gravando por cima.
+  const lockedByOther = !!editingBy;
+
+  // Se a presença de outro editor chegar enquanto este usuário já tinha destravado,
+  // reverte para somente-leitura na hora.
+  useEffect(() => {
+    if (lockedByOther) setIsLocked(true);
+  }, [lockedByOther]);
 
   useEffect(() => {
     if (isOpen) {
@@ -230,6 +243,9 @@ export default function SiengeTitleModal({
         createdAt: initialData?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      // Trava anti-sobrescrita: só no "Salvar Alterações" de um título existente,
+      // marcamos a base (updated_at carregado) para o compare-and-swap no banco.
+      if (initialData) (title as any).__baseUpdatedAt = initialData.updatedAt;
       onSave(title);
     } catch (err: any) {
       setUploadError(err.message || 'Erro ao enviar arquivo.');
@@ -382,6 +398,23 @@ export default function SiengeTitleModal({
             <X size={15} />
           </button>
         </div>
+
+        {/* Banner de presença: outro usuário está editando este título */}
+        {lockedByOther && (
+          <div className="flex items-center gap-2 px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/20">
+            <span
+              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+              style={{ backgroundColor: editingBy?.color || '#f59e0b' }}
+            >
+              {editingBy?.avatarUrl
+                ? <img src={editingBy.avatarUrl} alt="" className="w-5 h-5 rounded-full object-cover" />
+                : (editingBy?.name?.[0]?.toUpperCase() || '?')}
+            </span>
+            <span className="text-xs text-amber-300/90">
+              <span className="font-semibold">{editingBy?.name}</span> está editando este título. Você está em modo somente-leitura.
+            </span>
+          </div>
+        )}
 
         {/* Body */}
         {isLocked ? (
@@ -1056,7 +1089,9 @@ export default function SiengeTitleModal({
                 <button
                   type="button"
                   onClick={() => setIsLocked(false)}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg shadow-blue-500/20"
+                  disabled={lockedByOther}
+                  title={lockedByOther ? `${editingBy?.name} está editando este título` : undefined}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-600 rounded-lg transition-colors shadow-lg shadow-blue-500/20"
                 >
                   <Pencil size={12} /> Editar
                 </button>

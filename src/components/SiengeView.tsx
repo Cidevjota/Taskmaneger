@@ -18,11 +18,14 @@ interface SiengeViewProps {
   onSaveFatura: (fatura: SiengeFatura) => void;
   onDeleteFatura: (id: string) => void;
   onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
+  editingMap?: Record<string, { name: string; avatarUrl?: string; color: string }>;
+  onTitlePresence?: (titleId: string | null) => void;
 }
 
 export default function SiengeView({
   titles, lotes, faturas, projects, currentProjectFilter, alcadaConfig,
-  onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig
+  onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig,
+  editingMap, onTitlePresence
 }: SiengeViewProps) {
   const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
@@ -87,6 +90,8 @@ export default function SiengeView({
             onSave={onSaveTitle}
             onDelete={onDeleteTitle}
             onSaveAlcadaConfig={onSaveAlcadaConfig}
+            editingMap={editingMap}
+            onTitlePresence={onTitlePresence}
           />
         ) : activeTab === 'lotes' ? (
           <SiengeLotes

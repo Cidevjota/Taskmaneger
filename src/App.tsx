@@ -22,7 +22,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError } from './lib/api';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -119,7 +119,7 @@ export default function App() {
   // foi a última revalidação (evita refetch a cada troca rápida de janela).
   const hiddenSinceRef = useRef<number | null>(null);
   const lastRevalidateRef = useRef<number>(Date.now());
-  const hasSubscribedRef = useRef(false);
+  const hasBroadcastSubscribedRef = useRef(false);
 
   // Track recently saved task IDs to suppress self-triggered Realtime events
   const recentlySavedRef = useRef<Map<string, number>>(new Map());
@@ -160,11 +160,11 @@ export default function App() {
   const authReady = !loading && !!currentUser;
 
   // Rede de segurança contra falhas silenciosas do Realtime (WebSocket bloqueado por
-  // proxy/antivírus, queda de conexão, etc.): sem isso, uma alteração feita por outro
-  // usuário só aparece quando a página é recarregada manualmente. Só roda com a aba em
-  // primeiro plano (comportamento padrão do React Query — refetchIntervalInBackground
-  // é false), então não gera tráfego extra com o app minimizado.
-  const REALTIME_FALLBACK_POLL_MS = 45_000;
+  // proxy/antivírus, queda de conexão, etc.). Com o Broadcast de tasks já cobrindo o
+  // caso principal em tempo real (<1s), este polling é apenas um último recurso, então
+  // usamos um intervalo folgado (3 min) para minimizar tráfego. Só roda com a aba em
+  // primeiro plano (refetchIntervalInBackground é false por padrão no React Query).
+  const REALTIME_FALLBACK_POLL_MS = 180_000;
 
   const { data: tasks = [], isLoading: isTasksLoading } = useQuery({ queryKey: ['tasks'], queryFn: queryFnTasks, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: projects = [], isLoading: isProjectsLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
@@ -399,114 +399,69 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [queryClient]);
 
-  // Setup realtime — per-table filters avoid the schema-wide wildcard that was
-  // driving realtime.list_changes() to ~1M calls/day.
+  // Realtime via BROADCAST para projects/labels/sienge.
+  // Antes dependiam do canal postgres_changes lotado (que estava mudo); agora cada
+  // domínio tem seu tópico próprio (triggers no banco publicam via realtime.send).
+  // Mesma segurança das tasks: canal privado (só autenticado recebe).
   useEffect(() => {
-    // For subtasks/labels, still need a full refetch (joined data not in payload)
-    const invalidateTasks = () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      }, 400);
-    };
+    if (!currentUser) return;
+    let channels: ReturnType<typeof supabase.channel>[] = [];
+    let cancelled = false;
 
-    const channel = supabase
-      .channel('app-db-changes')
-      // Task UPDATE: update only the changed task in cache directly — no full refetch
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, (payload) => {
-        const raw = payload.new as any;
-        const sm = syncManagerRef.current;
-        queryClient.setQueryData<Task[]>(['tasks'], (old) => {
-          if (!old) return old;
-          return old.map(t => {
-            if (t.id !== raw.id) return t;
-            return {
-              ...t,
-              ...(sm.isFieldDirty(t.id, 'status')      ? {} : { status:      raw.status }),
-              ...(sm.isFieldDirty(t.id, 'priority')    ? {} : { priority:    raw.priority }),
-              ...(sm.isFieldDirty(t.id, 'title')       ? {} : { title:       raw.title }),
-              ...(sm.isFieldDirty(t.id, 'assigneeId')  ? {} : { assigneeId:  raw.assignee_id }),
-              ...(sm.isFieldDirty(t.id, 'dueDate')     ? {} : { dueDate:     raw.due_date }),
-              ...(sm.isFieldDirty(t.id, 'plannedDate') ? {} : { plannedDate: raw.planned_date }),
-              ...(sm.isFieldDirty(t.id, 'reminderDate')? {} : { reminderDate:raw.reminder_date }),
-              ...(sm.isFieldDirty(t.id, 'reminderType')? {} : { reminderType:raw.reminder_type }),
-              ...(sm.isFieldDirty(t.id, 'projectId')   ? {} : { projectId:   raw.project_id }),
-              ...(sm.isFieldDirty(t.id, 'description') ? {} : { description: raw.description }),
-              updatedBy: raw.updated_by,
-            };
-          });
-        });
-      })
-      // Task INSERT/DELETE: need full refetch to keep list consistent
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, invalidateTasks)
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks' }, (payload) => {
-        const deletedId = (payload.old as any)?.id;
-        if (deletedId) {
-          queryClient.setQueryData<Task[]>(['tasks'], (old) => old?.filter(t => t.id !== deletedId) ?? []);
+    const payloadOf = (msg: any) =>
+      (msg?.payload?.table !== undefined || msg?.payload?.operation !== undefined)
+        ? msg.payload
+        : (msg?.payload?.payload ?? msg?.payload ?? {});
+
+    const invalidate = (key: string) => queryClient.invalidateQueries({ queryKey: [key] });
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (token) supabase.realtime.setAuth(token);
+      if (cancelled) return;
+
+      const onErr = (name: string) => (status: string, err?: any) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[Realtime] ${name} (broadcast): ${status}`, err ?? '');
         }
-      })
-      // Subtasks/labels changes require refetch of the parent task (joined data).
-      // Skip events triggered by our own saves (recentlySavedRef) to avoid redundant refetches.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'subtasks' }, (payload) => {
-        const taskId = (payload.new as any)?.task_id || (payload.old as any)?.task_id;
-        if (taskId && recentlySavedRef.current.has(taskId)) return;
-        invalidateTasks();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_labels' }, (payload) => {
-        const taskId = (payload.new as any)?.task_id || (payload.old as any)?.task_id;
-        if (taskId && recentlySavedRef.current.has(taskId)) return;
-        invalidateTasks();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['projects'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'labels' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['labels'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_titles' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_lotes' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_faturas' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['siengeFaturas'] });
-      })
-      .subscribe((status, err) => {
-        // CHANNEL_ERROR/TIMED_OUT/CLOSED eram descartados silenciosamente antes —
-        // o app parecia "sincronizado" enquanto o WebSocket estava na verdade caído
-        // (proxy/antivírus bloqueando wss://, queda de rede etc.), e só um F5 trazia
-        // dados novos. Agora logamos e avisamos o usuário quando isso acontece depois
-        // de já termos tido uma conexão funcionando.
-        if (status !== 'SUBSCRIBED') {
-          console.warn(`[Realtime] app-db-changes: ${status}`, err ?? '');
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            if (hasSubscribedRef.current) {
-              showToast('Conexão em tempo real perdida. Tentando reconectar automaticamente...');
-            }
-          }
-          return;
-        }
-        // Toda reconexão deixa um buraco: os eventos ocorridos enquanto o socket
-        // estava caído não são reenviados. Revalida — menos na primeira conexão,
-        // em que o fetch inicial já cobriu.
-        if (!hasSubscribedRef.current) {
-          hasSubscribedRef.current = true;
-          return;
-        }
-        lastRevalidateRef.current = Date.now();
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['projects'] });
-        queryClient.invalidateQueries({ queryKey: ['labels'] });
-        queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
-        queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
-        queryClient.invalidateQueries({ queryKey: ['siengeFaturas'] });
-      });
+      };
+
+      const projectsCh = supabase
+        .channel('projects-changes', { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, () => invalidate('projects'))
+        .on('broadcast', { event: 'UPDATE' }, () => invalidate('projects'))
+        .on('broadcast', { event: 'DELETE' }, () => invalidate('projects'))
+        .subscribe(onErr('projects-changes'));
+
+      const labelsCh = supabase
+        .channel('labels-changes', { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, () => invalidate('labels'))
+        .on('broadcast', { event: 'UPDATE' }, () => invalidate('labels'))
+        .on('broadcast', { event: 'DELETE' }, () => invalidate('labels'))
+        .subscribe(onErr('labels-changes'));
+
+      const siengeHandler = (msg: any) => {
+        const table = payloadOf(msg).table;
+        if (table === 'sienge_titles') invalidate('siengeTitles');
+        else if (table === 'sienge_lotes') invalidate('siengeLotes');
+        else if (table === 'sienge_faturas') invalidate('siengeFaturas');
+      };
+      const siengeCh = supabase
+        .channel('sienge-changes', { config: { private: true } })
+        .on('broadcast', { event: 'INSERT' }, siengeHandler)
+        .on('broadcast', { event: 'UPDATE' }, siengeHandler)
+        .on('broadcast', { event: 'DELETE' }, siengeHandler)
+        .subscribe(onErr('sienge-changes'));
+
+      channels = [projectsCh, labelsCh, siengeCh];
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      channels.forEach(ch => supabase.removeChannel(ch));
     };
-  }, [queryClient]);
+  }, [queryClient, currentUser?.id]);
 
   // Realtime via BROADCAST (tasks/subtasks/task_labels).
   // O postgres_changes acima ficava mudo com o canal lotado (9 inscrições), então
@@ -590,9 +545,20 @@ export default function App() {
         .on('broadcast', { event: 'UPDATE' }, applyBroadcast)
         .on('broadcast', { event: 'DELETE' }, applyBroadcast)
         .subscribe((status, err) => {
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            console.warn(`[Realtime] tasks-changes (broadcast): ${status}`, err ?? '');
+          if (status !== 'SUBSCRIBED') {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              console.warn(`[Realtime] tasks-changes (broadcast): ${status}`, err ?? '');
+            }
+            return;
           }
+          // Broadcast não reenvia o que passou enquanto o socket esteve caído. A cada
+          // reconexão (menos a primeira, já coberta pelo fetch inicial) revalida tasks,
+          // fechando o buraco na hora em vez de esperar o polling de 3 min.
+          if (!hasBroadcastSubscribedRef.current) {
+            hasBroadcastSubscribedRef.current = true;
+            return;
+          }
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
         });
     })();
 
@@ -1359,14 +1325,26 @@ export default function App() {
                 queryClient.setQueryData(['siengeAlcadaConfig'], config);
                 await saveSiengeAlcadaConfig(config);
               }}
+              editingMap={editingMap}
+              onTitlePresence={(titleId) => presenceTrackRef.current?.(titleId)}
               onSaveTitle={async (title) => {
+                // __baseUpdatedAt é transiente (só serve ao compare-and-swap); não vai pro cache.
+                const { __baseUpdatedAt, ...clean } = title as any;
                 queryClient.setQueryData<SiengeTitle[]>(['siengeTitles'], prev => {
-                  const exists = (prev || []).find(t => t.id === title.id);
+                  const exists = (prev || []).find(t => t.id === clean.id);
                   return exists
-                    ? (prev || []).map(t => t.id === title.id ? title : t)
-                    : [title, ...(prev || [])];
+                    ? (prev || []).map(t => t.id === clean.id ? clean : t)
+                    : [clean, ...(prev || [])];
                 });
-                saveSiengeTitle(title).catch(console.error);
+                saveSiengeTitle(title).catch((e) => {
+                  if (e instanceof SiengeTitleConflictError) {
+                    // Outro usuário salvou primeiro: descarta a alteração local e recarrega.
+                    queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
+                    showToast('Este título foi alterado por outra pessoa. Sua tela foi atualizada com a versão mais recente.');
+                  } else {
+                    console.error(e);
+                  }
+                });
               }}
               onDeleteTitle={async (id) => {
                 queryClient.setQueryData<SiengeTitle[]>(['siengeTitles'], prev => (prev || []).filter(t => t.id !== id));

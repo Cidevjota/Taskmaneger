@@ -496,7 +496,23 @@ export async function fetchSiengeTitleById(id: string): Promise<SiengeTitle | nu
   return mapSiengeTitle(data, data.attachments || []);
 }
 
+// Lançado quando o save de um título Sienge é rejeitado porque o updated_at no banco
+// já não é o que a tela carregou — ou seja, outra pessoa salvou no meio do caminho.
+// O chamador deve descartar a alteração local e recarregar do servidor.
+export class SiengeTitleConflictError extends Error {
+  constructor(public titleId: string) {
+    super(`Título Sienge ${titleId} foi alterado por outro usuário`);
+    this.name = 'SiengeTitleConflictError';
+  }
+}
+
 export async function saveSiengeTitle(title: SiengeTitle) {
+  // Base para o compare-and-swap: o updated_at que a tela tinha ao abrir o título.
+  // Só é setado pelo caminho de "Salvar Alterações" (edição destrutiva de todos os
+  // campos). Ações rápidas (status/chat) não passam base — seguem via upsert normal,
+  // protegidas pela presença (bloqueio de edição simultânea).
+  const baseUpdatedAt = (title as any).__baseUpdatedAt as string | undefined;
+
   const payload: any = {
     id: title.id,
     titulo: title.titulo,
@@ -532,6 +548,23 @@ export async function saveSiengeTitle(title: SiengeTitle) {
   if (title.attachments !== undefined) {
     payload.attachments = title.attachments;
   }
+
+  if (baseUpdatedAt !== undefined) {
+    // Compare-and-swap: só grava se o updated_at no banco ainda for o que a tela
+    // carregou. Se outro usuário salvou no meio, o UPDATE não casa nenhuma linha
+    // e sinalizamos conflito — nunca gravamos por cima. (O trigger BEFORE UPDATE
+    // avança updated_at a cada gravação, então a base fica velha após o 1º save.)
+    const { data, error } = await supabase
+      .from('sienge_titles')
+      .update(payload)
+      .eq('id', title.id)
+      .eq('updated_at', baseUpdatedAt)
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) throw new SiengeTitleConflictError(title.id);
+    return;
+  }
+
   const { error } = await supabase.from('sienge_titles').upsert(payload);
   if (error) throw error;
 }
