@@ -257,6 +257,9 @@ export interface Project {
   description: string;
   color: string; // e.g., 'text-purple-500' or hex
   status: 'active' | 'completed' | 'on_hold';
+  coverImage?: string | null;
+  code?: string | null;
+  buildProgress?: number | null; // 0-100, evolução da obra
 }
 
 export type ViewType = 'home' | 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge' | 'dashboard';

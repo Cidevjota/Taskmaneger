@@ -4,7 +4,16 @@ import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeF
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
   if (error) throw error;
-  return data as Project[];
+  return (data || []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    color: p.color,
+    status: p.status,
+    coverImage: p.cover_image,
+    code: p.code,
+    buildProgress: p.build_progress,
+  })) as Project[];
 }
 
 export async function fetchLabels(): Promise<Label[]> {
@@ -375,7 +384,16 @@ export async function deleteTask(taskId: string) {
 }
 
 export async function saveProject(project: Project) {
-  const { error } = await supabase.from('projects').upsert(project);
+  const { error } = await supabase.from('projects').upsert({
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    color: project.color,
+    status: project.status,
+    cover_image: project.coverImage ?? null,
+    code: project.code ?? null,
+    build_progress: project.buildProgress ?? null,
+  });
   if (error) throw error;
 }
 
