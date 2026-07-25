@@ -13,6 +13,23 @@ export async function fetchLabels(): Promise<Label[]> {
   return data as Label[];
 }
 
+export async function logTaskFieldHistory(
+  taskId: string,
+  field: 'description' | 'copy_briefing',
+  oldValue: string | null,
+  newValue: string | null,
+  changedBy: string | null
+): Promise<void> {
+  const { error } = await supabase.rpc('log_task_field_history', {
+    p_task_id: taskId,
+    p_field: field,
+    p_old_value: oldValue,
+    p_new_value: newValue,
+    p_changed_by: changedBy,
+  });
+  if (error) throw error;
+}
+
 export async function fetchTaskHistory(taskId: string): Promise<TaskHistoryEntry[]> {
   const { data, error } = await supabase
     .from('task_history')

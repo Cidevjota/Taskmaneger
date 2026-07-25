@@ -40,10 +40,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }, () => {
           loadNotifications(currentUser.id);
         })
-        .subscribe();
+        .subscribe((status, err) => {
+          // Sem isso, uma queda de WebSocket aqui deixava notificações de outros
+          // usuários (menções, aprovações, prazos) presas até o próximo F5, sem
+          // nenhum sinal no console de que a inscrição falhou.
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            console.warn(`[Realtime] notifications-db-changes: ${status}`, err ?? '');
+          }
+        });
+
+      // Rede de segurança: notificações usam estado próprio (sem React Query), então
+      // uma falha silenciosa do canal acima não tinha nenhum fallback — o polling
+      // garante que elas cheguem mesmo se o Realtime cair. Só roda com a aba visível.
+      const pollInterval = setInterval(() => {
+        if (!document.hidden) loadNotifications(currentUser.id);
+      }, 45_000);
 
       return () => {
         supabase.removeChannel(channel);
+        clearInterval(pollInterval);
       };
     } else {
       setNotifications([]);

@@ -64,6 +64,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
 import { useSyncManager } from '../lib/SyncManager';
+import { logTaskFieldHistory } from '../lib/api';
 
 type EditorPresence = { name: string; avatarUrl?: string; color: string };
 
@@ -677,6 +678,11 @@ export default function TaskSheet({
   const lastServerDescRef = useRef<string | null>(null);
   const titleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const descTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Value of description/copyBriefing when this editing session started (task
+  // opened). Used to log one history entry per session, on close, instead of
+  // one per autosave.
+  const descSessionBaselineRef = useRef<string>('');
+  const copyBriefingSessionBaselineRef = useRef<string>('{}');
   const [status, setStatus] = useState<TaskStatus>(task?.status || 'todo');
   const [priority, setPriority] = useState<TaskPriority>(task?.priority || 'no_priority');
   const [projectId, setProjectId] = useState(task?.projectId || '');
@@ -848,6 +854,8 @@ export default function TaskSheet({
     setIsSyncing(newSyncing);
     titleRef.current = task?.title || '';
     descriptionRef.current = task?.description || '';
+    descSessionBaselineRef.current = task?.description || '';
+    copyBriefingSessionBaselineRef.current = JSON.stringify(task?.copyBriefing || {});
     // Outra tarefa: zera a referência para o efeito de sync tratar como carga
     // inicial e registrar a base nova (senão compararia com o texto da anterior).
     lastServerDescRef.current = null;
@@ -999,6 +1007,28 @@ export default function TaskSheet({
   const saveChange = (updates: Partial<Task>) => {
     if (!task || effectiveLock) return;
     onUpdateTask({ ...updates, id: task.id } as Task);
+  };
+
+  const stripHtml = (html: string) =>
+    (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Logs one history entry per editing session (called when the task is
+  // closed) instead of one per autosave, comparing the value from when the
+  // session started against the value when it ended.
+  const flushSessionHistory = () => {
+    if (!task || !currentUser) return;
+
+    const descBase = stripHtml(descSessionBaselineRef.current);
+    const descNow = stripHtml(descriptionRef.current || '');
+    if (descNow !== descBase) {
+      logTaskFieldHistory(task.id, 'description', descBase, descNow, currentUser.id).catch(console.error);
+    }
+
+    const copyBase = copyBriefingSessionBaselineRef.current;
+    const copyNow = JSON.stringify(task.copyBriefing || {});
+    if (copyNow !== copyBase) {
+      logTaskFieldHistory(task.id, 'copy_briefing', null, null, currentUser.id).catch(console.error);
+    }
   };
 
   const toggleSubtask = (subId: string) => {
@@ -1171,6 +1201,7 @@ export default function TaskSheet({
     
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
     if (descTimerRef.current) clearTimeout(descTimerRef.current);
+    flushSessionHistory();
     saveChange({ title: titleRef.current, description: descriptionRef.current });
 
     onClose({
@@ -1188,11 +1219,12 @@ export default function TaskSheet({
       onClose();
       return;
     }
-    
+
     // Flush debounced local state immediately
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
     if (descTimerRef.current) clearTimeout(descTimerRef.current);
-    
+
+    flushSessionHistory();
     saveChange({
       title: titleRef.current,
       description: descriptionRef.current

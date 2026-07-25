@@ -159,13 +159,20 @@ export default function App() {
 
   const authReady = !loading && !!currentUser;
 
-  const { data: tasks = [], isLoading: isTasksLoading } = useQuery({ queryKey: ['tasks'], queryFn: queryFnTasks, enabled: authReady });
-  const { data: projects = [], isLoading: isProjectsLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects, enabled: authReady });
-  const { data: labels = [], isLoading: isLabelsLoading } = useQuery({ queryKey: ['labels'], queryFn: fetchLabels, enabled: authReady });
-  const { data: siengeTitles = [], isLoading: isSiengeLoading } = useQuery({ queryKey: ['siengeTitles'], queryFn: fetchSiengeTitles, enabled: authReady });
-  const { data: siengeLotes = [], isLoading: isLotesLoading } = useQuery({ queryKey: ['siengeLotes'], queryFn: fetchSiengeLotes, enabled: authReady });
-  const { data: siengeFaturas = [], isLoading: isFaturasLoading } = useQuery({ queryKey: ['siengeFaturas'], queryFn: fetchSiengeFaturas, enabled: authReady });
-  const { data: siengeAlcadaConfig = {} } = useQuery({ queryKey: ['siengeAlcadaConfig'], queryFn: fetchSiengeAlcadaConfig, enabled: authReady });
+  // Rede de segurança contra falhas silenciosas do Realtime (WebSocket bloqueado por
+  // proxy/antivírus, queda de conexão, etc.): sem isso, uma alteração feita por outro
+  // usuário só aparece quando a página é recarregada manualmente. Só roda com a aba em
+  // primeiro plano (comportamento padrão do React Query — refetchIntervalInBackground
+  // é false), então não gera tráfego extra com o app minimizado.
+  const REALTIME_FALLBACK_POLL_MS = 45_000;
+
+  const { data: tasks = [], isLoading: isTasksLoading } = useQuery({ queryKey: ['tasks'], queryFn: queryFnTasks, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: projects = [], isLoading: isProjectsLoading } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: labels = [], isLoading: isLabelsLoading } = useQuery({ queryKey: ['labels'], queryFn: fetchLabels, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTitles = [], isLoading: isSiengeLoading } = useQuery({ queryKey: ['siengeTitles'], queryFn: fetchSiengeTitles, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeLotes = [], isLoading: isLotesLoading } = useQuery({ queryKey: ['siengeLotes'], queryFn: fetchSiengeLotes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeFaturas = [], isLoading: isFaturasLoading } = useQuery({ queryKey: ['siengeFaturas'], queryFn: fetchSiengeFaturas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeAlcadaConfig = {} } = useQuery({ queryKey: ['siengeAlcadaConfig'], queryFn: fetchSiengeAlcadaConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
 
   const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading || isFaturasLoading;
   
@@ -311,11 +318,18 @@ export default function App() {
       rebuildEditingMap();
     });
 
-    ch.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await ch.track({ userId: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl, color: colorFor(currentUser.id) });
+    ch.subscribe(async (status, err) => {
+      if (status !== 'SUBSCRIBED') {
+        // Sem log aqui, uma falha nesse canal se manifestava como "o indicador de
+        // 'fulano está editando' simplesmente não aparece", sem nenhuma pista da causa.
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[Realtime] task-presence: ${status}`, err ?? '');
+        }
+        return;
+      }
+      await ch.track({ userId: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl, color: colorFor(currentUser.id) });
 
-        presenceTrackRef.current = (taskId: string | null) => {
+      presenceTrackRef.current = (taskId: string | null) => {
           if (taskId) {
             const ts = myOpenedTasksRef.current[taskId] || Date.now();
             myOpenedTasksRef.current[taskId] = ts;
@@ -330,7 +344,6 @@ export default function App() {
             }
           }
         };
-      }
     });
 
     return () => {
@@ -459,17 +472,35 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sienge_faturas' }, () => {
         queryClient.invalidateQueries({ queryKey: ['siengeFaturas'] });
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        // CHANNEL_ERROR/TIMED_OUT/CLOSED eram descartados silenciosamente antes —
+        // o app parecia "sincronizado" enquanto o WebSocket estava na verdade caído
+        // (proxy/antivírus bloqueando wss://, queda de rede etc.), e só um F5 trazia
+        // dados novos. Agora logamos e avisamos o usuário quando isso acontece depois
+        // de já termos tido uma conexão funcionando.
+        if (status !== 'SUBSCRIBED') {
+          console.warn(`[Realtime] app-db-changes: ${status}`, err ?? '');
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            if (hasSubscribedRef.current) {
+              showToast('Conexão em tempo real perdida. Tentando reconectar automaticamente...');
+            }
+          }
+          return;
+        }
         // Toda reconexão deixa um buraco: os eventos ocorridos enquanto o socket
         // estava caído não são reenviados. Revalida — menos na primeira conexão,
         // em que o fetch inicial já cobriu.
-        if (status !== 'SUBSCRIBED') return;
         if (!hasSubscribedRef.current) {
           hasSubscribedRef.current = true;
           return;
         }
         lastRevalidateRef.current = Date.now();
         queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+        queryClient.invalidateQueries({ queryKey: ['labels'] });
+        queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
+        queryClient.invalidateQueries({ queryKey: ['siengeLotes'] });
+        queryClient.invalidateQueries({ queryKey: ['siengeFaturas'] });
       });
 
     return () => {

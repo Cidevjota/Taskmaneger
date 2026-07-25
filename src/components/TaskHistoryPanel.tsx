@@ -107,8 +107,10 @@ export default function TaskHistoryPanel({ taskId, taskCode, projects, users, on
       case 'assignee_id':
       case 'parent_task_id':
         return userName(value) !== value ? userName(value) : value;
-      default:
-        return value.length > 80 ? `${value.slice(0, 80)}…` : value;
+      default: {
+        const plain = value.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim() || '—';
+        return plain.length > 80 ? `${plain.slice(0, 80)}…` : plain;
+      }
     }
   };
 
