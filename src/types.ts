@@ -302,12 +302,17 @@ export interface SiengeVencimentoHistoryEntry {
   observacao?: string;   // Optional note explaining the change
 }
 
+export type SiengeCentroCusto = 'comercial' | 'marketing';
+
 export interface SiengeTitle {
   id: string;
   titulo: string;
   descricao?: string;
   valor: number;
   empreendimento?: string;
+  centroCusto?: SiengeCentroCusto;
+  categoria?: string;
+  subcategoria?: string;
   vencimento?: string; // ISO date — current/active due date shown on the card
   vencimentoOriginal?: string; // ISO date — first due date recorded when the title entered 'aguardando_pagamento'; used to compute true days overdue across rejection/resolution cycles
   vencimentoHistory?: SiengeVencimentoHistoryEntry[]; // Past due dates, preserved for reporting
@@ -326,6 +331,95 @@ export interface SiengeTitle {
   motivoRecusaResolvido?: boolean; // True once the rejection reason has been addressed
   motivoRecusaResolvidoEm?: string; // ISO timestamp of when the rejection was marked resolved
   motivoRecusaObservacao?: string; // Optional note recorded when marking the rejection as resolved
+  paidAt?: string; // ISO timestamp gravado pelo trigger set_paid_at no instante em que status entra em 'pago'
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SiengeTitleStatusHistoryEntry {
+  id: string;
+  titleId: string;
+  status: SiengeStatus;
+  changedAt: string;
+}
+
+export interface SiengeProjectMeta {
+  id: string;
+  projectId: string;
+  ano: number;
+  mes: number; // 1-12
+  vgvMeta: number;
+  unidadesMeta: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiengeProjectTotal {
+  id: string;
+  projectId: string;
+  vgvTotal: number;
+  unidadesTotal: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiengeProjectDisplay {
+  projectId: string;
+  hidden: boolean;
+  sortOrder: number;
+  updatedAt: string;
+}
+
+export interface SiengeCategoriaOrcamento {
+  id: string;
+  projectId: string;
+  centroCusto: SiengeCentroCusto;
+  categoria: string;
+  percentual: number; // % do VGV mensal
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SiengeVendaSituacao = 'vendida' | 'disponivel' | 'permuta' | 'bloqueada';
+
+export interface SiengeTabelaVendaUnidade {
+  id: string;
+  projectId: string;
+  unidade: string;
+  areaM2: number;
+  valorTabela: number;
+  situacao: SiengeVendaSituacao;
+  descricao: string | null;
+  frozenSince: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Snapshot imutável de venda — o valor de tabela congelado no instante em que a
+// unidade virou "vendida". A Tabela de Vendas continua viva e sofre reajuste de
+// INCC; o cálculo de orçamento real usa sempre o valor congelado aqui.
+export interface SiengeVenda {
+  id: string;
+  unidadeId: string;
+  projectId: string;
+  unidade: string;
+  valorCongelado: number;
+  dataVenda: string;
+  dataDistrato: string | null;
+}
+
+export interface SiengeOrcamentoConfig {
+  controleInicio: string; // YYYY-MM-DD — data a partir da qual o gasto real passa a ser contado
+}
+
+export interface SiengeTabelaVendaRevisao {
+  id: string;
+  projectId: string;
+  numero: number;
+  tipo: 'geral' | 'seletiva';
+  percentual: number;
+  unidadesAfetadas: number;
+  unidades: string[] | null;
+  descricao: string | null;
+  createdAt: string;
 }

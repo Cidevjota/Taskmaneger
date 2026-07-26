@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig } from '../types';
+import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig } from '../types';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
 import SiengeFaturas from './SiengeFaturas';
+import SiengeMetasDashboard from './SiengeMetasDashboard';
+import { useAuth } from '../context/AuthContext';
+
+const METAS_DASHBOARD_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
 
 interface SiengeViewProps {
   titles: SiengeTitle[];
+  statusHistory: SiengeTitleStatusHistoryEntry[];
   lotes: SiengeLote[];
   faturas: SiengeFatura[];
   projects: Project[];
@@ -20,16 +25,39 @@ interface SiengeViewProps {
   onSaveAlcadaConfig: (config: SiengeAlcadaConfig) => Promise<void> | void;
   editingMap?: Record<string, { name: string; avatarUrl?: string; color: string }>;
   onTitlePresence?: (titleId: string | null) => void;
+  projectMetas: SiengeProjectMeta[];
+  categoriaOrcamento: SiengeCategoriaOrcamento[];
+  projectTotais: SiengeProjectTotal[];
+  projectDisplays: SiengeProjectDisplay[];
+  onSaveProjectMeta: (meta: SiengeProjectMeta) => void;
+  onDeleteProjectMeta: (id: string) => void;
+  onSaveCategoriaOrcamento: (item: SiengeCategoriaOrcamento) => void;
+  onDeleteCategoriaOrcamento: (id: string) => void;
+  onSaveProjectTotal: (total: SiengeProjectTotal) => void;
+  onSaveProjectDisplay: (display: SiengeProjectDisplay) => void;
+  tabelaVendas: SiengeTabelaVendaUnidade[];
+  tabelaVendaRevisoes: SiengeTabelaVendaRevisao[];
+  onSaveTabelaVenda: (item: SiengeTabelaVendaUnidade) => void;
+  onDeleteTabelaVenda: (id: string) => void;
+  onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null }) => Promise<void> | void;
+  vendas: SiengeVenda[];
+  orcamentoConfig?: SiengeOrcamentoConfig;
+  onSaveOrcamentoConfig: (config: SiengeOrcamentoConfig) => void;
 }
 
 export default function SiengeView({
-  titles, lotes, faturas, projects, currentProjectFilter, alcadaConfig,
+  titles, statusHistory, lotes, faturas, projects, currentProjectFilter, alcadaConfig,
   onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig,
-  editingMap, onTitlePresence
+  editingMap, onTitlePresence,
+  projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
+  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
+  vendas, orcamentoConfig, onSaveOrcamentoConfig,
 }: SiengeViewProps) {
-  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas'>('titulos');
+  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
   const openFaturas = faturas.filter(f => f.status === 'aberto');
+  const { currentUser } = useAuth();
+  const showMetasTab = currentUser?.email === METAS_DASHBOARD_EMAIL;
 
   return (
     <div className="flex flex-col h-full bg-[#08080a]">
@@ -75,6 +103,18 @@ export default function SiengeView({
             </span>
           )}
         </button>
+        {showMetasTab && (
+          <button
+            onClick={() => setActiveTab('metas')}
+            className={`pb-3 text-sm font-semibold transition-colors border-b-2 ${
+              activeTab === 'metas'
+                ? 'text-zinc-100 border-blue-500'
+                : 'text-zinc-500 border-transparent hover:text-zinc-300'
+            }`}
+          >
+            Dashboard Analítico
+          </button>
+        )}
       </div>
 
       {/* Content Area */}
@@ -97,15 +137,39 @@ export default function SiengeView({
           <SiengeLotes
             lotes={lotes}
             titles={titles}
+            statusHistory={statusHistory}
             onSaveLote={onSaveLote}
             onDeleteLote={onDeleteLote}
           />
-        ) : (
+        ) : activeTab === 'faturas' ? (
           <SiengeFaturas
             faturas={faturas}
             titles={titles}
             onSaveFatura={onSaveFatura}
             onDeleteFatura={onDeleteFatura}
+          />
+        ) : (
+          <SiengeMetasDashboard
+            titles={titles}
+            projects={projects}
+            projectMetas={projectMetas}
+            categoriaOrcamento={categoriaOrcamento}
+            projectTotais={projectTotais}
+            projectDisplays={projectDisplays}
+            onSaveProjectMeta={onSaveProjectMeta}
+            onDeleteProjectMeta={onDeleteProjectMeta}
+            onSaveCategoriaOrcamento={onSaveCategoriaOrcamento}
+            onDeleteCategoriaOrcamento={onDeleteCategoriaOrcamento}
+            onSaveProjectTotal={onSaveProjectTotal}
+            onSaveProjectDisplay={onSaveProjectDisplay}
+            tabelaVendas={tabelaVendas}
+            tabelaVendaRevisoes={tabelaVendaRevisoes}
+            onSaveTabelaVenda={onSaveTabelaVenda}
+            onDeleteTabelaVenda={onDeleteTabelaVenda}
+            onApplyTabelaVendaReajuste={onApplyTabelaVendaReajuste}
+            vendas={vendas}
+            orcamentoConfig={orcamentoConfig}
+            onSaveOrcamentoConfig={onSaveOrcamentoConfig}
           />
         )}
       </div>

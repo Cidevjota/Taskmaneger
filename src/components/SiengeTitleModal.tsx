@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Hash, FileText, DollarSign, Building2, Calendar, Tag, Trash2, AlertCircle, Layers, CreditCard, ChevronDown, Paperclip, Plus, User, Loader2, Pencil, Lock, CheckCircle2, XCircle } from 'lucide-react';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
-import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project } from '../types';
+import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project, SiengeCentroCusto } from '../types';
 import DatePicker from './DatePicker';
 import ConfirmModal from './ConfirmModal';
 import TaskChat from './TaskChat';
 import { useAuth } from '../context/AuthContext';
 import { withVencimentoOriginal, getPositiveAction, showsRejectAction, rejectTargetStatus } from '../lib/siengeHelpers';
+import { CENTRO_CUSTO_LABELS, categoriasFor, subcategoriasFor } from '../lib/siengeCategorias';
 
 interface SiengeTitleModalProps {
   isOpen: boolean;
@@ -70,6 +71,12 @@ export default function SiengeTitleModal({
   const [descricao, setDescricao] = useState('');
   const [valorDisplay, setValorDisplay] = useState('');
   const [empreendimento, setEmpreendimento] = useState('');
+  const [centroCusto, setCentroCusto] = useState<SiengeCentroCusto | ''>('');
+  const [categoria, setCategoria] = useState('');
+  const [subcategoria, setSubcategoria] = useState('');
+  const [isCentroCustoDropdownOpen, setIsCentroCustoDropdownOpen] = useState(false);
+  const [isCategoriaDropdownOpen, setIsCategoriaDropdownOpen] = useState(false);
+  const [isSubcategoriaDropdownOpen, setIsSubcategoriaDropdownOpen] = useState(false);
   const [vencimento, setVencimento] = useState('');
   const [loteId, setLoteId] = useState('');
   const [faturaId, setFaturaId] = useState('');
@@ -126,6 +133,9 @@ export default function SiengeTitleModal({
         const v = initialData.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         setValorDisplay(v);
         setEmpreendimento(initialData.empreendimento || '');
+        setCentroCusto(initialData.centroCusto || '');
+        setCategoria(initialData.categoria || '');
+        setSubcategoria(initialData.subcategoria || '');
         setVencimento(initialData.vencimento || '');
         setLoteId(initialData.loteId || '');
         setFaturaId(initialData.faturaId || '');
@@ -144,6 +154,9 @@ export default function SiengeTitleModal({
         setDescricao('');
         setValorDisplay('');
         setEmpreendimento('');
+        setCentroCusto('');
+        setCategoria('');
+        setSubcategoria('');
         setVencimento('');
         setLoteId('');
         setFaturaId('');
@@ -182,6 +195,9 @@ export default function SiengeTitleModal({
     }
     if (!assigneeId) newErrors.assigneeId = 'Responsável é obrigatório';
     if (!empreendimento.trim()) newErrors.empreendimento = 'Empreendimento é obrigatório';
+    if (!centroCusto) newErrors.centroCusto = 'Centro de custo é obrigatório';
+    if (!categoria) newErrors.categoria = 'Categoria é obrigatória';
+    if (!subcategoria) newErrors.subcategoria = 'Subcategoria é obrigatória';
     if (!vencimento) newErrors.vencimento = 'Vencimento é obrigatório';
     if (!descricao.trim()) newErrors.descricao = 'Descrição é obrigatória';
     return newErrors;
@@ -225,6 +241,9 @@ export default function SiengeTitleModal({
         descricao: descricao.trim() || undefined,
         valor: parseCurrency(valorDisplay),
         empreendimento: empreendimento.trim() || undefined,
+        centroCusto: centroCusto || undefined,
+        categoria: categoria || undefined,
+        subcategoria: subcategoria || undefined,
         vencimento: vencimento || undefined,
         vencimentoOriginal: initialData?.vencimentoOriginal,
         vencimentoHistory: initialData?.vencimentoHistory,
@@ -332,6 +351,30 @@ export default function SiengeTitleModal({
     onSave(updated);
   };
 
+  const handleCentroCustoChange = (value: SiengeCentroCusto) => {
+    setCentroCusto(value);
+    setCategoria('');
+    setSubcategoria('');
+    setErrors(p => ({ ...p, centroCusto: '', categoria: '', subcategoria: '' }));
+    setIsCentroCustoDropdownOpen(false);
+  };
+
+  const handleCategoriaChange = (value: string) => {
+    setCategoria(value);
+    setSubcategoria('');
+    setErrors(p => ({ ...p, categoria: '', subcategoria: '' }));
+    setIsCategoriaDropdownOpen(false);
+  };
+
+  const handleSubcategoriaChange = (value: string) => {
+    setSubcategoria(value);
+    setErrors(p => ({ ...p, subcategoria: '' }));
+    setIsSubcategoriaDropdownOpen(false);
+  };
+
+  const categoriaOptions = categoriasFor(centroCusto || undefined);
+  const subcategoriaOptions = subcategoriasFor(centroCusto || undefined, categoria);
+
   const handleValorInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, '');
     setValorDisplay(raw ? formatCurrency(raw) : '');
@@ -362,7 +405,7 @@ export default function SiengeTitleModal({
       onClose();
       return;
     }
-    const hasData = titulo || descricao || valorDisplay || empreendimento || vencimento || loteId || faturaId || motivoDetalhado || assigneeId || (pdfFiles[0] && pdfFiles[0].file);
+    const hasData = titulo || descricao || valorDisplay || empreendimento || centroCusto || categoria || subcategoria || vencimento || loteId || faturaId || motivoDetalhado || assigneeId || (pdfFiles[0] && pdfFiles[0].file);
     if (hasData) {
       setShowCloseConfirm(true);
     } else {
@@ -570,6 +613,18 @@ export default function SiengeTitleModal({
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Calendar size={10} /> Vencimento</span>
                 <span className="text-sm text-zinc-200 font-medium truncate">{vencimento ? vencimento.split('-').reverse().join('/') : '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Tag size={10} /> Centro de Custo</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{centroCusto ? CENTRO_CUSTO_LABELS[centroCusto] : '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Tag size={10} /> Categoria</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{categoria || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Tag size={10} /> Subcategoria</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{subcategoria || '-'}</span>
               </div>
             </div>
 
@@ -903,6 +958,145 @@ export default function SiengeTitleModal({
                   </div>
                 </>
               )}
+            </div>
+          </div>
+
+          {/* Centro de Custo selector */}
+          <div className="flex flex-col gap-1.5 relative">
+            <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+              <Tag size={11} /> Centro de Custo <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsCentroCustoDropdownOpen(p => !p)}
+                className={`w-full flex items-center justify-between bg-zinc-900/60 border rounded-lg px-3 py-2.5 text-sm outline-none transition-all hover:bg-zinc-800/60 ${
+                  errors.centroCusto ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
+                }`}
+              >
+                <span className={centroCusto ? 'text-zinc-100 font-medium' : 'text-zinc-500'}>
+                  {centroCusto ? CENTRO_CUSTO_LABELS[centroCusto] : 'Selecione o centro de custo'}
+                </span>
+                <ChevronDown size={14} className={`text-zinc-500 transition-transform ${isCentroCustoDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {errors.centroCusto && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.centroCusto}</p>}
+
+              {isCentroCustoDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsCentroCustoDropdownOpen(false)} />
+                  <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
+                    {(Object.keys(CENTRO_CUSTO_LABELS) as SiengeCentroCusto[]).map(cc => (
+                      <button
+                        key={cc}
+                        type="button"
+                        onClick={() => handleCentroCustoChange(cc)}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
+                          cc === centroCusto
+                            ? 'bg-blue-500/10 text-blue-400'
+                            : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
+                        }`}
+                      >
+                        <span className="font-medium text-[13px]">{CENTRO_CUSTO_LABELS[cc]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Categoria + Subcategoria selectors (dependem do Centro de Custo / Categoria) */}
+          <div className="flex gap-3">
+            <div className="flex flex-col gap-1.5 flex-1 relative">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <Tag size={11} /> Categoria <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={!centroCusto}
+                  onClick={() => setIsCategoriaDropdownOpen(p => !p)}
+                  className={`w-full flex items-center justify-between bg-zinc-900/60 border rounded-lg px-3 py-2.5 text-sm outline-none transition-all hover:bg-zinc-800/60 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-900/60 ${
+                    errors.categoria ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
+                  }`}
+                >
+                  <span className={categoria ? 'text-zinc-100 font-medium truncate' : 'text-zinc-500 truncate'}>
+                    {categoria || (centroCusto ? 'Selecione a categoria' : 'Selecione o centro de custo primeiro')}
+                  </span>
+                  <ChevronDown size={14} className={`text-zinc-500 shrink-0 transition-transform ${isCategoriaDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {errors.categoria && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.categoria}</p>}
+
+                {isCategoriaDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsCategoriaDropdownOpen(false)} />
+                    <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                        {categoriaOptions.map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => handleCategoriaChange(c)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                              c === categoria
+                                ? 'bg-blue-500/10 text-blue-400'
+                                : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
+                            }`}
+                          >
+                            <span className="font-medium text-[13px] text-left">{c}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 flex-1 relative">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <Tag size={11} /> Subcategoria <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={!categoria}
+                  onClick={() => setIsSubcategoriaDropdownOpen(p => !p)}
+                  className={`w-full flex items-center justify-between bg-zinc-900/60 border rounded-lg px-3 py-2.5 text-sm outline-none transition-all hover:bg-zinc-800/60 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-900/60 ${
+                    errors.subcategoria ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
+                  }`}
+                >
+                  <span className={subcategoria ? 'text-zinc-100 font-medium truncate' : 'text-zinc-500 truncate'}>
+                    {subcategoria || (categoria ? 'Selecione a subcategoria' : 'Selecione a categoria primeiro')}
+                  </span>
+                  <ChevronDown size={14} className={`text-zinc-500 shrink-0 transition-transform ${isSubcategoriaDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {errors.subcategoria && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.subcategoria}</p>}
+
+                {isSubcategoriaDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsSubcategoriaDropdownOpen(false)} />
+                    <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                        {subcategoriaOptions.map(s => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => handleSubcategoriaChange(s)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                              s === subcategoria
+                                ? 'bg-blue-500/10 text-blue-400'
+                                : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
+                            }`}
+                          >
+                            <span className="font-medium text-[13px] text-left">{s}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 

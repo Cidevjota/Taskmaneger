@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -63,7 +63,8 @@ const TASKS_LIST_COLS = [
   'id', 'task_code', 'title', 'description', 'status', 'priority',
   'project_id', 'created_at', 'due_date', 'reminder_date', 'reminder_type',
   'planned_date', 'assignee_id', 'parent_task_id', 'updated_by',
-  'chat_messages', 'attachments', 'proposals', 'social_media_approval', 'time_tracking'
+  'chat_messages', 'attachments', 'proposals', 'social_media_approval', 'time_tracking',
+  'updated_at', 'status_history', 'rework_count'
 ].join(', ');
 
 export async function fetchTasks(): Promise<Task[]> {
@@ -104,6 +105,9 @@ export async function fetchTasks(): Promise<Task[]> {
       proposals: t.proposals || [],
       socialMediaApproval: t.social_media_approval,
       timeTracking: t.time_tracking,
+      updatedAt: t.updated_at,
+      statusHistory: t.status_history || [],
+      reworkCount: t.rework_count || 0,
       subtasks: (t.subtasks || [])
         .map((st: any) => ({
           id: st.id,
@@ -187,7 +191,10 @@ export async function saveTask(task: Task) {
     attachments: task.attachments || [],
     proposals: task.proposals || [],
     social_media_approval: task.socialMediaApproval,
-    time_tracking: task.timeTracking
+    time_tracking: task.timeTracking,
+    updated_at: task.updatedAt || null,
+    status_history: task.statusHistory || [],
+    rework_count: task.reworkCount || 0
   });
   if (taskError) {
     console.error("Error saving task:", taskError);
@@ -292,6 +299,9 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
     if (updates.proposals !== undefined) dbUpdates.proposals = updates.proposals;
     if (updates.socialMediaApproval !== undefined) dbUpdates.social_media_approval = updates.socialMediaApproval;
     if (updates.timeTracking !== undefined) dbUpdates.time_tracking = updates.timeTracking;
+    if (updates.updatedAt !== undefined) dbUpdates.updated_at = updates.updatedAt;
+    if (updates.statusHistory !== undefined) dbUpdates.status_history = updates.statusHistory;
+    if (updates.reworkCount !== undefined) dbUpdates.rework_count = updates.reworkCount;
 
     const guardDescription = dbUpdates.description !== undefined && opts.descriptionBase !== undefined;
 
@@ -453,7 +463,7 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, centro_custo, categoria, subcategoria, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, paid_at, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -462,6 +472,9 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     descricao: r.descricao,
     valor: Number(r.valor),
     empreendimento: r.empreendimento,
+    centroCusto: r.centro_custo,
+    categoria: r.categoria,
+    subcategoria: r.subcategoria,
     vencimento: r.vencimento,
     vencimentoOriginal: r.vencimento_original,
     // Left undefined (not defaulted to []) when not selected by the list query,
@@ -487,9 +500,23 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     motivoRecusaResolvidoEm: r.motivo_recusa_resolvido_em,
     motivoRecusaObservacao: r.motivo_recusa_observacao,
     chatMessages: r.chat_messages,
+    paidAt: r.paid_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+export async function fetchSiengeTitleStatusHistory(): Promise<SiengeTitleStatusHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from('sienge_title_status_history')
+    .select('id, title_id, status, changed_at');
+  if (error) throw error;
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    titleId: r.title_id,
+    status: r.status,
+    changedAt: r.changed_at,
+  }));
 }
 
 export async function fetchSiengeTitles(): Promise<SiengeTitle[]> {
@@ -537,6 +564,9 @@ export async function saveSiengeTitle(title: SiengeTitle) {
     descricao: title.descricao || null,
     valor: title.valor,
     empreendimento: title.empreendimento || null,
+    centro_custo: title.centroCusto || null,
+    categoria: title.categoria || null,
+    subcategoria: title.subcategoria || null,
     vencimento: title.vencimento || null,
     vencimento_original: title.vencimentoOriginal || null,
     lote: title.lote || null,
@@ -590,6 +620,250 @@ export async function saveSiengeTitle(title: SiengeTitle) {
 export async function deleteSiengeTitle(id: string) {
   const { error } = await supabase.from('sienge_titles').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ─── Sienge Metas & Orçamento (dashboard estratégico) ───────────
+
+function mapSiengeProjectMeta(r: any): SiengeProjectMeta {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    ano: r.ano,
+    mes: r.mes,
+    vgvMeta: Number(r.vgv_meta),
+    unidadesMeta: Number(r.unidades_meta),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeProjectMetas(): Promise<SiengeProjectMeta[]> {
+  const { data, error } = await supabase.from('sienge_project_metas').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeProjectMeta);
+}
+
+export async function saveSiengeProjectMeta(meta: SiengeProjectMeta) {
+  const { error } = await supabase.from('sienge_project_metas').upsert({
+    id: meta.id,
+    project_id: meta.projectId,
+    ano: meta.ano,
+    mes: meta.mes,
+    vgv_meta: meta.vgvMeta,
+    unidades_meta: meta.unidadesMeta,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id,ano,mes' });
+  if (error) throw error;
+}
+
+export async function deleteSiengeProjectMeta(id: string) {
+  const { error } = await supabase.from('sienge_project_metas').delete().eq('id', id);
+  if (error) throw error;
+}
+
+function mapSiengeProjectTotal(r: any): SiengeProjectTotal {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    vgvTotal: Number(r.vgv_total),
+    unidadesTotal: Number(r.unidades_total),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeProjectTotais(): Promise<SiengeProjectTotal[]> {
+  const { data, error } = await supabase.from('sienge_project_totais').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeProjectTotal);
+}
+
+export async function saveSiengeProjectTotal(total: SiengeProjectTotal) {
+  const { error } = await supabase.from('sienge_project_totais').upsert({
+    id: total.id,
+    project_id: total.projectId,
+    vgv_total: total.vgvTotal,
+    unidades_total: total.unidadesTotal,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id' });
+  if (error) throw error;
+}
+
+function mapSiengeProjectDisplay(r: any): SiengeProjectDisplay {
+  return {
+    projectId: r.project_id,
+    hidden: r.hidden,
+    sortOrder: r.sort_order,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeProjectDisplays(): Promise<SiengeProjectDisplay[]> {
+  const { data, error } = await supabase.from('sienge_project_display').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeProjectDisplay);
+}
+
+export async function saveSiengeProjectDisplay(display: SiengeProjectDisplay) {
+  const { error } = await supabase.from('sienge_project_display').upsert({
+    project_id: display.projectId,
+    hidden: display.hidden,
+    sort_order: display.sortOrder,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id' });
+  if (error) throw error;
+}
+
+function mapSiengeCategoriaOrcamento(r: any): SiengeCategoriaOrcamento {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    centroCusto: r.centro_custo,
+    categoria: r.categoria,
+    percentual: Number(r.percentual),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeCategoriaOrcamentos(): Promise<SiengeCategoriaOrcamento[]> {
+  const { data, error } = await supabase.from('sienge_categoria_orcamento').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeCategoriaOrcamento);
+}
+
+export async function saveSiengeCategoriaOrcamento(item: SiengeCategoriaOrcamento) {
+  const { error } = await supabase.from('sienge_categoria_orcamento').upsert({
+    id: item.id,
+    project_id: item.projectId,
+    centro_custo: item.centroCusto,
+    categoria: item.categoria,
+    percentual: item.percentual,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id,centro_custo,categoria' });
+  if (error) throw error;
+}
+
+export async function deleteSiengeCategoriaOrcamento(id: string) {
+  const { error } = await supabase.from('sienge_categoria_orcamento').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Sienge Tabela de Vendas (unidades, valor de tabela e revisões) ──
+
+function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    unidade: r.unidade,
+    areaM2: Number(r.area_m2),
+    valorTabela: Number(r.valor_tabela),
+    situacao: r.situacao,
+    descricao: r.descricao,
+    frozenSince: r.frozen_since,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeTabelaVendas(): Promise<SiengeTabelaVendaUnidade[]> {
+  const { data, error } = await supabase.from('sienge_tabela_vendas').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeTabelaVendaUnidade);
+}
+
+export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
+  const { error } = await supabase.from('sienge_tabela_vendas').upsert({
+    id: item.id,
+    project_id: item.projectId,
+    unidade: item.unidade,
+    area_m2: item.areaM2,
+    valor_tabela: item.valorTabela,
+    situacao: item.situacao,
+    descricao: item.descricao,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id,unidade' });
+  if (error) throw error;
+}
+
+export async function deleteSiengeTabelaVenda(id: string) {
+  const { error } = await supabase.from('sienge_tabela_vendas').delete().eq('id', id);
+  if (error) throw error;
+}
+
+function mapSiengeTabelaVendaRevisao(r: any): SiengeTabelaVendaRevisao {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    numero: r.numero,
+    tipo: r.tipo,
+    percentual: Number(r.percentual),
+    unidadesAfetadas: r.unidades_afetadas,
+    unidades: r.unidades,
+    descricao: r.descricao,
+    createdAt: r.created_at,
+  };
+}
+
+export async function fetchSiengeTabelaVendaRevisoes(): Promise<SiengeTabelaVendaRevisao[]> {
+  const { data, error } = await supabase.from('sienge_tabela_vendas_revisoes').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeTabelaVendaRevisao);
+}
+
+function mapSiengeVenda(r: any): SiengeVenda {
+  return {
+    id: r.id,
+    unidadeId: r.unidade_id,
+    projectId: r.project_id,
+    unidade: r.unidade,
+    valorCongelado: Number(r.valor_congelado),
+    dataVenda: r.data_venda,
+    dataDistrato: r.data_distrato,
+  };
+}
+
+// Só leitura: sienge_vendas é escrita exclusivamente pelo trigger
+// handle_sienge_tabela_venda_situacao_change no banco, nunca pelo client.
+export async function fetchSiengeVendas(): Promise<SiengeVenda[]> {
+  const { data, error } = await supabase.from('sienge_vendas').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeVenda);
+}
+
+export async function fetchSiengeOrcamentoConfig(): Promise<SiengeOrcamentoConfig> {
+  const { data, error } = await supabase
+    .from('sienge_orcamento_config')
+    .select('*')
+    .eq('id', 'default')
+    .maybeSingle();
+  if (error) throw error;
+  return { controleInicio: data?.controle_inicio || new Date().toISOString().slice(0, 10) };
+}
+
+export async function saveSiengeOrcamentoConfig(config: SiengeOrcamentoConfig) {
+  const { error } = await supabase.from('sienge_orcamento_config').upsert({
+    id: 'default',
+    controle_inicio: config.controleInicio,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function applySiengeTabelaVendasReajuste(params: {
+  projectId: string;
+  unidadeIds: string[] | null;
+  percentual: number;
+  descricao?: string | null;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('apply_sienge_tabela_vendas_reajuste', {
+    p_project_id: params.projectId,
+    p_unidade_ids: params.unidadeIds,
+    p_percentual: params.percentual,
+    p_descricao: params.descricao ?? null,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 // ─── Sienge Alçada Config ──────────────────────────────────────

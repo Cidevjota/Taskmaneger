@@ -2,13 +2,15 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Plus, X, CheckCircle2, Clock, ChevronDown, ChevronRight,
   DollarSign, Building2, Calendar, Hash, FileText, Layers,
-  TrendingUp, BarChart3, Timer, Package, AlertTriangle, Trash2, Check
+  TrendingUp, Timer, AlertTriangle, Trash2, Check
 } from 'lucide-react';
-import { SiengeLote, SiengeTitle, SiengeLoteStatus } from '../types';
+import { SiengeLote, SiengeTitle, SiengeLoteStatus, SiengeTitleStatusHistoryEntry } from '../types';
+import MonthSelectDropdown, { MONTHS_FULL } from './MonthSelectDropdown';
 
 interface SiengeLotesProps {
   lotes: SiengeLote[];
   titles: SiengeTitle[];
+  statusHistory: SiengeTitleStatusHistoryEntry[];
   onSaveLote: (lote: SiengeLote) => void;
   onDeleteLote: (id: string) => void;
 }
@@ -331,10 +333,14 @@ const FILTER_OPTIONS = [
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function SiengeLotes({ lotes, titles, onSaveLote, onDeleteLote }: SiengeLotesProps) {
+export default function SiengeLotes({ lotes, titles, statusHistory, onSaveLote, onDeleteLote }: SiengeLotesProps) {
   const [showNewModal, setShowNewModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+  const [showHistorico, setShowHistorico] = useState(false);
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
 
   const generateNextName = () => {
     const d = new Date();
@@ -361,117 +367,201 @@ export default function SiengeLotes({ lotes, titles, onSaveLote, onDeleteLote }:
   };
 
   // ── Dashboard metrics ──────────────────────────────────────────────────────
+  // Base do filtro do mês: o vencimento do LOTE (não do título individual) — é essa
+  // data que define a que mês um lote de pagamento pertence.
+  const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+  const periodLotes = useMemo(() => lotes.filter(l => l.vencimento?.startsWith(monthKey)), [lotes, monthKey]);
+
   const metrics = useMemo(() => {
-    const paidTitles = titles.filter(t => t.status === 'pago');
-    const totalPaid = paidTitles.reduce((s, t) => s + t.valor, 0);
-    const totalAll = titles.reduce((s, t) => s + t.valor, 0);
+    const periodLoteIds = new Set(periodLotes.map(l => l.id));
+    const periodTitles = titles.filter(t => t.loteId && periodLoteIds.has(t.loteId));
 
-    // Spending by empreendimento (all titles)
-    const byEmp: Record<string, number> = {};
-    titles.forEach(t => {
-      const key = t.empreendimento || 'Não informado';
-      byEmp[key] = (byEmp[key] || 0) + t.valor;
-    });
-    const byEmpSorted = Object.entries(byEmp).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    const maxEmp = byEmpSorted[0]?.[1] || 1;
+    const totalPeriodValue = periodTitles.reduce((s, t) => s + t.valor, 0);
+    const paidInPeriod = periodTitles.filter(t => t.status === 'pago');
+    const totalPaidInPeriod = paidInPeriod.reduce((s, t) => s + t.valor, 0);
 
-    // Avg time to payment (days from createdAt to vencimento for paid titles)
-    const avgDays = paidTitles.length > 0
-      ? Math.round(paidTitles.reduce((s, t) => s + daysBetween(t.createdAt, t.vencimento), 0) / paidTitles.length)
+    // Títulos em atraso dentro dos lotes do mês selecionado
+    const today = new Date().toISOString().split('T')[0];
+    const overdueTitles = periodTitles.filter(t => t.status !== 'pago' && t.vencimento && t.vencimento < today);
+    const overdueValue = overdueTitles.reduce((s, t) => s + t.valor, 0);
+
+    // A Pagar: títulos aguardando pagamento dentro do mês selecionado
+    const aPagarTitles = periodTitles.filter(t => t.status === 'aguardando_pagamento');
+    const aPagarValue = aPagarTitles.reduce((s, t) => s + t.valor, 0);
+
+    const openLotesInPeriod = periodLotes.filter(l => l.status === 'aberto');
+
+    return {
+      totalPeriodValue,
+      totalPaidInPeriod,
+      paidInPeriodCount: paidInPeriod.length,
+      periodTitlesCount: periodTitles.length,
+      overdueValue,
+      overdueCount: overdueTitles.length,
+      aPagarValue,
+      aPagarCount: aPagarTitles.length,
+      openLotesCount: openLotesInPeriod.length,
+    };
+  }, [titles, periodLotes]);
+
+  // ── Histórico (mês a mês não se aplica: sempre olha a base inteira) ────────
+  const historico = useMemo(() => {
+    const paidTitles = titles.filter(t => t.status === 'pago' && t.paidAt);
+
+    const onTimePaid = paidTitles.filter(t => t.vencimento && t.paidAt!.split('T')[0] <= t.vencimento);
+    const latePaid = paidTitles.filter(t => !t.vencimento || t.paidAt!.split('T')[0] > t.vencimento);
+
+    const avgPaymentDays = paidTitles.length > 0
+      ? Math.round(paidTitles.reduce((s, t) => s + daysBetween(t.createdAt, t.paidAt!), 0) / paidTitles.length)
       : null;
 
-    const openLotes = lotes.filter(l => l.status === 'aberto');
-    const openValue = titles.filter(t => {
-      if (t.status === 'pago') return false;
-      const l = lotes.find(lo => lo.id === t.loteId);
-      return l?.status === 'aberto';
-    }).reduce((s, t) => s + t.valor, 0);
+    // Tempo médio de aprovação: da 1ª entrada em '1ª alçada' até a 1ª entrada
+    // subsequente em 'aguardando pagamento' — inclui o tempo perdido em eventuais
+    // recusas/reenvios no meio do caminho. Só existe para títulos com histórico
+    // registrado (a partir da criação da tabela de histórico de status).
+    const byTitle = new Map<string, SiengeTitleStatusHistoryEntry[]>();
+    statusHistory.forEach(h => {
+      const list = byTitle.get(h.titleId) || [];
+      list.push(h);
+      byTitle.set(h.titleId, list);
+    });
+    const approvalDurationsDays: number[] = [];
+    byTitle.forEach(entries => {
+      const sorted = [...entries].sort((a, b) => new Date(a.changedAt).getTime() - new Date(b.changedAt).getTime());
+      const firstAprovacao1 = sorted.find(e => e.status === 'aprovacao_1');
+      if (!firstAprovacao1) return;
+      const firstAprovacao1Time = new Date(firstAprovacao1.changedAt).getTime();
+      const firstAguardando = sorted.find(e => e.status === 'aguardando_pagamento' && new Date(e.changedAt).getTime() > firstAprovacao1Time);
+      if (!firstAguardando) return;
+      approvalDurationsDays.push((new Date(firstAguardando.changedAt).getTime() - firstAprovacao1Time) / 86400000);
+    });
+    const avgApprovalDays = approvalDurationsDays.length > 0
+      ? Math.round(approvalDurationsDays.reduce((s, d) => s + d, 0) / approvalDurationsDays.length)
+      : null;
 
-    return { totalPaid, totalAll, byEmpSorted, maxEmp, avgDays, openLotesCount: openLotes.length, openValue };
-  }, [titles, lotes]);
+    return {
+      onTimePaidCount: onTimePaid.length,
+      onTimeValue: onTimePaid.reduce((s, t) => s + t.valor, 0),
+      latePaidCount: latePaid.length,
+      lateValue: latePaid.reduce((s, t) => s + t.valor, 0),
+      avgPaymentDays,
+      avgApprovalDays,
+      approvalSampleSize: approvalDurationsDays.length,
+    };
+  }, [titles, statusHistory]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#08080a]">
-      {/* Header */}
+      {/* Header — mês em destaque, "Lotes de Pagamento" como subtítulo */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-900/80 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
             <Layers size={16} className="text-blue-400" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-zinc-100">Lotes de Pagamento</h1>
-            <p className="text-[11px] text-zinc-600">
-              {lotes.length} lote{lotes.length !== 1 ? 's' : ''} · {lotes.filter(l => l.status === 'aberto').length} em aberto
+            <h1 className="text-lg font-bold text-zinc-100 leading-tight">{MONTHS_FULL[selectedMonth]} {selectedYear}</h1>
+            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+              Lotes de Pagamento · {periodLotes.length} no mês
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-lg shadow-blue-500/20"
-        >
-          <Plus size={13} /> Novo Lote
-        </button>
+        <div className="flex items-center gap-2">
+          <MonthSelectDropdown
+            year={selectedYear}
+            month={selectedMonth}
+            onChange={(y, m) => { setSelectedYear(y); setSelectedMonth(m); }}
+          />
+          <button
+            onClick={() => setShowHistorico(p => !p)}
+            title="Exibir métricas históricas (todos os títulos, sem filtro de mês)"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+              showHistorico ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+            }`}
+          >
+            <Clock size={12} />
+            Histórico
+            <span className={`ml-0.5 flex items-center h-4 w-7 rounded-full transition-colors ${showHistorico ? 'bg-blue-500' : 'bg-zinc-700'}`}>
+              <span className={`h-3 w-3 rounded-full bg-white transition-transform ${showHistorico ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+            </span>
+          </button>
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-lg shadow-blue-500/20"
+          >
+            <Plus size={13} /> Novo Lote
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6">
         {/* Dashboard cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Total geral */}
+          {/* Valor total do período */}
           <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-              <TrendingUp size={11} className="text-emerald-500" /> Gasto Total
+              <TrendingUp size={11} className="text-emerald-500" /> Valor Total
             </div>
-            <div className="text-lg font-bold text-emerald-400">{formatCurrency(metrics.totalAll)}</div>
-            <div className="text-[11px] text-zinc-600">{titles.length} título{titles.length !== 1 ? 's' : ''}</div>
+            <div className="text-lg font-bold text-emerald-400">{formatCurrency(metrics.totalPeriodValue)}</div>
+            <div className="text-[11px] text-zinc-600">{metrics.periodTitlesCount} título{metrics.periodTitlesCount !== 1 ? 's' : ''} no mês</div>
           </div>
-          {/* Pagos */}
+          {/* Pagos no período */}
           <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
               <CheckCircle2 size={11} className="text-emerald-500" /> Total Pago
             </div>
-            <div className="text-lg font-bold text-zinc-100">{formatCurrency(metrics.totalPaid)}</div>
-            <div className="text-[11px] text-zinc-600">{titles.filter(t => t.status === 'pago').length} pagos</div>
+            <div className="text-lg font-bold text-zinc-100">{formatCurrency(metrics.totalPaidInPeriod)}</div>
+            <div className="text-[11px] text-zinc-600">{metrics.paidInPeriodCount} título{metrics.paidInPeriodCount !== 1 ? 's' : ''} pago{metrics.paidInPeriodCount !== 1 ? 's' : ''}</div>
           </div>
-          {/* Lotes abertos */}
+          {/* Títulos em atraso */}
           <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-              <Package size={11} className="text-blue-400" /> Lotes em Aberto
+              <AlertTriangle size={11} className="text-red-400" /> Títulos em Atraso
             </div>
-            <div className="text-lg font-bold text-blue-400">{metrics.openLotesCount}</div>
-            <div className="text-[11px] text-zinc-600">{formatCurrency(metrics.openValue)} pendente</div>
+            <div className="text-lg font-bold text-red-400">{formatCurrency(metrics.overdueValue)}</div>
+            <div className="text-[11px] text-zinc-600">{metrics.overdueCount} título{metrics.overdueCount !== 1 ? 's' : ''} em atraso</div>
           </div>
-          {/* Tempo médio */}
+          {/* A Pagar */}
           <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-              <Timer size={11} className="text-amber-400" /> Tempo Médio
+              <Clock size={11} className="text-amber-400" /> A Pagar
             </div>
-            <div className="text-lg font-bold text-amber-400">
-              {metrics.avgDays !== null ? `${metrics.avgDays}d` : '—'}
-            </div>
-            <div className="text-[11px] text-zinc-600">até pagamento</div>
+            <div className="text-lg font-bold text-amber-400">{formatCurrency(metrics.aPagarValue)}</div>
+            <div className="text-[11px] text-zinc-600">{metrics.aPagarCount} aguardando pagamento</div>
           </div>
         </div>
 
-        {/* Gastos por empreendimento */}
-        {metrics.byEmpSorted.length > 0 && (
-          <div className="bg-zinc-900/30 border border-zinc-800/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 size={13} className="text-blue-400" />
-              <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Gastos por Empreendimento</h3>
+        {/* Histórico — métricas globais, sem filtro de mês */}
+        {showHistorico && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <CheckCircle2 size={11} className="text-emerald-500" /> Total Pago em Dia
+              </div>
+              <div className="text-lg font-bold text-emerald-400">{formatCurrency(historico.onTimeValue)}</div>
+              <div className="text-[11px] text-zinc-600">{historico.onTimePaidCount} Títulos pagos em dia.</div>
             </div>
-            <div className="flex flex-col gap-2.5">
-              {metrics.byEmpSorted.map(([emp, val]) => (
-                <div key={emp} className="flex items-center gap-3">
-                  <span className="text-xs text-zinc-400 truncate w-40 shrink-0">{emp}</span>
-                  <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-500"
-                      style={{ width: `${(val / metrics.maxEmp) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-semibold text-zinc-300 shrink-0 text-right w-28">{formatCurrency(val)}</span>
-                </div>
-              ))}
+            <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <AlertTriangle size={11} className="text-red-400" /> Total Pago em Atraso
+              </div>
+              <div className="text-lg font-bold text-red-400">{formatCurrency(historico.lateValue)}</div>
+              <div className="text-[11px] text-zinc-600">{historico.latePaidCount} Títulos pago em atraso</div>
+            </div>
+            <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <Timer size={11} className="text-amber-400" /> Tempo Médio até Pagamento
+              </div>
+              <div className="text-lg font-bold text-amber-400">{historico.avgPaymentDays !== null ? `${historico.avgPaymentDays}d` : '—'}</div>
+              <div className="text-[11px] text-zinc-600">considerando todos os títulos</div>
+            </div>
+            <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <Timer size={11} className="text-blue-400" /> Tempo Médio de Aprovação
+              </div>
+              <div className="text-lg font-bold text-blue-400">{historico.avgApprovalDays !== null ? `${historico.avgApprovalDays}d` : '—'}</div>
+              <div className="text-[11px] text-zinc-600">
+                {historico.approvalSampleSize > 0 ? `1ª alçada até aguardando · ${historico.approvalSampleSize} títulos` : 'sem dados desde a criação do histórico'}
+              </div>
             </div>
           </div>
         )}
@@ -480,7 +570,7 @@ export default function SiengeLotes({ lotes, titles, onSaveLote, onDeleteLote }:
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-              <Layers size={13} /> Todos os Lotes
+              <Layers size={13} /> Lotes de {MONTHS_FULL[selectedMonth]}
             </h3>
             
             <div className="flex items-center gap-2 relative">
@@ -518,7 +608,7 @@ export default function SiengeLotes({ lotes, titles, onSaveLote, onDeleteLote }:
           </div>
 
           {/* Table Headers */}
-          {lotes.length > 0 && (
+          {periodLotes.length > 0 && (
             <div className="flex items-center gap-3 px-4 pb-2 border-b border-zinc-800/40">
               <div className="flex-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Lote</div>
               <div className="w-24 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Situação</div>
@@ -538,8 +628,13 @@ export default function SiengeLotes({ lotes, titles, onSaveLote, onDeleteLote }:
                 + Criar primeiro lote
               </button>
             </div>
+          ) : periodLotes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-zinc-700 gap-2">
+              <Layers size={28} />
+              <p className="text-sm">Nenhum lote com vencimento em {MONTHS_FULL[selectedMonth]} de {selectedYear}.</p>
+            </div>
           ) : (
-            lotes.filter(lote => {
+            periodLotes.filter(lote => {
               if (filterStatus === 'todos') return true;
               return titles.some(t => t.loteId === lote.id && t.status === filterStatus);
             }).map(lote => (

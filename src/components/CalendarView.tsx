@@ -67,6 +67,7 @@ export default function CalendarView({
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
   const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
+  const [sortDue, setSortDue] = useState<'none' | 'asc' | 'desc'>('none');
   const hasInitialized = useRef(!!currentUser);
 
   // Filter tasks
@@ -84,9 +85,10 @@ export default function CalendarView({
     
     // Check if task is unplanned and its dueDate matches the currently viewed calendar month
     // OR if it's within the first 15 days of the next month.
+    if (t.status === 'done') return false;
     if (t.plannedDate) return false;
     if (!t.dueDate) return false;
-    
+
     const [tYear, tMonth, tDay] = t.dueDate.split('-').map(Number);
     const isCurrentMonth = (tYear === year && tMonth === month + 1);
     
@@ -103,15 +105,25 @@ export default function CalendarView({
     return true;
   });
 
-  // Sort tasks by priority
-  if (sortPriority !== 'none') {
+  // Sort tasks by priority / due date
+  if (sortPriority !== 'none' || sortDue !== 'none') {
     const priorityWeight: Record<TaskPriority, number> = {
       urgent: 4, high: 3, medium: 2, low: 1, no_priority: 0
     };
     filteredTasks = [...filteredTasks].sort((a, b) => {
-      const pA = priorityWeight[a.priority];
-      const pB = priorityWeight[b.priority];
-      if (pA !== pB) return sortPriority === 'asc' ? pA - pB : pB - pA;
+      if (sortPriority !== 'none') {
+        const pA = priorityWeight[a.priority];
+        const pB = priorityWeight[b.priority];
+        if (pA !== pB) return sortPriority === 'asc' ? pA - pB : pB - pA;
+      }
+      if (sortDue !== 'none') {
+        const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+        const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+        if (!a.dueDate && b.dueDate) return 1;
+        if (a.dueDate && !b.dueDate) return -1;
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (dateA !== dateB) return sortDue === 'asc' ? dateA - dateB : dateB - dateA;
+      }
       return 0;
     });
   }
@@ -421,6 +433,16 @@ export default function CalendarView({
               <div className="flex flex-col gap-[1px]">
                 <ArrowUp size={9} className={sortPriority === 'asc' ? 'text-blue-400' : 'opacity-40'} />
                 <ArrowDown size={9} className={sortPriority === 'desc' ? 'text-blue-400' : 'opacity-40'} />
+              </div>
+            </button>
+            <button
+              onClick={() => { if (sortDue === 'asc') setSortDue('desc'); else if (sortDue === 'desc') setSortDue('none'); else setSortDue('asc'); }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium transition-all ${sortDue !== 'none' ? 'bg-zinc-800 text-zinc-200 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Prazo
+              <div className="flex flex-col gap-[1px]">
+                <ArrowUp size={9} className={sortDue === 'asc' ? 'text-blue-400' : 'opacity-40'} />
+                <ArrowDown size={9} className={sortDue === 'desc' ? 'text-blue-400' : 'opacity-40'} />
               </div>
             </button>
           </div>

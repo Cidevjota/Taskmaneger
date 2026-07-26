@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Project, Task, Label } from '../types';
-import { Filter, Calendar, Users, FolderKanban, Tag, Flag, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Clock, Activity, BarChart2 } from 'lucide-react';
+import { Filter } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface DashboardViewProps {
@@ -123,32 +123,32 @@ export default function DashboardView({ tasks, projects, labels }: DashboardView
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#08080a] text-zinc-200">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#0A0A0A] text-[#EDEDED]">
 
       {/* Top Filter Bar */}
-      <div className="h-14 border-b border-zinc-900 px-6 flex items-center gap-4 shrink-0 bg-[#0c0c0e]">
-        <div className="flex items-center gap-2 text-zinc-400 mr-2">
-          <Filter size={14} />
-          <span className="text-[11px] font-semibold uppercase tracking-wider font-sans">Filtros</span>
+      <div className="h-14 border-b border-[#1F1F22] px-6 flex items-center gap-2 shrink-0 bg-[#0A0A0A]">
+        <div className="flex items-center gap-2 text-[#6B6B70] mr-3">
+          <Filter size={13} strokeWidth={1.75} />
+          <span className="text-[11px] font-medium uppercase tracking-[0.05em]">Filtros</span>
         </div>
 
-        <FilterSelect icon={<Calendar size={13} />} value={period} options={periodOptions} onChange={setPeriod} />
-        <FilterSelect icon={<Users size={13} />} value={member} options={memberOptions} onChange={setMember} renderOption={renderMemberOption} />
-        <FilterSelect icon={<FolderKanban size={13} />} value={project} options={projectOptions} onChange={setProject} />
-        <FilterSelect icon={<Tag size={13} />} value={taskClass} options={classOptions} onChange={setTaskClass} renderOption={renderClassOption} />
-        <FilterSelect icon={<Flag size={13} />} value={priority} options={priorityOptions} onChange={setPriority} renderOption={renderPriorityOption} />
+        <FilterSelect value={period} options={periodOptions} onChange={setPeriod} />
+        <FilterSelect value={member} options={memberOptions} onChange={setMember} renderOption={renderMemberOption} />
+        <FilterSelect value={project} options={projectOptions} onChange={setProject} />
+        <FilterSelect value={taskClass} options={classOptions} onChange={setTaskClass} renderOption={renderClassOption} />
+        <FilterSelect value={priority} options={priorityOptions} onChange={setPriority} renderOption={renderPriorityOption} />
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-        <OverviewTab 
-          tasks={tasks} 
-          projects={projects} 
-          period={period} 
-          member={member} 
-          projectFilter={project} 
-          taskClass={taskClass} 
-          priorityFilter={priority} 
+        <OverviewTab
+          tasks={tasks}
+          projects={projects}
+          period={period}
+          member={member}
+          projectFilter={project}
+          taskClass={taskClass}
+          priorityFilter={priority}
         />
       </div>
     </div>
@@ -156,27 +156,26 @@ export default function DashboardView({ tasks, projects, labels }: DashboardView
 }
 
 // Subcomponents
-function FilterSelect({ icon, value, options, onChange, renderOption }: { icon: React.ReactNode, value: string, options: string[], onChange: (val: string) => void, renderOption?: (val: string) => React.ReactNode }) {
+function FilterSelect({ value, options, onChange, renderOption }: { value: string, options: string[], onChange: (val: string) => void, renderOption?: (val: string) => React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <div className="relative">
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-md text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-all"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1A1A1C] rounded-md text-xs font-normal text-[#A0A0A5] hover:bg-[#1F1F22] hover:text-[#EDEDED] transition-colors"
       >
-        {icon}
         {renderOption ? renderOption(value) : value}
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50 ml-1"><path d="m6 9 6 6 6-6" /></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-40 ml-0.5"><path d="m6 9 6 6 6-6" /></svg>
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 min-w-[160px] max-w-[240px] max-h-[300px] overflow-y-auto bg-[#18181b] border border-zinc-800 rounded-md shadow-xl z-[100] py-1 custom-scrollbar">
+        <div className="absolute top-full left-0 mt-1 min-w-[160px] max-w-[240px] max-h-[300px] overflow-y-auto bg-[#111113] rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] z-[100] py-1 custom-scrollbar">
           {options.map((opt, i) => (
             <button
               key={i}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-800 transition-colors truncate ${value === opt ? 'text-white bg-zinc-800/50 font-medium' : 'text-zinc-400'}`}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#1A1A1C] transition-colors truncate ${value === opt ? 'text-[#EDEDED]' : 'text-[#6B6B70]'}`}
               onClick={() => {
                 onChange(opt);
                 setIsOpen(false);
@@ -274,8 +273,10 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
     if (period === 'Últimos 7 dias') cutoffDays = 7;
     else if (period === 'Últimos 14 dias') cutoffDays = 14;
     else if (period === 'Últimos 30 dias') cutoffDays = 30;
-    
-    const cutoffDate = new Date(new Date().getTime() - (cutoffDays * 24 * 60 * 60 * 1000));
+
+    const cutoffDate = cutoffDays > 0
+      ? new Date(new Date().getTime() - (cutoffDays * 24 * 60 * 60 * 1000))
+      : new Date(0);
 
     const entregas = filteredTasks.filter(t => {
       if (!['implementation', 'done'].includes(t.status)) return false;
@@ -491,252 +492,167 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
   }, [filteredTasks, projects]);
 
   return (
-    <div className="space-y-[32px] animate-fade-in w-full">
+    <div className="space-y-10 animate-fade-in w-full">
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
         <MetricCard title="Entregas" value={metrics.entregas} suffix="tarefas" delta="+0%" trend="up" tooltip="Tarefas entregues no período, com comparativo ao período anterior." />
-        <MetricCard title="Entregas no Prazo" value={metrics.entregasNoPrazoVal} suffix="tarefas" absolute={metrics.entregasNoPrazoAbs} delta="+0%" trend="up" tooltip="Das tarefas que tinham prazo no período, a quantidade entregue no prazo." />
-        <MetricCard title="Tempo de Ciclo (Execução)" value={metrics.avgCycleTime} suffix="dias" absolute="Média de execução" delta="-0.0" trend="down" goodTrend="down" tooltip="Tempo decorrido enquanto ativamente trabalhando (acumulado no timer)." />
-        <MetricCard title="Tempo de Ciclo (Total)" value={metrics.avgLeadTime} suffix="dias" absolute="Média (Lead Time)" delta="-0.0" trend="down" goodTrend="down" tooltip="Lead Time: de 'Criado' até 'Concluído'." />
-        <MetricCard title="Taxa de Atraso" value={metrics.atrasoVal} suffix="tarefas" absolute={metrics.atrasoAbs} delta="+0%" trend="up" goodTrend="down" tooltip="Quantidade de tarefas abertas que já passaram do prazo agora." />
-        <MetricCard title="Taxa de Aprovação Direta" value={metrics.aprovacaoDiretaVal} suffix="tarefas" absolute={metrics.aprovacaoDiretaAbs} delta="+0%" trend="up" goodTrend="up" tooltip="Quantidade de tarefas aprovadas sem voltar para refação." />
-        <MetricCard title="Criação vs Conclusão" value={metrics.criacaoVsConclusaoVal} suffix="razão" absolute={metrics.criacaoVsConclusaoAbs} delta="0.0" trend="up" goodTrend="down" tooltip="Proporção entre tarefas criadas e concluídas (ideal < 1.0)." />
-        <MetricCard title="Ciclos de Refação" value={metrics.ciclosRefacaoVal} suffix="ciclos/tarefa" absolute={metrics.ciclosRefacaoAbs} delta="0.0" trend="down" goodTrend="down" tooltip="Média de vezes que uma tarefa vai para refação até ser aprovada para implementação." />
-        <MetricCard title="Taxa de Refação" value={metrics.taxaRefacaoVal} suffix="tarefas" absolute={metrics.taxaRefacaoAbs} delta="0%" trend="down" goodTrend="down" tooltip="Quantidade de tarefas que foram para 'Refação' pelo menos 1 vez." />
+        <MetricCard title="Entregas no Prazo" value={metrics.entregasNoPrazoVal} suffix="tarefas" delta="+0%" trend="up" tooltip={metrics.entregasNoPrazoAbs} featured />
+        <MetricCard title="Tempo de Ciclo (Execução)" value={metrics.avgCycleTime} suffix="dias" delta="-0.0" trend="down" goodTrend="down" tooltip="Tempo decorrido enquanto ativamente trabalhando (acumulado no timer)." />
+        <MetricCard title="Tempo de Ciclo (Total)" value={metrics.avgLeadTime} suffix="dias" delta="-0.0" trend="down" goodTrend="down" tooltip="Lead Time: de 'Criado' até 'Concluído'." />
+        <MetricCard title="Taxa de Atraso" value={metrics.atrasoVal} suffix="tarefas" delta="+0%" trend="up" goodTrend="down" tooltip={metrics.atrasoAbs} />
+        <MetricCard title="Taxa de Aprovação Direta" value={metrics.aprovacaoDiretaVal} suffix="tarefas" delta="+0%" trend="up" goodTrend="up" tooltip={metrics.aprovacaoDiretaAbs} />
+        <MetricCard title="Criação vs Conclusão" value={metrics.criacaoVsConclusaoVal} suffix="razão" delta="0.0" trend="up" goodTrend="down" tooltip={metrics.criacaoVsConclusaoAbs} />
+        <MetricCard title="Ciclos de Refação" value={metrics.ciclosRefacaoVal} suffix="ciclos/tarefa" delta="0.0" trend="down" goodTrend="down" tooltip={metrics.ciclosRefacaoAbs} />
+        <MetricCard title="Taxa de Refação" value={metrics.taxaRefacaoVal} suffix="tarefas" delta="0%" trend="down" goodTrend="down" tooltip={metrics.taxaRefacaoAbs} />
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-2 gap-6">
-        {/* Stacked Bar Chart: Criação vs Conclusão */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-medium text-white uppercase tracking-[0.15em] flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-              Criação vs Conclusão
-            </h3>
-            <div className="flex items-center gap-3 text-[10px] font-normal text-[#525252] tracking-[0.02em]">
-              <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-zinc-600"></span> Criadas</div>
-              <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500"></span> Concluídas</div>
+        {/* Donut: Criação vs Conclusão */}
+        <div className="bg-[#111113] rounded-lg p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Criação vs Conclusão</h3>
+            <div className="flex items-center gap-3 text-[11px] font-normal text-[#6B6B70]">
+              <div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[#5E6AD2] opacity-30"></span> Criadas</div>
+              <div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[#5E6AD2]"></span> Concluídas</div>
             </div>
           </div>
 
-          <div className="h-[400px] flex items-center justify-center relative">
-            {/* Futuristic Background */}
-            <div className="absolute inset-0 pointer-events-none z-0" style={{ 
-              backgroundImage: 'radial-gradient(circle at center, rgba(59, 130, 246, 0.08) 0%, transparent 70%)'
-            }}></div>
-            
-            <div className="relative flex items-center justify-center z-10 w-full h-full">
-              {(() => {
-                const criadas = metrics.criadasTotais;
-                const concluidas = metrics.entregasTotais;
-                const total = criadas + concluidas || 1;
-                const radius = 100;
-                const circumference = 2 * Math.PI * radius;
-                const criadasDash = (criadas / total) * circumference;
-                const concluidasDash = (concluidas / total) * circumference;
+          <div className="h-[340px] flex items-center justify-center relative">
+            {(() => {
+              const criadas = metrics.criadasTotais;
+              const concluidas = metrics.entregasTotais;
+              const total = criadas + concluidas || 1;
+              const radius = 120;
+              const circumference = 2 * Math.PI * radius;
+              const criadasDash = (criadas / total) * circumference;
+              const concluidasDash = (concluidas / total) * circumference;
+              const gap = 2;
 
-                return (
-                  <div className="relative flex items-center justify-center w-full h-full">
-                    <svg width="100%" height="100%" viewBox="0 0 340 340" className="max-w-[340px]">
-                      <g transform="rotate(90 170 170)">
-                        <circle cx="170" cy="170" r="100" fill="transparent" stroke="#18181b" strokeWidth="40" />
-                        
-                        {/* Criadas slice */}
-                        <circle cx="170" cy="170" r="100" fill="transparent" stroke="#52525b" strokeWidth="40"
-                          strokeDasharray={`${criadasDash} ${circumference}`}
-                          strokeDashoffset={0} 
-                          className="transition-all duration-1000"
-                        />
+              return (
+                <div className="relative flex items-center justify-center w-full h-full">
+                  <svg width="100%" height="100%" viewBox="0 0 300 300" className="max-w-[300px]">
+                    <g transform="rotate(-90 150 150)">
+                      <circle cx="150" cy="150" r={radius} fill="transparent" stroke="#5E6AD2" strokeOpacity="0.18" strokeWidth="14"
+                        strokeDasharray={`${Math.max(0, criadasDash - gap)} ${circumference}`}
+                        strokeDashoffset={0}
+                        strokeLinecap="round"
+                      />
+                      <circle cx="150" cy="150" r={radius} fill="transparent" stroke="#5E6AD2" strokeWidth="14"
+                        strokeDasharray={`${Math.max(0, concluidasDash - gap)} ${circumference}`}
+                        strokeDashoffset={-criadasDash}
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  </svg>
 
-                        {/* Concluídas slice */}
-                        <circle cx="170" cy="170" r="100" fill="transparent" stroke="#3b82f6" strokeWidth="40"
-                          strokeDasharray={`${concluidasDash} ${circumference}`}
-                          strokeDashoffset={-criadasDash} 
-                          className="drop-shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all duration-1000"
-                        />
-                      </g>
-
-                      {/* Labels and Lines (unrotated) */}
-                      {(() => {
-                        const getCoords = (percent: number, radius: number) => {
-                           const angleRad = percent * 2 * Math.PI;
-                           return {
-                             x: 170 - radius * Math.sin(angleRad),
-                             y: 170 + radius * Math.cos(angleRad)
-                           };
-                        };
-
-                        const criadasMidPercent = total > 0 ? (criadas / total) / 2 : 0;
-                        const concluidasMidPercent = total > 0 ? (criadas / total) + (concluidas / total) / 2 : 0;
-
-                        const c1 = getCoords(criadasMidPercent, 110);
-                        const l1 = getCoords(criadasMidPercent, 135);
-                        const textAnchor1 = 'end';
-                        
-                        const c2 = getCoords(concluidasMidPercent, 110);
-                        const l2 = getCoords(concluidasMidPercent, 135);
-                        const textAnchor2 = 'start';
-
-                        return (
-                          <>
-                            {criadas > 0 && (
-                              <g>
-                                <polyline points={`${c1.x},${c1.y} ${l1.x},${l1.y} ${l1.x - 10},${l1.y}`} fill="none" stroke="#52525b" strokeWidth="1.5" />
-                                <text x={l1.x - 15} y={l1.y - 4} fill="#a1a1aa" fontSize="11" fontWeight="bold" textAnchor={textAnchor1}>CRIADAS ({criadas})</text>
-                                <text x={l1.x - 15} y={l1.y + 10} fill="#71717a" fontSize="10" textAnchor={textAnchor1}>No período</text>
-                              </g>
-                            )}
-                            {concluidas > 0 && (
-                              <g>
-                                <polyline points={`${c2.x},${c2.y} ${l2.x},${l2.y} ${l2.x + 10},${l2.y}`} fill="none" stroke="#3b82f6" strokeWidth="1.5" />
-                                <text x={l2.x + 15} y={l2.y - 4} fill="#60a5fa" fontSize="11" fontWeight="bold" textAnchor={textAnchor2}>CONCLUÍDAS ({concluidas})</text>
-                                <text x={l2.x + 15} y={l2.y + 10} fill="#3b82f6" fontSize="10" textAnchor={textAnchor2}>No período</text>
-                              </g>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </svg>
-                    
-                    {/* Inner Text */}
-                    <div className="absolute flex flex-col items-center justify-center text-center">
-                      <span className="text-3xl font-bold text-zinc-100">{metrics.criacaoVsConclusaoVal}x</span>
-                      <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold mt-1 max-w-[80px] leading-tight">Razão<br/>(Cri/Con)</span>
-                    </div>
+                  <div className="absolute flex flex-col items-center justify-center text-center">
+                    <span className="text-5xl font-extralight text-[#EDEDED] tracking-[-0.02em]">{metrics.criacaoVsConclusaoVal}<span className="text-2xl text-[#6B6B70]">x</span></span>
+                    <span className="text-[11px] text-[#6B6B70] uppercase tracking-[0.05em] mt-2">Razão criação/conclusão</span>
                   </div>
-                );
-              })()}
-            </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
-        {/* Line Chart: Tempo Médio por Status ao longo do tempo */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-medium text-white uppercase tracking-[0.15em] flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Mediana por Status
-            </h3>
+        {/* Bars: Mediana por Status */}
+        <div className="bg-[#111113] rounded-lg p-6">
+          <div className="mb-6">
+            <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Mediana por Status</h3>
           </div>
 
-          <div className="min-h-[400px] flex flex-col justify-between pt-4">
-            <div className="flex-1 flex flex-col gap-4 border-b border-zinc-800 pb-4 relative z-10">
-              {/* Background grid lines for X axis */}
-              <div className="absolute inset-y-0 left-0 right-0 flex justify-between pointer-events-none z-0">
-                <div className="w-px h-full border-l border-zinc-500" style={{ opacity: 0.08 }}></div>
-                <div className="w-px h-full border-l border-zinc-500" style={{ opacity: 0.08 }}></div>
-                <div className="w-px h-full border-l border-zinc-500" style={{ opacity: 0.08 }}></div>
-                <div className="w-px h-full border-l border-zinc-500" style={{ opacity: 0.08 }}></div>
-                <div className="w-px h-full border-l border-zinc-500" style={{ opacity: 0.08 }}></div>
-                <div className="w-px h-full border-l border-zinc-500" style={{ opacity: 0.08 }}></div>
-              </div>
-
-              {avgStatusTimeData.map(item => {
+          <div className="flex flex-col justify-between">
+            <div className="flex flex-col gap-5 relative">
+              {(() => {
                 const maxDays = Math.max(10, ...avgStatusTimeData.map(d => d.median));
-                const medianPct = Math.max(0.5, (item.median / maxDays) * 100);
+                const sortedDesc = [...avgStatusTimeData].map(d => d.median).sort((a, b) => b - a);
 
-                let bgClass = 'bg-gradient-to-r from-indigo-500 to-indigo-400';
-                let shadowClass = 'shadow-[0_0_8px_rgba(99,102,241,0.3)]';
+                return avgStatusTimeData.map(item => {
+                  const medianPct = Math.max(0.5, (item.median / maxDays) * 100);
+                  const rank = sortedDesc.indexOf(item.median);
+                  const opacity = Math.max(0.35, 1 - rank * 0.12);
 
-                return (
-                  <div key={item.status} className="flex flex-col w-full gap-1 mb-2 relative z-10 group">
-                    <div className="text-[10px] text-zinc-300 font-bold uppercase tracking-[0.2em] z-20">
-                      {item.status}
+                  return (
+                    <div key={item.status} className="flex flex-col w-full gap-1.5">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-[11px] text-[#6B6B70] uppercase tracking-[0.05em]">{item.status}</span>
+                        <span className="text-[11px] text-[#A0A0A5] font-normal">{item.median}d</span>
+                      </div>
+                      <div className="w-full h-[5px] bg-[#1A1A1C] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-[#5E6AD2] transition-all duration-500" style={{ width: `${medianPct}%`, opacity }}></div>
+                      </div>
                     </div>
-                    
-                    <div className="flex items-center gap-2">
-                       <div className="flex-1 h-3 bg-[rgba(255,255,255,0.02)] relative rounded-r overflow-hidden">
-                          <div className={`h-full ${bgClass} ${shadowClass} transition-all duration-500 group-hover:brightness-125`} style={{ width: `${medianPct}%` }}></div>
-                       </div>
-                       <span className="w-6 text-[10px] text-zinc-400 text-left font-mono group-hover:text-zinc-200 transition-colors">{item.median}d</span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
 
-            {/* X Axis Labels */}
-            <div className="flex justify-between text-[10px] text-zinc-500/70 font-mono mt-2 ml-0 mr-8">
+            <div className="border-t border-dashed border-[#1F1F22] mt-6 pt-2 flex justify-between text-[10px] text-[#6B6B70]">
               <span>0d</span>
-              <span>2d</span>
-              <span>4d</span>
-              <span>6d</span>
-              <span>8d</span>
-              <span>10d</span>
+              <span>{Math.round(Math.max(10, ...avgStatusTimeData.map(d => d.median)))}d</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Saúde do Fluxo */}
-      <div className="mt-8">
+      <div>
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-          <h3 className="text-[11px] font-bold text-zinc-300 uppercase tracking-[0.1em]">Saúde do Fluxo</h3>
-          <span className="px-1.5 py-0.5 bg-zinc-800/80 text-zinc-400 rounded text-[10px] font-medium">{stalledTasks.length}</span>
+          <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Saúde do Fluxo</h3>
+          <span className="text-[11px] text-[#6B6B70]">{stalledTasks.length}</span>
         </div>
 
-        <div className="border border-zinc-800/60 rounded-xl overflow-hidden bg-[#09090b]">
+        <div className="bg-[#111113] rounded-lg overflow-hidden">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-zinc-800/60 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 bg-transparent">
-                <th className="py-2 px-4 pl-5">Título</th>
-                <th className="py-2 px-4">Empreendimento</th>
-                <th className="py-2 px-4">Prioridade</th>
-                <th className="py-2 px-4">Dias Parada</th>
-                <th className="py-2 px-4">Responsável</th>
-                <th className="py-2 px-4 pr-5 text-right">Lembrete</th>
+              <tr className="border-b border-[#1F1F22] text-[11px] font-medium uppercase tracking-[0.05em] text-[#6B6B70]">
+                <th className="py-3 px-4 pl-5 font-medium">Título</th>
+                <th className="py-3 px-4 font-medium">Empreendimento</th>
+                <th className="py-3 px-4 font-medium">Prioridade</th>
+                <th className="py-3 px-4 font-medium">Dias Parada</th>
+                <th className="py-3 px-4 font-medium">Responsável</th>
+                <th className="py-3 px-4 pr-5 text-right font-medium">Lembrete</th>
               </tr>
             </thead>
             <tbody className="text-sm">
               {stalledTasks.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-zinc-500 text-xs">
+                  <td colSpan={6} className="py-8 text-center text-[#6B6B70] text-xs">
                     Nenhuma tarefa antiga parada com esses critérios.
                   </td>
                 </tr>
               ) : stalledTasks.map((t, i) => (
-                <tr key={i} className="border-b border-zinc-800/40 hover:bg-zinc-800/20 transition-colors group">
-                  <td className="py-2.5 px-4 pl-5">
-                    <div className="flex items-center gap-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={t.prio === 'Urgente' ? 'text-red-500' : 'text-blue-500'}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
-                      <span className="font-medium text-zinc-200 text-[13px]">{t.title}</span>
-                    </div>
+                <tr key={i} className="border-b border-[#1F1F22] last:border-b-0 hover:bg-[#151519] transition-colors">
+                  <td className="py-3 px-4 pl-5">
+                    <span className="font-normal text-[#EDEDED] text-[13px]">{t.title}</span>
                   </td>
-                  <td className="py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-                      <span className="text-zinc-300 text-[13px] font-medium">{t.project}</span>
-                    </div>
+                  <td className="py-3 px-4">
+                    <span className="text-[#A0A0A5] text-[13px] font-normal">{t.project}</span>
                   </td>
-                  <td className="py-2.5 px-4">
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${
-                      t.prio === 'Urgente' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                      t.prio === 'Alta' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                      'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                  <td className="py-3 px-4">
+                    <span className={`text-[11px] font-normal ${
+                      t.prio === 'Urgente' ? 'text-[#F85149]' :
+                      t.prio === 'Alta' ? 'text-[#5E6AD2]' :
+                      'text-[#6B6B70]'
                     }`}>
                       {t.prio}
                     </span>
                   </td>
-                  <td className="py-2.5 px-4">
+                  <td className="py-3 px-4">
+                    <span className={`text-[12px] font-normal ${t.days > 25 || (t.prio === 'Urgente' && t.days > 14) ? 'text-[#F85149]' : 'text-[#A0A0A5]'}`}>
+                      {t.days} dias
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                      <span className={`text-[12px] font-mono font-medium ${t.days > 25 || (t.prio === 'Urgente' && t.days > 14) ? 'text-red-400' : 'text-zinc-400'}`}>
-                        {t.days} dias
-                      </span>
+                      <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(t.user)}&background=1A1A1C&color=A0A0A5&size=128`} alt={t.user} className="w-5 h-5 rounded-full" />
+                      <span className="text-[13px] text-[#A0A0A5] font-normal">{t.user}</span>
                     </div>
                   </td>
-                  <td className="py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(t.user)}&background=27272a&color=a1a1aa&size=128`} alt={t.user} className="w-5 h-5 rounded-full" />
-                      <span className="text-[13px] text-zinc-300 font-medium">{t.user}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-4 pr-5 text-right">
+                  <td className="py-3 px-4 pr-5 text-right">
                     <div className="flex justify-end">
-                      <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-zinc-800 text-zinc-400 text-[11px] font-medium hover:bg-zinc-800/50 hover:text-zinc-200 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                      <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1A1A1C] text-[#A0A0A5] text-[11px] font-normal hover:bg-[#1F1F22] hover:text-[#EDEDED] transition-colors">
                         Adicionar
                       </button>
                     </div>
@@ -751,40 +667,29 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
   );
 }
 
-function MetricCard({ title, value, suffix, absolute, delta, trend, goodTrend = 'up', tooltip, alertColor }: { title: string, value: string, suffix: string, absolute?: string, delta: string, trend: 'up' | 'down', goodTrend?: 'up' | 'down', tooltip?: string, alertColor?: string }) {
+function MetricCard({ title, value, suffix, delta, trend, goodTrend = 'up', tooltip, featured }: { title: string, value: string, suffix: string, delta: string, trend: 'up' | 'down', goodTrend?: 'up' | 'down', tooltip?: string, featured?: boolean }) {
   const isPositive = trend === goodTrend;
-  const deltaColor = isPositive ? 'text-green-500 bg-[rgba(34,197,94,0.08)]' : 'text-red-500 bg-[rgba(239,68,68,0.08)]';
+  const deltaColor = isPositive ? 'text-[#3FB950]' : 'text-[#F85149]';
   const deltaIcon = trend === 'up' ? '↑' : '↓';
   const cleanDelta = delta.replace('+', '').replace('-', '');
 
   return (
-    <div
-      className="bg-gradient-to-br from-[rgba(255,255,255,0.06)] to-[rgba(255,255,255,0.01)] hover:from-[rgba(255,255,255,0.09)] hover:to-[rgba(255,255,255,0.03)] hover:z-50 backdrop-blur-2xl border border-[rgba(255,255,255,0.08)] rounded-xl p-4 relative overflow-visible transition-all h-full flex flex-col group shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
-      style={{ borderLeftColor: alertColor || 'rgba(255,255,255,0.08)', borderLeftWidth: alertColor ? '2px' : '1px' }}
-    >
-      <div className="flex items-center justify-between mb-3 relative z-50">
-        <div className="relative flex items-center group">
-          <h3 className="text-[10px] font-medium text-[#8b949e] uppercase tracking-[0.1em] cursor-default leading-tight">{title}</h3>
-          {tooltip && (
-            <div className="absolute top-1/2 left-full -translate-y-1/2 ml-3 bg-[#1e1e1e] border border-[#2a2a2a] text-[#a3a3a3] text-[10px] p-2.5 rounded-md shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-[100] w-48 text-left leading-relaxed">
-              {tooltip}
-            </div>
-          )}
-        </div>
+    <div className={`rounded-lg p-5 relative flex flex-col group ${featured ? 'bg-[#151519]' : 'bg-[#111113]'}`}>
+      <div className="relative flex items-center mb-3">
+        <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em] cursor-default leading-tight">{title}</h3>
+        {tooltip && (
+          <div className="absolute top-1/2 left-full -translate-y-1/2 ml-3 bg-[#1A1A1C] text-[#A0A0A5] text-[11px] p-2.5 rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-[100] w-48 text-left leading-relaxed">
+            {tooltip}
+          </div>
+        )}
       </div>
-      <div className="flex items-baseline gap-1.5 mb-1.5">
-        <span className="text-4xl font-bold text-zinc-100 tracking-[-0.02em] leading-none">{value}</span>
-        <span className="text-sm font-normal text-[#737373]">{suffix}</span>
+      <div className="flex items-baseline gap-1.5 mb-3">
+        <span className={`font-extralight text-[#EDEDED] tracking-[-0.02em] leading-none ${featured ? 'text-5xl' : 'text-4xl'}`}>{value}</span>
+        <span className="text-sm font-normal text-[#6B6B70]">{suffix}</span>
       </div>
-      {absolute && (
-        <div className="text-xs text-[#525252] font-medium tracking-[0.02em] mb-3">{absolute}</div>
-      )}
-      {!absolute && <div className="mb-3 h-4"></div>}
-      <div className="flex items-center gap-1.5 mt-auto relative z-10">
-        <div className={`px-2 py-0.5 rounded-full text-xs font-medium tracking-[0.02em] ${deltaColor}`}>
-          {deltaIcon} {cleanDelta}
-        </div>
-        <span className="text-xs text-[#525252] font-medium tracking-[0.02em]">vs. ant.</span>
+      <div className={`flex items-center gap-1 mt-auto text-xs font-medium tracking-[0.02em] ${deltaColor}`}>
+        <span>{deltaIcon}</span>
+        <span>{cleanDelta}</span>
       </div>
     </div>
   );

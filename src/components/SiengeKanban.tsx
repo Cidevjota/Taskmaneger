@@ -16,6 +16,7 @@ import {
   siengeDaysOverdue, withVencimentoOriginal, rejectTargetStatus,
   getPositiveAction, showsRejectAction, ALCADA_LEVEL_BY_STATUS, alcadaResponsibleId,
 } from '../lib/siengeHelpers';
+import MonthFilterDropdown, { MonthFilterValue } from './MonthFilterDropdown';
 
 // Not a real status — titles keep 'aguardando_pagamento' in the data so
 // payment/lote logic elsewhere is unaffected. This id only exists to give
@@ -593,6 +594,7 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
   const [search, setSearch] = useState('');
   const [isCompact, setIsCompact] = useState(false);
   const [filterLoteId, setFilterLoteId] = useState<string | 'all'>('all');
+  const [filterMonth, setFilterMonth] = useState<MonthFilterValue>(null);
   const [showAlcadaConfig, setShowAlcadaConfig] = useState(false);
 
   const { currentUser } = useAuth();
@@ -742,15 +744,33 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
       list = list.filter(t => t.loteId === filterLoteId);
     }
 
+    // Filter by month if active — usa o vencimento do próprio título.
+    if (filterMonth) {
+      const monthKey = `${filterMonth.year}-${String(filterMonth.month + 1).padStart(2, '0')}`;
+      list = list.filter(t => t.vencimento?.startsWith(monthKey));
+    }
+
     if (!search) return list;
     const lower = search.toLowerCase();
-    return list.filter(t => 
+    return list.filter(t =>
       t.titulo.toLowerCase().includes(lower) ||
       (t.empreendimento || '').toLowerCase().includes(lower) ||
       (t.descricao || '').toLowerCase().includes(lower) ||
       (t.lote || '').toLowerCase().includes(lower)
     );
-  }, [titles, search, projects, currentProjectFilter]);
+  }, [titles, search, projects, currentProjectFilter, filterLoteId, filterMonth]);
+
+  const lotesForFilter = useMemo(() => {
+    if (!filterMonth) return openLotes;
+    const monthKey = `${filterMonth.year}-${String(filterMonth.month + 1).padStart(2, '0')}`;
+    return openLotes.filter(l => l.vencimento?.startsWith(monthKey));
+  }, [openLotes, filterMonth]);
+
+  useEffect(() => {
+    if (filterLoteId !== 'all' && !lotesForFilter.some(l => l.id === filterLoteId)) {
+      setFilterLoteId('all');
+    }
+  }, [lotesForFilter, filterLoteId]);
 
   const totalValue = titles.reduce((sum, t) => sum + t.valor, 0);
   const pendingCount = titles.filter(t => t.status !== 'pago' && t.status !== 'recusados').length;
@@ -771,11 +791,16 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Lote Filter */}
-          <LoteFilterDropdown 
-            openLotes={openLotes} 
-            value={filterLoteId} 
-            onChange={setFilterLoteId} 
+          {/* Filtro de Mês */}
+          <MonthFilterDropdown
+            value={filterMonth}
+            onChange={setFilterMonth}
+          />
+          {/* Filtro de Lote */}
+          <LoteFilterDropdown
+            openLotes={lotesForFilter}
+            value={filterLoteId}
+            onChange={setFilterLoteId}
           />
           {/* Search */}
           <div className="relative">

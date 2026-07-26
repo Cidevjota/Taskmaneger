@@ -21,8 +21,8 @@ import { useAuth } from './context/AuthContext';
 import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
-import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError } from './lib/api';
+import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade } from './types';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig } from './lib/api';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -77,6 +77,7 @@ export default function App() {
   // stale bundle left open across an update can't keep writing against a
   // schema/API it no longer matches.
   useEffect(() => {
+    if (!import.meta.env.PROD) return;
     const stopWatcher = startVersionWatcher(() => {
       showToast('Uma nova versão do sistema está disponível. Atualizando em instantes...');
       setTimeout(async () => {
@@ -173,6 +174,15 @@ export default function App() {
   const { data: siengeLotes = [], isLoading: isLotesLoading } = useQuery({ queryKey: ['siengeLotes'], queryFn: fetchSiengeLotes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeFaturas = [], isLoading: isFaturasLoading } = useQuery({ queryKey: ['siengeFaturas'], queryFn: fetchSiengeFaturas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeAlcadaConfig = {} } = useQuery({ queryKey: ['siengeAlcadaConfig'], queryFn: fetchSiengeAlcadaConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeProjectMetas = [] } = useQuery({ queryKey: ['siengeProjectMetas'], queryFn: fetchSiengeProjectMetas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeCategoriaOrcamento = [] } = useQuery({ queryKey: ['siengeCategoriaOrcamento'], queryFn: fetchSiengeCategoriaOrcamentos, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeProjectTotais = [] } = useQuery({ queryKey: ['siengeProjectTotais'], queryFn: fetchSiengeProjectTotais, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeProjectDisplays = [] } = useQuery({ queryKey: ['siengeProjectDisplays'], queryFn: fetchSiengeProjectDisplays, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTitleStatusHistory = [] } = useQuery({ queryKey: ['siengeTitleStatusHistory'], queryFn: fetchSiengeTitleStatusHistory, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTabelaVendas = [] } = useQuery({ queryKey: ['siengeTabelaVendas'], queryFn: fetchSiengeTabelaVendas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTabelaVendaRevisoes = [] } = useQuery({ queryKey: ['siengeTabelaVendaRevisoes'], queryFn: fetchSiengeTabelaVendaRevisoes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeVendas = [] } = useQuery({ queryKey: ['siengeVendas'], queryFn: fetchSiengeVendas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeOrcamentoConfig } = useQuery({ queryKey: ['siengeOrcamentoConfig'], queryFn: fetchSiengeOrcamentoConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
 
   const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading || isFaturasLoading;
   
@@ -187,6 +197,10 @@ export default function App() {
   // Selecting & filtering active scopes
   const [currentProjectFilter, setCurrentProjectFilter] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  // Ref para o handler de Broadcast sempre ler a task aberta atual (sem closure velha),
+  // e assim atualizar os painéis de design/copy/documentos ao vivo enquanto ela está aberta.
+  const selectedTaskRef = useRef<Task | null>(null);
+  selectedTaskRef.current = selectedTask;
   // True while the on-demand briefing columns (design/copy/planning) are still
   // in flight for the open task. The creative approval UI reads this to show a
   // skeleton instead of an empty state, which otherwise looks like "nothing to approve".
@@ -446,6 +460,15 @@ export default function App() {
         if (table === 'sienge_titles') invalidate('siengeTitles');
         else if (table === 'sienge_lotes') invalidate('siengeLotes');
         else if (table === 'sienge_faturas') invalidate('siengeFaturas');
+        else if (table === 'sienge_project_metas') invalidate('siengeProjectMetas');
+        else if (table === 'sienge_categoria_orcamento') invalidate('siengeCategoriaOrcamento');
+        else if (table === 'sienge_project_totais') invalidate('siengeProjectTotais');
+        else if (table === 'sienge_project_display') invalidate('siengeProjectDisplays');
+        else if (table === 'sienge_title_status_history') invalidate('siengeTitleStatusHistory');
+        else if (table === 'sienge_tabela_vendas') invalidate('siengeTabelaVendas');
+        else if (table === 'sienge_tabela_vendas_revisoes') invalidate('siengeTabelaVendaRevisoes');
+        else if (table === 'sienge_vendas') invalidate('siengeVendas');
+        else if (table === 'sienge_orcamento_config') invalidate('siengeOrcamentoConfig');
       };
       const siengeCh = supabase
         .channel('sienge-changes', { config: { private: true } })
@@ -503,26 +526,51 @@ export default function App() {
         } else if (op === 'UPDATE') {
           const raw = record;
           if (!raw) return;
+
+          // Patch dos campos presentes no cache da lista. Inclui attachments/proposals/
+          // socialMediaApproval/chatMessages/timeTracking — antes ficavam de fora, então
+          // ex.: um documento anexado só aparecia no outro PC via polling (o "delay").
+          // Cada campo respeita isFieldDirty para não sobrescrever edição local em curso.
+          const listPatch = (id: string): Partial<Task> => ({
+            ...(sm.isFieldDirty(id, 'status')              ? {} : { status:              raw.status }),
+            ...(sm.isFieldDirty(id, 'priority')            ? {} : { priority:            raw.priority }),
+            ...(sm.isFieldDirty(id, 'title')               ? {} : { title:               raw.title }),
+            ...(sm.isFieldDirty(id, 'assigneeId')          ? {} : { assigneeId:          raw.assignee_id }),
+            ...(sm.isFieldDirty(id, 'dueDate')             ? {} : { dueDate:             raw.due_date }),
+            ...(sm.isFieldDirty(id, 'plannedDate')         ? {} : { plannedDate:         raw.planned_date }),
+            ...(sm.isFieldDirty(id, 'reminderDate')        ? {} : { reminderDate:        raw.reminder_date }),
+            ...(sm.isFieldDirty(id, 'reminderType')        ? {} : { reminderType:        raw.reminder_type }),
+            ...(sm.isFieldDirty(id, 'projectId')           ? {} : { projectId:           raw.project_id }),
+            ...(sm.isFieldDirty(id, 'description')         ? {} : { description:         raw.description }),
+            ...(sm.isFieldDirty(id, 'attachments')         ? {} : { attachments:         raw.attachments || [] }),
+            ...(sm.isFieldDirty(id, 'chatMessages')        ? {} : { chatMessages:        raw.chat_messages || [] }),
+            ...(sm.isFieldDirty(id, 'proposals')           ? {} : { proposals:           raw.proposals || [] }),
+            ...(sm.isFieldDirty(id, 'socialMediaApproval') ? {} : { socialMediaApproval: raw.social_media_approval }),
+            ...(sm.isFieldDirty(id, 'timeTracking')        ? {} : { timeTracking:        raw.time_tracking }),
+            updatedBy: raw.updated_by,
+          });
+
           queryClient.setQueryData<Task[]>(['tasks'], (old) => {
             if (!old) return old;
-            return old.map(t => {
-              if (t.id !== raw.id) return t;
+            return old.map(t => t.id === raw.id ? { ...t, ...listPatch(t.id) } : t);
+          });
+
+          // Se a task alterada é a que está ABERTA neste cliente, atualiza também o
+          // selectedTask — inclusive os briefings (design/copy/planning), que não vivem
+          // no cache da lista mas VÊM no payload do broadcast (linha ~26KB no máximo).
+          // Assim os painéis de Design/Aprovação e Copy/Aprovação atualizam ao vivo.
+          if (selectedTaskRef.current?.id === raw.id) {
+            setSelectedTask(prev => {
+              if (!prev || prev.id !== raw.id) return prev;
               return {
-                ...t,
-                ...(sm.isFieldDirty(t.id, 'status')      ? {} : { status:      raw.status }),
-                ...(sm.isFieldDirty(t.id, 'priority')    ? {} : { priority:    raw.priority }),
-                ...(sm.isFieldDirty(t.id, 'title')       ? {} : { title:       raw.title }),
-                ...(sm.isFieldDirty(t.id, 'assigneeId')  ? {} : { assigneeId:  raw.assignee_id }),
-                ...(sm.isFieldDirty(t.id, 'dueDate')     ? {} : { dueDate:     raw.due_date }),
-                ...(sm.isFieldDirty(t.id, 'plannedDate') ? {} : { plannedDate: raw.planned_date }),
-                ...(sm.isFieldDirty(t.id, 'reminderDate')? {} : { reminderDate:raw.reminder_date }),
-                ...(sm.isFieldDirty(t.id, 'reminderType')? {} : { reminderType:raw.reminder_type }),
-                ...(sm.isFieldDirty(t.id, 'projectId')   ? {} : { projectId:   raw.project_id }),
-                ...(sm.isFieldDirty(t.id, 'description') ? {} : { description: raw.description }),
-                updatedBy: raw.updated_by,
+                ...prev,
+                ...listPatch(prev.id),
+                ...(sm.isFieldDirty(prev.id, 'designBriefing')   ? {} : { designBriefing:   raw.design_briefing   ?? undefined }),
+                ...(sm.isFieldDirty(prev.id, 'copyBriefing')     ? {} : { copyBriefing:     raw.copy_briefing     ?? undefined }),
+                ...(sm.isFieldDirty(prev.id, 'planningBriefing') ? {} : { planningBriefing: raw.planning_briefing ?? undefined }),
               };
             });
-          });
+          }
         }
       } else if (table === 'subtasks' || table === 'task_labels') {
         const taskId = record?.task_id || oldRecord?.task_id;
@@ -920,6 +968,11 @@ export default function App() {
       });
       updates.statusHistory = history;
 
+      // Refação: cada vez que a tarefa entra em 'rework' conta como um ciclo de retrabalho
+      if (updates.status === 'rework' && targetTask.status !== 'rework') {
+        updates.reworkCount = (targetTask.reworkCount || 0) + 1;
+      }
+
       const tt = targetTask.timeTracking ? { ...targetTask.timeTracking } : { accumulatedMs: 0, isTimerRunning: false };
       const nowMs = Date.now();
 
@@ -1316,6 +1369,7 @@ export default function App() {
           {activeView === 'sienge' && (
             <SiengeView
               titles={siengeTitles}
+              statusHistory={siengeTitleStatusHistory}
               lotes={siengeLotes}
               faturas={siengeFaturas}
               projects={projects}
@@ -1375,6 +1429,80 @@ export default function App() {
               onDeleteFatura={async (id) => {
                 queryClient.setQueryData<SiengeFatura[]>(['siengeFaturas'], prev => (prev || []).filter(f => f.id !== id));
                 deleteSiengeFatura(id).catch(console.error);
+              }}
+              projectMetas={siengeProjectMetas}
+              categoriaOrcamento={siengeCategoriaOrcamento}
+              projectTotais={siengeProjectTotais}
+              projectDisplays={siengeProjectDisplays}
+              onSaveProjectDisplay={async (display) => {
+                queryClient.setQueryData<SiengeProjectDisplay[]>(['siengeProjectDisplays'], prev => {
+                  const exists = (prev || []).find(d => d.projectId === display.projectId);
+                  return exists
+                    ? (prev || []).map(d => d.projectId === display.projectId ? display : d)
+                    : [display, ...(prev || [])];
+                });
+                saveSiengeProjectDisplay(display).catch(console.error);
+              }}
+              onSaveProjectTotal={async (total) => {
+                queryClient.setQueryData<SiengeProjectTotal[]>(['siengeProjectTotais'], prev => {
+                  const exists = (prev || []).find(t => t.id === total.id);
+                  return exists
+                    ? (prev || []).map(t => t.id === total.id ? total : t)
+                    : [total, ...(prev || [])];
+                });
+                saveSiengeProjectTotal(total).catch(console.error);
+              }}
+              onSaveProjectMeta={async (meta) => {
+                queryClient.setQueryData<SiengeProjectMeta[]>(['siengeProjectMetas'], prev => {
+                  const exists = (prev || []).find(m => m.id === meta.id);
+                  return exists
+                    ? (prev || []).map(m => m.id === meta.id ? meta : m)
+                    : [meta, ...(prev || [])];
+                });
+                saveSiengeProjectMeta(meta).catch(console.error);
+              }}
+              onDeleteProjectMeta={async (id) => {
+                queryClient.setQueryData<SiengeProjectMeta[]>(['siengeProjectMetas'], prev => (prev || []).filter(m => m.id !== id));
+                deleteSiengeProjectMeta(id).catch(console.error);
+              }}
+              onSaveCategoriaOrcamento={async (item) => {
+                queryClient.setQueryData<SiengeCategoriaOrcamento[]>(['siengeCategoriaOrcamento'], prev => {
+                  const exists = (prev || []).find(c => c.id === item.id);
+                  return exists
+                    ? (prev || []).map(c => c.id === item.id ? item : c)
+                    : [item, ...(prev || [])];
+                });
+                saveSiengeCategoriaOrcamento(item).catch(console.error);
+              }}
+              onDeleteCategoriaOrcamento={async (id) => {
+                queryClient.setQueryData<SiengeCategoriaOrcamento[]>(['siengeCategoriaOrcamento'], prev => (prev || []).filter(c => c.id !== id));
+                deleteSiengeCategoriaOrcamento(id).catch(console.error);
+              }}
+              tabelaVendas={siengeTabelaVendas}
+              tabelaVendaRevisoes={siengeTabelaVendaRevisoes}
+              onSaveTabelaVenda={async (item) => {
+                queryClient.setQueryData<SiengeTabelaVendaUnidade[]>(['siengeTabelaVendas'], prev => {
+                  const exists = (prev || []).find(u => u.id === item.id);
+                  return exists
+                    ? (prev || []).map(u => u.id === item.id ? item : u)
+                    : [item, ...(prev || [])];
+                });
+                saveSiengeTabelaVenda(item).catch(console.error);
+              }}
+              onDeleteTabelaVenda={async (id) => {
+                queryClient.setQueryData<SiengeTabelaVendaUnidade[]>(['siengeTabelaVendas'], prev => (prev || []).filter(u => u.id !== id));
+                deleteSiengeTabelaVenda(id).catch(console.error);
+              }}
+              onApplyTabelaVendaReajuste={async (params) => {
+                await applySiengeTabelaVendasReajuste(params);
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendas'] });
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendaRevisoes'] });
+              }}
+              vendas={siengeVendas}
+              orcamentoConfig={siengeOrcamentoConfig}
+              onSaveOrcamentoConfig={async (config) => {
+                queryClient.setQueryData(['siengeOrcamentoConfig'], config);
+                saveSiengeOrcamentoConfig(config).catch(console.error);
               }}
             />
           )}
