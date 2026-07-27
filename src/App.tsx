@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Columns3, 
@@ -22,7 +22,8 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
+import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSyncManager } from './lib/SyncManager';
@@ -183,6 +184,13 @@ export default function App() {
   const { data: siengeTabelaVendaRevisoes = [] } = useQuery({ queryKey: ['siengeTabelaVendaRevisoes'], queryFn: fetchSiengeTabelaVendaRevisoes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeVendas = [] } = useQuery({ queryKey: ['siengeVendas'], queryFn: fetchSiengeVendas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeOrcamentoConfig } = useQuery({ queryKey: ['siengeOrcamentoConfig'], queryFn: fetchSiengeOrcamentoConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeCentrosCusto = [] } = useQuery({ queryKey: ['siengeCentrosCusto'], queryFn: fetchSiengeCentrosCusto, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeCategorias = [] } = useQuery({ queryKey: ['siengeCategorias'], queryFn: fetchSiengeCategorias, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeSubcategorias = [] } = useQuery({ queryKey: ['siengeSubcategorias'], queryFn: fetchSiengeSubcategorias, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const siengeTaxonomy = useMemo(
+    () => buildSiengeTaxonomy(siengeCentrosCusto, siengeCategorias, siengeSubcategorias),
+    [siengeCentrosCusto, siengeCategorias, siengeSubcategorias]
+  );
 
   const isDataLoading = isTasksLoading || isProjectsLoading || isLabelsLoading || isSiengeLoading || isLotesLoading || isFaturasLoading;
   
@@ -469,6 +477,9 @@ export default function App() {
         else if (table === 'sienge_tabela_vendas_revisoes') invalidate('siengeTabelaVendaRevisoes');
         else if (table === 'sienge_vendas') invalidate('siengeVendas');
         else if (table === 'sienge_orcamento_config') invalidate('siengeOrcamentoConfig');
+        else if (table === 'sienge_centros_custo') invalidate('siengeCentrosCusto');
+        else if (table === 'sienge_categorias') invalidate('siengeCategorias');
+        else if (table === 'sienge_subcategorias') invalidate('siengeSubcategorias');
       };
       const siengeCh = supabase
         .channel('sienge-changes', { config: { private: true } })
@@ -1503,6 +1514,37 @@ export default function App() {
               onSaveOrcamentoConfig={async (config) => {
                 queryClient.setQueryData(['siengeOrcamentoConfig'], config);
                 saveSiengeOrcamentoConfig(config).catch(console.error);
+              }}
+              taxonomy={siengeTaxonomy}
+              onAddCentroCusto={async (nome) => {
+                queryClient.setQueryData<typeof siengeCentrosCusto>(['siengeCentrosCusto'], prev =>
+                  [...(prev || []), { id: crypto.randomUUID(), nome, createdAt: new Date().toISOString() }]
+                );
+                await addSiengeCentroCusto(nome);
+                queryClient.invalidateQueries({ queryKey: ['siengeCentrosCusto'] });
+              }}
+              onAddCategoria={async (centroCusto, categoria) => {
+                await addSiengeCategoria(centroCusto, categoria);
+                queryClient.invalidateQueries({ queryKey: ['siengeCategorias'] });
+              }}
+              onRenameCategoria={async (id, categoria) => {
+                queryClient.setQueryData<typeof siengeCategorias>(['siengeCategorias'], prev =>
+                  (prev || []).map(c => c.id === id ? { ...c, categoria } : c)
+                );
+                await renameSiengeCategoria(id, categoria);
+              }}
+              onDeleteCategoria={async (id) => {
+                queryClient.setQueryData<typeof siengeCategorias>(['siengeCategorias'], prev => (prev || []).filter(c => c.id !== id));
+                await deleteSiengeCategoria(id);
+                queryClient.invalidateQueries({ queryKey: ['siengeSubcategorias'] });
+              }}
+              onAddSubcategoria={async (categoriaId, subcategoria) => {
+                await addSiengeSubcategoria(categoriaId, subcategoria);
+                queryClient.invalidateQueries({ queryKey: ['siengeSubcategorias'] });
+              }}
+              onDeleteSubcategoria={async (id) => {
+                queryClient.setQueryData<typeof siengeSubcategorias>(['siengeSubcategorias'], prev => (prev || []).filter(s => s.id !== id));
+                await deleteSiengeSubcategoria(id);
               }}
             />
           )}

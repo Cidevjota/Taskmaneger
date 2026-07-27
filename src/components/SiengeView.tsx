@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig } from '../types';
+import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
 import SiengeFaturas from './SiengeFaturas';
@@ -43,6 +44,13 @@ interface SiengeViewProps {
   vendas: SiengeVenda[];
   orcamentoConfig?: SiengeOrcamentoConfig;
   onSaveOrcamentoConfig: (config: SiengeOrcamentoConfig) => void;
+  taxonomy: SiengeTaxonomy;
+  onAddCentroCusto: (nome: string) => Promise<void> | void;
+  onAddCategoria: (centroCusto: string, categoria: string) => Promise<void> | void;
+  onRenameCategoria: (id: string, categoria: string) => Promise<void> | void;
+  onDeleteCategoria: (id: string) => Promise<void> | void;
+  onAddSubcategoria: (categoriaId: string, subcategoria: string) => Promise<void> | void;
+  onDeleteSubcategoria: (id: string) => Promise<void> | void;
 }
 
 export default function SiengeView({
@@ -52,6 +60,7 @@ export default function SiengeView({
   projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
   tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
+  taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria,
 }: SiengeViewProps) {
   const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
@@ -132,6 +141,13 @@ export default function SiengeView({
             onSaveAlcadaConfig={onSaveAlcadaConfig}
             editingMap={editingMap}
             onTitlePresence={onTitlePresence}
+            taxonomy={taxonomy}
+            onAddCentroCusto={onAddCentroCusto}
+            onAddCategoria={onAddCategoria}
+            onRenameCategoria={onRenameCategoria}
+            onDeleteCategoria={onDeleteCategoria}
+            onAddSubcategoria={onAddSubcategoria}
+            onDeleteSubcategoria={onDeleteSubcategoria}
           />
         ) : activeTab === 'lotes' ? (
           <SiengeLotes
@@ -170,6 +186,7 @@ export default function SiengeView({
             vendas={vendas}
             orcamentoConfig={orcamentoConfig}
             onSaveOrcamentoConfig={onSaveOrcamentoConfig}
+            taxonomy={taxonomy}
           />
         )}
       </div>

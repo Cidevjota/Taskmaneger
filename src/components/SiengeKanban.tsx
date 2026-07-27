@@ -1,13 +1,15 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Hash, DollarSign, Building2, Calendar, Tag, Receipt,
   ChevronRight, AlertTriangle, CheckCircle2, Clock, XCircle,
   Banknote, ArrowRight, Search, SlidersHorizontal, User,
-  LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy, Settings
+  LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy, Settings, Table as TableIcon,
 } from 'lucide-react';
 import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig } from '../types';
 import SiengeTitleModal from './SiengeTitleModal';
-import AlcadaConfigModal from './AlcadaConfigModal';
+import SiengeTitleTable from './SiengeTitleTable';
+import SiengeConfigPanel from './SiengeConfigPanel';
 import ReminderBell from './ReminderBell';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -16,6 +18,7 @@ import {
   siengeDaysOverdue, withVencimentoOriginal, rejectTargetStatus,
   getPositiveAction, showsRejectAction, ALCADA_LEVEL_BY_STATUS, alcadaResponsibleId,
 } from '../lib/siengeHelpers';
+import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import MonthFilterDropdown, { MonthFilterValue } from './MonthFilterDropdown';
 
 // Not a real status — titles keep 'aguardando_pagamento' in the data so
@@ -42,6 +45,13 @@ interface SiengeKanbanProps {
   // anunciar qual título este usuário tem aberto para edição.
   editingMap?: Record<string, { name: string; avatarUrl?: string; color: string }>;
   onTitlePresence?: (titleId: string | null) => void;
+  taxonomy: SiengeTaxonomy;
+  onAddCentroCusto: (nome: string) => Promise<void> | void;
+  onAddCategoria: (centroCusto: string, categoria: string) => Promise<void> | void;
+  onRenameCategoria: (id: string, categoria: string) => Promise<void> | void;
+  onDeleteCategoria: (id: string) => Promise<void> | void;
+  onAddSubcategoria: (categoriaId: string, subcategoria: string) => Promise<void> | void;
+  onDeleteSubcategoria: (id: string) => Promise<void> | void;
 }
 
 const COLUMNS: { id: ColumnId; label: string; shortLabel: string; color: string; dotColor: string; bg: string; border: string; icon: React.ReactNode }[] = [
@@ -584,7 +594,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
   );
 }
 
-export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig, editingMap = {}, onTitlePresence }: SiengeKanbanProps) {
+export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig, editingMap = {}, onTitlePresence, taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria }: SiengeKanbanProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState<SiengeTitle | null>(null);
   const [modalInitialStatus, setModalInitialStatus] = useState<SiengeStatus>('a_lancar');
@@ -593,9 +603,10 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
   const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
   const [search, setSearch] = useState('');
   const [isCompact, setIsCompact] = useState(false);
+  const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [filterLoteId, setFilterLoteId] = useState<string | 'all'>('all');
   const [filterMonth, setFilterMonth] = useState<MonthFilterValue>(null);
-  const [showAlcadaConfig, setShowAlcadaConfig] = useState(false);
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
 
   const { currentUser } = useAuth();
   const { addNotification } = useNotifications();
@@ -662,6 +673,14 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
     setDragId(null);
     setDropTarget(null);
   }, []);
+
+  // Salvamento inline pela tabela — mesma lógica de status change do drag/drop:
+  // recalcula vencimentoOriginal quando a situação muda pela edição em linha.
+  const handleTableSave = useCallback((title: SiengeTitle) => {
+    const prev = titles.find(t => t.id === title.id);
+    const next = prev && prev.status !== title.status ? withVencimentoOriginal(title) : title;
+    handleUpdateTitle(next);
+  }, [titles, handleUpdateTitle]);
 
   // Presença: anuncia qual título este usuário tem aberto para edição (só títulos já
   // existentes — um título novo ainda não salvo não pode estar em edição por outro).
@@ -777,6 +796,30 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#08080a]">
+      <AnimatePresence mode="wait">
+      {showConfigPanel ? (
+        <SiengeConfigPanel
+          key="config"
+          alcadaConfig={alcadaConfig}
+          onSaveAlcadaConfig={onSaveAlcadaConfig}
+          taxonomy={taxonomy}
+          onAddCentroCusto={onAddCentroCusto}
+          onAddCategoria={onAddCategoria}
+          onRenameCategoria={onRenameCategoria}
+          onDeleteCategoria={onDeleteCategoria}
+          onAddSubcategoria={onAddSubcategoria}
+          onDeleteSubcategoria={onDeleteSubcategoria}
+          onClose={() => setShowConfigPanel(false)}
+        />
+      ) : (
+      <motion.div
+        key="board"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.16, ease: 'easeOut' }}
+        className="flex flex-col h-full overflow-hidden"
+      >
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-900/80 shrink-0">
         <div className="flex items-center gap-3">
@@ -813,17 +856,38 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
               className="w-48 bg-zinc-900/60 border border-zinc-800 rounded-lg pl-7 pr-3 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50 transition-all"
             />
           </div>
+          {/* Kanban / Tabela toggle */}
+          <div className="flex items-center rounded-lg border border-zinc-800/50 bg-zinc-900/40 p-0.5">
+            <button
+              onClick={() => setViewMode('kanban')}
+              title="Visualização em Kanban"
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${viewMode === 'kanban' ? 'bg-blue-500/15 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              <LayoutGrid size={12} />
+              <span className="hidden sm:inline">Kanban</span>
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              title="Visualização em Tabela"
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${viewMode === 'table' ? 'bg-blue-500/15 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              <TableIcon size={12} />
+              <span className="hidden sm:inline">Tabela</span>
+            </button>
+          </div>
+          {viewMode === 'kanban' && (
+            <button
+              onClick={() => setIsCompact(v => !v)}
+              title={isCompact ? 'Modo Normal' : 'Modo Ultra-Compacto'}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${isCompact ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+            >
+              {isCompact ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
+              <span className="hidden sm:inline">{isCompact ? 'Normal' : 'Compacto'}</span>
+            </button>
+          )}
           <button
-            onClick={() => setIsCompact(v => !v)}
-            title={isCompact ? 'Modo Normal' : 'Modo Ultra-Compacto'}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${isCompact ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
-          >
-            {isCompact ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
-            <span className="hidden sm:inline">{isCompact ? 'Normal' : 'Compacto'}</span>
-          </button>
-          <button
-            onClick={() => setShowAlcadaConfig(true)}
-            title="Configurar responsáveis por alçada"
+            onClick={() => setShowConfigPanel(true)}
+            title="Configurações de Títulos"
             className="flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-200 bg-zinc-900/40 border border-zinc-800/50 hover:border-zinc-700 transition-all"
           >
             <Settings size={14} />
@@ -837,8 +901,21 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
         </div>
       </div>
 
+      {/* Table View */}
+      {viewMode === 'table' && (
+        <SiengeTitleTable
+          titles={filteredTitles}
+          openLotes={openLotes}
+          projects={projects}
+          onSave={handleTableSave}
+          onOpenFull={openEdit}
+          taxonomy={taxonomy}
+        />
+      )}
+
       {/* Kanban Board */}
-      <div 
+      {viewMode === 'kanban' && (
+      <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -914,6 +991,10 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
           );
         })}
       </div>
+      )}
+      </motion.div>
+      )}
+      </AnimatePresence>
 
       {isLoadingTitle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -934,15 +1015,8 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
         openFaturas={openFaturas}
         projects={projects}
         editingBy={editingTitle ? editingMap[editingTitle.id] : undefined}
+        taxonomy={taxonomy}
       />
-
-      {showAlcadaConfig && (
-        <AlcadaConfigModal
-          config={alcadaConfig}
-          onClose={() => setShowAlcadaConfig(false)}
-          onSave={onSaveAlcadaConfig}
-        />
-      )}
     </div>
   );
 }

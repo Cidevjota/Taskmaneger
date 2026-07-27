@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useLayoutEffect, useCallback } from 'react';
-import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeVenda } from '../types';
+import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTabelaVendaUnidade, SiengeVenda } from '../types';
 import { analyzeProjectsForPeriod, monthlyTotalsForYear, dailyCumulativeForMonth } from '../lib/siengeMetasAnalysis';
 import { getVgvRealAcumulado, getGastoRealAcumuladoProjetos, ORCAMENTO_PCT } from '../lib/siengeVendasBudget';
 
@@ -8,7 +8,7 @@ interface SiengeSpendChartProps {
   titles: SiengeTitle[];
   projectMetas: SiengeProjectMeta[];
   categoriaOrcamento: SiengeCategoriaOrcamento[];
-  projectTotais: SiengeProjectTotal[];
+  tabelaVendas: SiengeTabelaVendaUnidade[];
   vendas: SiengeVenda[];
   controleInicio: string;
   year: number;
@@ -20,7 +20,7 @@ const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'S
 function formatCurrencyShort(value: number): string {
   if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}mi`;
   if (value >= 1_000) return `R$ ${(value / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}mil`;
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Estimativa de largura de texto (sem medir DOM) para dimensionar o espaço
@@ -57,7 +57,7 @@ const PAD_T = 16;
 const PAD_B = 32;
 const Y_LABEL_FONT_SIZE = 9;
 
-export default function SiengeSpendChart({ projects, titles, projectMetas, categoriaOrcamento, projectTotais, vendas, controleInicio, year, month }: SiengeSpendChartProps) {
+export default function SiengeSpendChart({ projects, titles, projectMetas, categoriaOrcamento, tabelaVendas, vendas, controleInicio, year, month }: SiengeSpendChartProps) {
   const now = new Date();
   const isCurrentYear = year === now.getFullYear();
   const { ref: containerRef, width: measuredWidth } = useContainerWidth<HTMLDivElement>();
@@ -73,7 +73,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
   // (variação do VGV real acumulado dentro do mês × 2%) como linha de referência.
   const yearly = useMemo(() => {
     if (month !== null) return null;
-    const base = monthlyTotalsForYear(projects, titles, projectMetas, categoriaOrcamento, year, projectTotais, controleInicio);
+    const base = monthlyTotalsForYear(projects, titles, projectMetas, categoriaOrcamento, year, tabelaVendas, controleInicio);
     return base.map(m => {
       const inicioMes = new Date(year, m.month, 1, 0, 0, 0);
       const fimMes = new Date(year, m.month + 1, 0, 23, 59, 59);
@@ -82,7 +82,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
       const orcamentoReal = Math.max(vgvFim - vgvInicio, 0) * ORCAMENTO_PCT;
       return { ...m, orcamentoReal };
     });
-  }, [projects, titles, projectMetas, categoriaOrcamento, year, month, projectTotais, controleInicio, vendasEscopo]);
+  }, [projects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, vendasEscopo]);
 
   // ── Visão mensal: gasto real acumulado desde o início do controle (carrega o
   // saldo dos meses anteriores) vs Orçamento Real Acumulado (também acumulado,
@@ -90,7 +90,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
   // aparece só como referência tracejada.
   const monthly = useMemo(() => {
     if (month === null) return null;
-    const budgetMeta = analyzeProjectsForPeriod(projects, titles, projectMetas, categoriaOrcamento, year, month, projectTotais, controleInicio)
+    const budgetMeta = analyzeProjectsForPeriod(projects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio)
       .reduce((s, a) => s + a.totalOrcamento, 0);
     const monthStart = new Date(year, month, 1, 0, 0, 0);
     const baselineGasto = getGastoRealAcumuladoProjetos(titles, projects, controleInicio, new Date(monthStart.getTime() - 1));
@@ -100,7 +100,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
       orcamentoRealAcumulado: getVgvRealAcumulado(vendasEscopo, new Date(year, month, d.day, 23, 59, 59)) * ORCAMENTO_PCT,
     }));
     return { budgetMeta, daily };
-  }, [projects, titles, projectMetas, categoriaOrcamento, year, month, projectTotais, controleInicio, vendasEscopo]);
+  }, [projects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, vendasEscopo]);
 
   const handleLeave = useCallback(() => setHoverIndex(null), []);
 
@@ -144,7 +144,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
           ))}
           {/* Destaque do mês atual */}
           {isCurrentYear && (
-            <rect x={padL + barSlot * now.getMonth()} y={PAD_T} width={barSlot} height={innerH} fill="#5E6AD2" opacity={0.05} rx={4} />
+            <rect x={padL + barSlot * now.getMonth()} y={PAD_T} width={barSlot} height={innerH} fill="#3B82F6" opacity={0.05} rx={4} />
           )}
           {/* Coluna de hover */}
           {hoverIndex !== null && (
@@ -163,7 +163,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
                 width={barW}
                 height={barH}
                 rx={3}
-                fill={over ? '#F85149' : '#5E6AD2'}
+                fill={over ? '#F85149' : '#3B82F6'}
                 opacity={over ? 0.9 : isCurrent ? 1 : hoverIndex === null || hoverIndex === i ? 0.7 : 0.35}
                 style={{ transition: 'opacity 120ms ease' }}
               />
@@ -192,7 +192,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
 
         <div className="flex items-center justify-between px-1 pt-3">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-1.5 h-1.5 rounded-full bg-[#5E6AD2]" /> Gasto realizado</span>
+            <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" /> Gasto realizado</span>
             <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-1.5 h-1.5 rounded-full bg-[#F85149]" /> Acima do orçamento real</span>
             <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-2.5 h-0 border-t border-dashed border-[#6B6B70]" /> Orçamento real do mês</span>
           </div>
@@ -225,8 +225,9 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
     const orcamentoRealFinal = daily.length > 0 ? daily[daily.length - 1].orcamentoRealAcumulado : 0;
     const overBudget = maxGasto > orcamentoRealFinal;
     const todayInMonth = isCurrentYear && month === now.getMonth();
-    const accent = overBudget ? '#F85149' : '#3FB950';
-    const gradientId = `sienge-spend-area-${overBudget ? 'over' : 'ok'}`;
+    const gastoColor = '#3B82F6';
+    const orcamentoColor = '#3FB950';
+    const gradientId = 'sienge-spend-area-gasto';
     const hovered = hoverIndex !== null ? daily[hoverIndex] : null;
 
     const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -249,8 +250,8 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={accent} stopOpacity={0.28} />
-                <stop offset="100%" stopColor={accent} stopOpacity={0} />
+                <stop offset="0%" stopColor={gastoColor} stopOpacity={0.28} />
+                <stop offset="100%" stopColor={gastoColor} stopOpacity={0} />
               </linearGradient>
             </defs>
 
@@ -282,16 +283,16 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
             <polygon points={areaPoints} fill={`url(#${gradientId})`} />
 
             {/* Orçamento Real Acumulado — sobe a cada venda confirmada */}
-            <polyline points={orcamentoRealPoints} fill="none" stroke="#8B8BF0" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={orcamentoRealPoints} fill="none" stroke={orcamentoColor} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
 
             {/* Gasto real acumulado desde o início do controle */}
-            <polyline points={linePoints} fill="none" stroke={accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={linePoints} fill="none" stroke={gastoColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
             {daily.length > 0 && (
-              <circle cx={xFor(daily[daily.length - 1].day)} cy={yFor(maxGasto)} r={3} fill={accent} />
+              <circle cx={xFor(daily[daily.length - 1].day)} cy={yFor(maxGasto)} r={3} fill={gastoColor} />
             )}
             {hovered && (
               <>
-                <circle cx={xFor(hovered.day)} cy={yFor(hovered.gastoAcumulado)} r={4} fill="#0A0A0A" stroke={accent} strokeWidth={2} />
+                <circle cx={xFor(hovered.day)} cy={yFor(hovered.gastoAcumulado)} r={4} fill="#0A0A0A" stroke={gastoColor} strokeWidth={2} />
               </>
             )}
 
@@ -323,8 +324,8 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
               }}
             >
               <div className="text-[10px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Dia {hovered.day}</div>
-              <div className="text-[13px] font-normal" style={{ color: accent }}>{formatCurrencyShort(hovered.gastoAcumulado)}</div>
-              <div className="text-[10px] font-normal text-[#8B8BF0]">Real: {formatCurrencyShort(hovered.orcamentoRealAcumulado)}</div>
+              <div className="text-[13px] font-normal" style={{ color: gastoColor }}>{formatCurrencyShort(hovered.gastoAcumulado)}</div>
+              <div className="text-[10px] font-normal" style={{ color: orcamentoColor }}>Real: {formatCurrencyShort(hovered.orcamentoRealAcumulado)}</div>
             </div>
           )}
         </div>
@@ -332,9 +333,9 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
         <div className="flex items-center justify-between px-1 pt-3">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]">
-              <span className={`w-1.5 h-1.5 rounded-full ${overBudget ? 'bg-[#F85149]' : 'bg-[#3FB950]'}`} /> Gasto real acumulado
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" /> Gasto real acumulado
             </span>
-            <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-1.5 h-1.5 rounded-full bg-[#8B8BF0]" /> Orçamento Real Acumulado</span>
+            <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-1.5 h-1.5 rounded-full bg-[#3FB950]" /> Orçamento Real Acumulado</span>
             <span className="flex items-center gap-1.5 text-[11px] font-normal text-[#6B6B70]"><span className="w-2.5 h-0 border-t border-dashed border-[#6B6B70]" /> Projeção por meta</span>
           </div>
           {orcamentoRealFinal > 0 && (

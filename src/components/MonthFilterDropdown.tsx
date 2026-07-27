@@ -40,7 +40,7 @@ export default function MonthFilterDropdown({ value, onChange, allLabel = 'Todos
         <div className="absolute right-0 top-full mt-1.5 w-[220px] bg-[#111113] rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] z-50 animate-fade-in origin-top-right flex flex-col overflow-hidden">
           <button
             onClick={() => { onChange(null); setIsOpen(false); }}
-            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${!value ? 'text-[#5E6AD2]' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}
+            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${!value ? 'text-blue-400' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}
           >
             <span>{allLabel}</span>
             {!value && <Check size={14} />}
@@ -62,7 +62,7 @@ export default function MonthFilterDropdown({ value, onChange, allLabel = 'Todos
                 <button
                   key={label}
                   onClick={() => { onChange({ year: panelYear, month: idx }); setIsOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${isSelected ? 'text-[#5E6AD2]' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${isSelected ? 'text-blue-400' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}
                 >
                   <span>{label}</span>
                   {isSelected && <Check size={14} />}

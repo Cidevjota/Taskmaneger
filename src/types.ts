@@ -302,7 +302,29 @@ export interface SiengeVencimentoHistoryEntry {
   observacao?: string;   // Optional note explaining the change
 }
 
-export type SiengeCentroCusto = 'comercial' | 'marketing';
+// Livre (não mais só 'comercial'|'marketing') — o painel de configuração permite
+// adicionar novos centros de custo além dos dois fixos.
+export type SiengeCentroCusto = string;
+
+export interface SiengeCentroCustoDef {
+  id: string;
+  nome: string;
+  createdAt: string;
+}
+
+export interface SiengeCategoriaDef {
+  id: string;
+  centroCusto: string;
+  categoria: string;
+  createdAt: string;
+}
+
+export interface SiengeSubcategoriaDef {
+  id: string;
+  categoriaId: string;
+  subcategoria: string;
+  createdAt: string;
+}
 
 export interface SiengeTitle {
   id: string;

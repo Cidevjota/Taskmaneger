@@ -1,15 +1,17 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__supabase__list_tables",
+      "mcp__supabase__get_logs",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(node -e \"const m=require\\('lucide-react'\\); console.log\\(typeof m.Columns3, typeof m.RotateCcw, typeof m.Check\\)\")",
+      "Bash(npx eslint *)"
+    ]
+  },
   "mcpServers": {
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=quyoeoftqackmrjxpreb"
     }
-  },
-  "permissions": {
-    "allow": [
-      "mcp__supabase__list_tables",
-      "mcp__supabase__get_logs",
-      "PowerShell(Get-ChildItem *)"
-    ]
   }
 }

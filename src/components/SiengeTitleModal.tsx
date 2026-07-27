@@ -7,7 +7,7 @@ import ConfirmModal from './ConfirmModal';
 import TaskChat from './TaskChat';
 import { useAuth } from '../context/AuthContext';
 import { withVencimentoOriginal, getPositiveAction, showsRejectAction, rejectTargetStatus } from '../lib/siengeHelpers';
-import { CENTRO_CUSTO_LABELS, categoriasFor, subcategoriasFor } from '../lib/siengeCategorias';
+import { SiengeTaxonomy, taxonomyCategoriasFor, taxonomySubcategoriasFor } from '../lib/siengeCategorias';
 
 interface SiengeTitleModalProps {
   isOpen: boolean;
@@ -24,6 +24,7 @@ interface SiengeTitleModalProps {
   // Presença: quando outro usuário já está editando este título, o modal fica
   // travado em somente-leitura (bloqueio, igual às tasks) para evitar sobrescrita.
   editingBy?: { name: string; avatarUrl?: string; color: string };
+  taxonomy: SiengeTaxonomy;
 }
 
 const STATUS_LABELS: Record<SiengeStatus, string> = {
@@ -66,6 +67,7 @@ export default function SiengeTitleModal({
   openFaturas,
   projects,
   editingBy,
+  taxonomy,
 }: SiengeTitleModalProps) {
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -372,8 +374,9 @@ export default function SiengeTitleModal({
     setIsSubcategoriaDropdownOpen(false);
   };
 
-  const categoriaOptions = categoriasFor(centroCusto || undefined);
-  const subcategoriaOptions = subcategoriasFor(centroCusto || undefined, categoria);
+  const categoriaOptions = taxonomyCategoriasFor(taxonomy, centroCusto || undefined);
+  const subcategoriaOptions = taxonomySubcategoriasFor(taxonomy, centroCusto || undefined, categoria);
+  const centroCustoLabel = (value: string) => taxonomy.centrosCusto.find(c => c.value === value)?.label || value;
 
   const handleValorInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, '');
@@ -616,7 +619,7 @@ export default function SiengeTitleModal({
               </div>
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Tag size={10} /> Centro de Custo</span>
-                <span className="text-sm text-zinc-200 font-medium truncate">{centroCusto ? CENTRO_CUSTO_LABELS[centroCusto] : '-'}</span>
+                <span className="text-sm text-zinc-200 font-medium truncate">{centroCusto ? centroCustoLabel(centroCusto) : '-'}</span>
               </div>
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider"><Tag size={10} /> Categoria</span>
@@ -975,7 +978,7 @@ export default function SiengeTitleModal({
                 }`}
               >
                 <span className={centroCusto ? 'text-zinc-100 font-medium' : 'text-zinc-500'}>
-                  {centroCusto ? CENTRO_CUSTO_LABELS[centroCusto] : 'Selecione o centro de custo'}
+                  {centroCusto ? centroCustoLabel(centroCusto) : 'Selecione o centro de custo'}
                 </span>
                 <ChevronDown size={14} className={`text-zinc-500 transition-transform ${isCentroCustoDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -985,18 +988,18 @@ export default function SiengeTitleModal({
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsCentroCustoDropdownOpen(false)} />
                   <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
-                    {(Object.keys(CENTRO_CUSTO_LABELS) as SiengeCentroCusto[]).map(cc => (
+                    {taxonomy.centrosCusto.map(cc => (
                       <button
-                        key={cc}
+                        key={cc.value}
                         type="button"
-                        onClick={() => handleCentroCustoChange(cc)}
+                        onClick={() => handleCentroCustoChange(cc.value)}
                         className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
-                          cc === centroCusto
+                          cc.value === centroCusto
                             ? 'bg-blue-500/10 text-blue-400'
                             : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
                         }`}
                       >
-                        <span className="font-medium text-[13px]">{CENTRO_CUSTO_LABELS[cc]}</span>
+                        <span className="font-medium text-[13px]">{cc.label}</span>
                       </button>
                     ))}
                   </div>

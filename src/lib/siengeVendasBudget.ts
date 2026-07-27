@@ -1,4 +1,4 @@
-import { Project, SiengeTabelaVendaUnidade, SiengeVenda, SiengeTitle, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeCentroCusto } from '../types';
+import { Project, SiengeTabelaVendaUnidade, SiengeVenda, SiengeTitle, SiengeCategoriaOrcamento, SiengeCentroCusto } from '../types';
 import { ALL_CATEGORIAS, CategoriaAnalysis } from './siengeMetasAnalysis';
 
 // 2% do VGV é o teto de orçamento de marketing/comercial adotado pela Uchôa —
@@ -62,54 +62,12 @@ export function getTetoTotalProduto(unidades: SiengeTabelaVendaUnidade[]): numbe
   return getSaldoRemanescente(unidades) * ORCAMENTO_PCT;
 }
 
-export function getUnidadesDisponiveis(unidades: SiengeTabelaVendaUnidade[]): SiengeTabelaVendaUnidade[] {
-  return unidades.filter(u => u.situacao === 'disponivel');
-}
-
-export function getVgvMedioDisponivel(unidades: SiengeTabelaVendaUnidade[]): number {
-  const disponiveis = getUnidadesDisponiveis(unidades);
-  if (disponiveis.length === 0) return 0;
-  return disponiveis.reduce((s, u) => s + u.valorTabela, 0) / disponiveis.length;
-}
-
 // % do envelope total de 2% (já vendido + ainda disponível) que já foi
 // desbloqueado por vendas confirmadas — não é a mesma coisa que estouro/economia,
 // é um indicador de longo prazo de quanto do produto já "girou".
 export function getPctTetoConsumido(orcamentoRealAcumulado: number, tetoTotalProduto: number): number {
   const envelope = orcamentoRealAcumulado + tetoTotalProduto;
   return envelope > 0 ? (orcamentoRealAcumulado / envelope) * 100 : 0;
-}
-
-// ─── VGV Total/Unidades Totais efetivos: Tabela de Vendas tem precedência ───
-
-// Quando o empreendimento tem Tabela de Vendas cadastrada, ela substitui os
-// campos manuais de VGV Total/Unidades Totais (mais precisos, vêm do preço real
-// de cada unidade) — mantém a mesma mecânica de "pool" que a grade de Metas já
-// usa (pricePerUnitFor, unidadesDisponiveisFor em siengeMetasAnalysis.ts), só
-// troca a fonte do dado bruto quando disponível.
-export function mergeProjectTotaisComTabelaVendas(
-  projects: Project[],
-  projectTotaisManual: SiengeProjectTotal[],
-  tabelaVendas: SiengeTabelaVendaUnidade[],
-): SiengeProjectTotal[] {
-  return projects.map(project => {
-    const unidadesDoProjeto = tabelaVendas.filter(u => u.projectId === project.id);
-    if (unidadesDoProjeto.length === 0) {
-      return projectTotaisManual.find(t => t.projectId === project.id) || {
-        id: project.id, projectId: project.id, vgvTotal: 0, unidadesTotal: 0, createdAt: '', updatedAt: '',
-      };
-    }
-    const vgvTotal = unidadesDoProjeto.reduce((s, u) => s + u.valorTabela, 0);
-    const manual = projectTotaisManual.find(t => t.projectId === project.id);
-    return {
-      id: manual?.id || project.id,
-      projectId: project.id,
-      vgvTotal,
-      unidadesTotal: unidadesDoProjeto.length,
-      createdAt: manual?.createdAt || '',
-      updatedAt: manual?.updatedAt || '',
-    };
-  });
 }
 
 // ─── Ritmo do mês: sinal de alerta, nunca decide estouro ────────────────────

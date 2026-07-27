@@ -1,4 +1,4 @@
-import { SiengeCentroCusto } from '../types';
+import { SiengeCentroCusto, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef } from '../types';
 
 export const CENTRO_CUSTO_LABELS: Record<SiengeCentroCusto, string> = {
   comercial: 'Comercial',
@@ -31,7 +31,7 @@ export const SIENGE_CATEGORIAS: Record<SiengeCentroCusto, Record<string, string[
       'Ações com Clientes',
       'Programa de indicação',
     ],
-    'Produção capex': [
+    'Produção': [
       'Fotógrafo',
       'Vídeo/audiovisual',
       'Decorado',
@@ -80,4 +80,57 @@ export function categoriasFor(centroCusto?: SiengeCentroCusto): string[] {
 export function subcategoriasFor(centroCusto?: SiengeCentroCusto, categoria?: string): string[] {
   if (!centroCusto || !categoria) return [];
   return SIENGE_CATEGORIAS[centroCusto][categoria] || [];
+}
+
+// ─── Taxonomia dinâmica (editável pelo painel de configuração) ────────────
+// Substitui SIENGE_CATEGORIAS acima onde a lista precisa refletir edições do
+// usuário (criar/lançar título). O dashboard de Metas/Orçamento continua na
+// lista estática, pois o % de orçamento é alocado só para Comercial/Marketing.
+
+export interface SiengeTaxonomy {
+  centrosCusto: { value: string; label: string }[];
+  categoriasPorCentro: Record<string, string[]>;
+  subcategoriasPorCategoria: Record<string, { id: string; nome: string }[]>; // key: categoriaId
+  categoriaIdFor: Record<string, string>; // key: `${centroCusto}::${categoria}` -> categoriaId
+}
+
+const taxonomyKey = (centroCusto: string, categoria: string) => `${centroCusto}::${categoria}`;
+
+export function buildSiengeTaxonomy(
+  centros: SiengeCentroCustoDef[],
+  categorias: SiengeCategoriaDef[],
+  subcategorias: SiengeSubcategoriaDef[],
+): SiengeTaxonomy {
+  const centrosCusto = [
+    ...Object.entries(CENTRO_CUSTO_LABELS).map(([value, label]) => ({ value, label })),
+    ...centros
+      .filter(c => !CENTRO_CUSTO_LABELS[c.nome as SiengeCentroCusto])
+      .map(c => ({ value: c.nome, label: c.nome })),
+  ];
+
+  const categoriasPorCentro: Record<string, string[]> = {};
+  const categoriaIdFor: Record<string, string> = {};
+  categorias.forEach(c => {
+    (categoriasPorCentro[c.centroCusto] ||= []).push(c.categoria);
+    categoriaIdFor[taxonomyKey(c.centroCusto, c.categoria)] = c.id;
+  });
+
+  const subcategoriasPorCategoria: Record<string, { id: string; nome: string }[]> = {};
+  subcategorias.forEach(s => {
+    (subcategoriasPorCategoria[s.categoriaId] ||= []).push({ id: s.id, nome: s.subcategoria });
+  });
+
+  return { centrosCusto, categoriasPorCentro, subcategoriasPorCategoria, categoriaIdFor };
+}
+
+export function taxonomyCategoriasFor(taxonomy: SiengeTaxonomy, centroCusto?: string): string[] {
+  if (!centroCusto) return [];
+  return taxonomy.categoriasPorCentro[centroCusto] || [];
+}
+
+export function taxonomySubcategoriasFor(taxonomy: SiengeTaxonomy, centroCusto?: string, categoria?: string): string[] {
+  if (!centroCusto || !categoria) return [];
+  const categoriaId = taxonomy.categoriaIdFor[taxonomyKey(centroCusto, categoria)];
+  if (!categoriaId) return [];
+  return (taxonomy.subcategoriasPorCategoria[categoriaId] || []).map(s => s.nome);
 }

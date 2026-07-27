@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -962,5 +962,60 @@ export async function saveSiengeFatura(fatura: SiengeFatura) {
 
 export async function deleteSiengeFatura(id: string) {
   const { error } = await supabase.from('sienge_faturas').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Sienge Taxonomia (Centro de Custo / Categoria / Subcategoria) ──
+
+export async function fetchSiengeCentrosCusto(): Promise<SiengeCentroCustoDef[]> {
+  const { data, error } = await supabase.from('sienge_centros_custo').select('*').order('nome');
+  if (error) throw error;
+  return (data || []).map((r: any): SiengeCentroCustoDef => ({ id: r.id, nome: r.nome, createdAt: r.created_at }));
+}
+
+export async function addSiengeCentroCusto(nome: string): Promise<void> {
+  const { error } = await supabase.from('sienge_centros_custo').insert({ nome });
+  if (error) throw error;
+}
+
+export async function fetchSiengeCategorias(): Promise<SiengeCategoriaDef[]> {
+  const { data, error } = await supabase.from('sienge_categorias').select('*').order('categoria');
+  if (error) throw error;
+  return (data || []).map((r: any): SiengeCategoriaDef => ({
+    id: r.id, centroCusto: r.centro_custo, categoria: r.categoria, createdAt: r.created_at,
+  }));
+}
+
+export async function addSiengeCategoria(centroCusto: string, categoria: string): Promise<void> {
+  const { error } = await supabase.from('sienge_categorias').insert({ centro_custo: centroCusto, categoria });
+  if (error) throw error;
+}
+
+export async function renameSiengeCategoria(id: string, categoria: string): Promise<void> {
+  const { error } = await supabase.from('sienge_categorias').update({ categoria }).eq('id', id);
+  if (error) throw error;
+}
+
+// Cascata: apagar a categoria remove suas subcategorias (FK on delete cascade).
+export async function deleteSiengeCategoria(id: string): Promise<void> {
+  const { error } = await supabase.from('sienge_categorias').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchSiengeSubcategorias(): Promise<SiengeSubcategoriaDef[]> {
+  const { data, error } = await supabase.from('sienge_subcategorias').select('*').order('subcategoria');
+  if (error) throw error;
+  return (data || []).map((r: any): SiengeSubcategoriaDef => ({
+    id: r.id, categoriaId: r.categoria_id, subcategoria: r.subcategoria, createdAt: r.created_at,
+  }));
+}
+
+export async function addSiengeSubcategoria(categoriaId: string, subcategoria: string): Promise<void> {
+  const { error } = await supabase.from('sienge_subcategorias').insert({ categoria_id: categoriaId, subcategoria });
+  if (error) throw error;
+}
+
+export async function deleteSiengeSubcategoria(id: string): Promise<void> {
+  const { error } = await supabase.from('sienge_subcategorias').delete().eq('id', id);
   if (error) throw error;
 }

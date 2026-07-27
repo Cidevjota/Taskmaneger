@@ -1,4 +1,4 @@
-import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeCentroCusto, SiengeProjectTotal } from '../types';
+import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeCentroCusto, SiengeTabelaVendaUnidade } from '../types';
 import { SIENGE_CATEGORIAS } from './siengeCategorias';
 
 export const ALL_CATEGORIAS: { centroCusto: SiengeCentroCusto; categoria: string }[] =
@@ -31,71 +31,25 @@ function monthKeyOf(year: number, month0: number): string {
   return `${year}-${String(month0 + 1).padStart(2, '0')}`;
 }
 
-// Unidades disponíveis do empreendimento: unidades totais menos as já comprometidas
-// em metas de outros meses/anos (a meta do próprio mês/ano em cálculo é excluída,
-// já que é ela que está sendo determinada).
-export function unidadesDisponiveisFor(
-  project: Project,
-  projectTotais: SiengeProjectTotal[],
-  metas: SiengeProjectMeta[],
-  excludeAno?: number,
-  excludeMes?: number,
-): number {
-  const total = projectTotais.find(t => t.projectId === project.id);
-  if (!total) return 0;
-  const comprometidas = metas
-    .filter(m => m.projectId === project.id && !(m.ano === excludeAno && m.mes === excludeMes))
-    .reduce((s, m) => s + (m.unidadesMeta || 0), 0);
-  return Math.max(total.unidadesTotal - comprometidas, 0);
+// Unidades da Tabela de Vendas ainda com situação "disponível" — base do preço
+// médio usado para estimar o VGV de metas por unidade.
+export function getUnidadesDisponiveis(unidades: SiengeTabelaVendaUnidade[]): SiengeTabelaVendaUnidade[] {
+  return unidades.filter(u => u.situacao === 'disponivel');
 }
 
-// VGV restante do empreendimento: VGV total menos o VGV já comprometido em metas
-// de outros meses/anos (mesma exclusão do mês/ano em cálculo usada em unidadesDisponiveisFor).
-// Metas antigas com unidades definidas mas sem VGV explícito (salvas antes do
-// preenchimento automático existir) não podem contar como "R$ 0 consumido" — isso
-// infla o preço das unidades restantes. Para essas, usa o preço de referência do
-// empreendimento como o valor que elas efetivamente consumiram do VGV total.
-function vgvRestanteFor(
-  project: Project,
-  projectTotais: SiengeProjectTotal[],
-  metas: SiengeProjectMeta[],
-  excludeAno?: number,
-  excludeMes?: number,
-): number {
-  const total = projectTotais.find(t => t.projectId === project.id);
-  if (!total) return 0;
-  const refPrice = referencePricePerUnitFor(project, projectTotais);
-  const comprometido = metas
-    .filter(m => m.projectId === project.id && !(m.ano === excludeAno && m.mes === excludeMes))
-    .reduce((s, m) => s + (m.vgvMeta > 0 ? m.vgvMeta : refPrice * (m.unidadesMeta || 0)), 0);
-  return Math.max(total.vgvTotal - comprometido, 0);
+// VGV médio das unidades disponíveis (valor de tabela ÷ quantidade) — vem
+// diretamente da Tabela de Vendas do empreendimento, não de nenhum total manual.
+export function getVgvMedioDisponivel(unidades: SiengeTabelaVendaUnidade[]): number {
+  const disponiveis = getUnidadesDisponiveis(unidades);
+  if (disponiveis.length === 0) return 0;
+  return disponiveis.reduce((s, u) => s + u.valorTabela, 0) / disponiveis.length;
 }
 
-// Preço médio por unidade (VGV restante / unidades disponíveis) do empreendimento —
-// usado para estimar o VGV de um mês quando ele não é definido explicitamente na
-// planilha. Tanto o VGV quanto as unidades restantes diminuem na mesma proporção
-// conforme metas de outros meses são cadastradas, então o preço médio se mantém
-// estável quando a distribuição é proporcional (e só sobe/desce se ela não for).
-export function pricePerUnitFor(
-  project: Project,
-  projectTotais: SiengeProjectTotal[],
-  metas: SiengeProjectMeta[] = [],
-  excludeAno?: number,
-  excludeMes?: number,
-): number {
-  const total = projectTotais.find(t => t.projectId === project.id);
-  if (!total || total.vgvTotal <= 0) return 0;
-  const disponiveis = unidadesDisponiveisFor(project, projectTotais, metas, excludeAno, excludeMes);
-  const vgvRestante = vgvRestanteFor(project, projectTotais, metas, excludeAno, excludeMes);
-  return disponiveis > 0 ? vgvRestante / disponiveis : 0;
-}
-
-// Preço médio "de referência" (VGV total ÷ unidades totais), fixo e sem descontar
-// nada já comprometido — usado apenas como informação de contexto (ex.: no resumo
-// de VGV/unidades totais do empreendimento), não no cálculo de estimativa por mês.
-export function referencePricePerUnitFor(project: Project, projectTotais: SiengeProjectTotal[]): number {
-  const total = projectTotais.find(t => t.projectId === project.id);
-  return total && total.unidadesTotal > 0 ? total.vgvTotal / total.unidadesTotal : 0;
+// Preço médio por unidade do empreendimento, usado para estimar o VGV de um mês
+// quando a meta define apenas a quantidade de unidades (sem VGV explícito): o VGV
+// estimado é unidades × VGV médio disponível na Tabela de Vendas do empreendimento.
+export function pricePerUnitFor(project: Project, tabelaVendas: SiengeTabelaVendaUnidade[]): number {
+  return getVgvMedioDisponivel(tabelaVendas.filter(u => u.projectId === project.id));
 }
 
 // Análise de um empreendimento para um único mês (orçamento por categoria vs gasto real).
@@ -106,7 +60,7 @@ export function analyzeProjectMonth(
   categoriaOrcamento: SiengeCategoriaOrcamento[],
   year: number,
   month0: number,
-  projectTotais: SiengeProjectTotal[] = [],
+  tabelaVendas: SiengeTabelaVendaUnidade[] = [],
   controleInicio: string = '0000-01-01',
 ): ProjectAnalysis {
   const monthKey = monthKeyOf(year, month0);
@@ -119,7 +73,7 @@ export function analyzeProjectMonth(
   const unidadesMeta = meta?.unidadesMeta || 0;
   const vgvExplicito = meta?.vgvMeta || 0;
   const vgvEstimado = vgvExplicito === 0 && unidadesMeta > 0;
-  const vgvMeta = vgvExplicito > 0 ? vgvExplicito : pricePerUnitFor(project, projectTotais, projectMetas, year, month0 + 1) * unidadesMeta;
+  const vgvMeta = vgvExplicito > 0 ? vgvExplicito : pricePerUnitFor(project, tabelaVendas) * unidadesMeta;
 
   const categorias = ALL_CATEGORIAS.map(({ centroCusto, categoria }) => {
     const alocacao = categoriaOrcamento.find(c => c.projectId === project.id && c.centroCusto === centroCusto && c.categoria === categoria);
@@ -147,18 +101,18 @@ export function analyzeProjectsForPeriod(
   categoriaOrcamento: SiengeCategoriaOrcamento[],
   year: number,
   month: number | null,
-  projectTotais: SiengeProjectTotal[] = [],
+  tabelaVendas: SiengeTabelaVendaUnidade[] = [],
   controleInicio: string = '0000-01-01',
 ): ProjectAnalysis[] {
   if (month !== null) {
     return projects
-      .map(p => analyzeProjectMonth(p, titles, projectMetas, categoriaOrcamento, year, month, projectTotais, controleInicio))
+      .map(p => analyzeProjectMonth(p, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio))
       .filter(a => a.vgvMeta > 0);
   }
 
   return projects
     .map(project => {
-      const perMonth = Array.from({ length: 12 }, (_, m) => analyzeProjectMonth(project, titles, projectMetas, categoriaOrcamento, year, m, projectTotais, controleInicio))
+      const perMonth = Array.from({ length: 12 }, (_, m) => analyzeProjectMonth(project, titles, projectMetas, categoriaOrcamento, year, m, tabelaVendas, controleInicio))
         .filter(a => a.vgvMeta > 0);
       if (perMonth.length === 0) return null;
 
@@ -188,11 +142,11 @@ export function monthlyTotalsForYear(
   projectMetas: SiengeProjectMeta[],
   categoriaOrcamento: SiengeCategoriaOrcamento[],
   year: number,
-  projectTotais: SiengeProjectTotal[] = [],
+  tabelaVendas: SiengeTabelaVendaUnidade[] = [],
   controleInicio: string = '0000-01-01',
 ): { month: number; gasto: number; orcamento: number }[] {
   return Array.from({ length: 12 }, (_, m) => {
-    const analysis = projects.map(p => analyzeProjectMonth(p, titles, projectMetas, categoriaOrcamento, year, m, projectTotais, controleInicio)).filter(a => a.vgvMeta > 0);
+    const analysis = projects.map(p => analyzeProjectMonth(p, titles, projectMetas, categoriaOrcamento, year, m, tabelaVendas, controleInicio)).filter(a => a.vgvMeta > 0);
     return {
       month: m,
       gasto: analysis.reduce((s, a) => s + a.totalGasto, 0),
