@@ -415,6 +415,7 @@ export interface SiengeTabelaVendaUnidade {
   situacao: SiengeVendaSituacao;
   camposExtra: Record<string, number | string>;
   descricao: string | null;
+  compradorAtual: string | null;
   frozenSince: string | null;
   createdAt: string;
   updatedAt: string;
@@ -433,15 +434,19 @@ export interface SiengeTabelaVendaColuna {
   updatedAt: string;
 }
 
-// Snapshot imutável de venda — o valor de tabela congelado no instante em que a
-// unidade virou "vendida". A Tabela de Vendas continua viva e sofre reajuste de
-// INCC; o cálculo de orçamento real usa sempre o valor congelado aqui.
+// Snapshot imutável de venda — todos os valores da unidade (valor de tabela +
+// colunas dinâmicas) e o comprador, congelados no instante em que a unidade
+// virou "vendida". A Tabela de Vendas continua viva e sofre reajuste de INCC;
+// o Histórico de Vendas e o cálculo de orçamento real usam sempre os valores
+// congelados aqui, nunca os valores atuais da unidade.
 export interface SiengeVenda {
   id: string;
   unidadeId: string;
   projectId: string;
   unidade: string;
   valorCongelado: number;
+  camposExtraCongelados: Record<string, number | string>;
+  comprador: string | null;
   dataVenda: string;
   dataDistrato: string | null;
 }

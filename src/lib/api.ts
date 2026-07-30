@@ -760,6 +760,7 @@ function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
     situacao: r.situacao,
     camposExtra: r.campos_extra || {},
     descricao: r.descricao,
+    compradorAtual: r.comprador,
     frozenSince: r.frozen_since,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -781,6 +782,7 @@ export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
     situacao: item.situacao,
     campos_extra: item.camposExtra || {},
     descricao: item.descricao,
+    comprador: item.compradorAtual,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'project_id,unidade' });
   if (error) throw error;
@@ -855,6 +857,8 @@ function mapSiengeVenda(r: any): SiengeVenda {
     projectId: r.project_id,
     unidade: r.unidade,
     valorCongelado: Number(r.valor_congelado),
+    camposExtraCongelados: r.campos_extra_congelados || {},
+    comprador: r.comprador,
     dataVenda: r.data_venda,
     dataDistrato: r.data_distrato,
   };

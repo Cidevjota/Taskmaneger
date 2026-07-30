@@ -45,6 +45,73 @@ export function calcRegraValor(item: SiengeTabelaVendaUnidade, regra: SiengeCalc
   return (base * (regra.percentual / 100)) / regra.quantidade;
 }
 
+export function colunaBaseLabel(colunaBaseKey: string, colunas: SiengeTabelaVendaColuna[]): string {
+  if (colunaBaseKey === 'valor_tabela') return 'Valor da Unidade';
+  return colunas.find(c => c.key === colunaBaseKey)?.label || colunaBaseKey;
+}
+
+// ─── Validação: parcelas (quantidade x regra) devem somar a coluna base;
+// soma de todas as colunas monetárias deve fechar com o Valor da Unidade. ──
+
+export interface ValidacaoBaseGrupo {
+  colunaBaseKey: string;
+  label: string;
+  valorBase: number;
+  somaParcelas: number;
+  diferenca: number;
+  regras: { regra: SiengeCalculoRegra; valorParcela: number; subtotal: number }[];
+}
+
+export interface ValidacaoUnidadeResultado {
+  grupos: ValidacaoBaseGrupo[];
+  colunasMoeda: { coluna: SiengeTabelaVendaColuna; valor: number }[];
+  somaMoeda: number;
+  valorUnidade: number;
+  diferencaTotal: number;
+}
+
+export function validarUnidade(
+  item: SiengeTabelaVendaUnidade,
+  colunas: SiengeTabelaVendaColuna[],
+  regras: SiengeCalculoRegra[]
+): ValidacaoUnidadeResultado {
+  const baseKeys = Array.from(new Set(regras.map(r => r.colunaBaseKey)));
+  const grupos: ValidacaoBaseGrupo[] = baseKeys.map(colunaBaseKey => {
+    const regrasDoGrupo = regras.filter(r => r.colunaBaseKey === colunaBaseKey);
+    const valorBase = getColunaBaseValue(item, colunaBaseKey);
+    const detalhado = regrasDoGrupo.map(regra => {
+      const valorParcela = calcRegraValor(item, regra);
+      return { regra, valorParcela, subtotal: valorParcela * regra.quantidade };
+    });
+    const somaParcelas = sum(detalhado.map(d => d.subtotal));
+    return {
+      colunaBaseKey,
+      label: colunaBaseLabel(colunaBaseKey, colunas),
+      valorBase,
+      somaParcelas,
+      diferenca: valorBase - somaParcelas,
+      regras: detalhado,
+    };
+  });
+
+  const colunasMoeda = colunas
+    .filter(c => c.tipo === 'moeda')
+    .map(coluna => ({ coluna, valor: getColunaBaseValue(item, coluna.key) }));
+  const somaMoeda = sum(colunasMoeda.map(c => c.valor));
+
+  return {
+    grupos,
+    colunasMoeda,
+    somaMoeda,
+    valorUnidade: item.valorTabela,
+    diferencaTotal: item.valorTabela - somaMoeda,
+  };
+}
+
+function sum(values: number[]): number {
+  return values.reduce((s, v) => s + v, 0);
+}
+
 // ─── Números em formato BR (1.234,56) ──────────────────────────
 
 export function parseBrNumber(raw: string): number {
@@ -111,6 +178,7 @@ export function exportSiengeVendasCsv(
     ...sortedColunas.map(c => c.label),
     ...sortedRegras.map(r => r.titulo),
     'Situação',
+    'Comprador',
     'Descrição',
   ];
   const lines = [header.map(h => csvField(h, delimiter)).join(delimiter)];
@@ -126,6 +194,7 @@ export function exportSiengeVendasCsv(
       }),
       ...sortedRegras.map(r => formatBrNumber(calcRegraValor(item, r))),
       SITUACAO_LABELS[item.situacao],
+      item.compradorAtual || '',
       item.descricao || '',
     ];
     lines.push(row.map(f => csvField(String(f), delimiter)).join(delimiter));
@@ -160,7 +229,7 @@ export function parseSiengeVendasCsv(
   const existingByUnidade = new Map(existingUnidades.map(u => [normalize(u.unidade), u]));
 
   type ColEntry =
-    | { type: 'unidade' | 'valor' | 'situacao' | 'descricao' | 'regra' }
+    | { type: 'unidade' | 'valor' | 'situacao' | 'descricao' | 'comprador' | 'regra' }
     | { type: 'coluna'; coluna: SiengeTabelaVendaColuna };
 
   const novasColunas: SiengeTabelaVendaColuna[] = [];
@@ -173,6 +242,7 @@ export function parseSiengeVendasCsv(
     if (n === 'valor da unidade' || n === 'valor' || n === 'valor de tabela' || n === 'valor tabela') return { type: 'valor' };
     if (n === 'situacao') return { type: 'situacao' };
     if (n === 'descricao') return { type: 'descricao' };
+    if (n === 'comprador') return { type: 'comprador' };
     if (regraTitulosNorm.has(n)) return { type: 'regra' };
     let coluna = existingColunas.find(c => normalize(c.label) === n) || novasColunas.find(c => normalize(c.label) === n);
     if (!coluna) {
@@ -197,6 +267,7 @@ export function parseSiengeVendasCsv(
     let valorTabela = 0;
     let situacao: SiengeVendaSituacao = 'disponivel';
     let descricao: string | null = null;
+    let comprador: string | null = null;
     const camposExtra: Record<string, number | string> = {};
 
     colMap.forEach((entry, idx) => {
@@ -205,6 +276,7 @@ export function parseSiengeVendasCsv(
       else if (entry.type === 'valor') valorTabela = parseBrNumber(raw);
       else if (entry.type === 'situacao') situacao = situacaoFromLabel(raw);
       else if (entry.type === 'descricao') descricao = raw || null;
+      else if (entry.type === 'comprador') comprador = raw || null;
       else if (entry.type === 'coluna') {
         camposExtra[entry.coluna.key] = entry.coluna.tipo === 'texto' ? raw : parseBrNumber(raw);
       }
@@ -220,6 +292,7 @@ export function parseSiengeVendasCsv(
       situacao,
       camposExtra,
       descricao,
+      compradorAtual: comprador ?? existing?.compradorAtual ?? null,
       frozenSince: existing?.frozenSince ?? null,
       createdAt: existing?.createdAt || now,
       updatedAt: now,

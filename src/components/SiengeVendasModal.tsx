@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2 } from 'lucide-react';
-import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeColunaTipo } from '../types';
+import { ArrowLeft, Table2, Building2, ChevronDown, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText } from 'lucide-react';
+import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeColunaTipo, SiengeVenda } from '../types';
 import SiengeVendasTable from './SiengeVendasTable';
-import { exportSiengeVendasCsv, parseSiengeVendasCsv } from '../lib/siengeVendasTabela';
+import { exportSiengeVendasCsv, parseSiengeVendasCsv, validarUnidade } from '../lib/siengeVendasTabela';
 
 const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -21,6 +21,7 @@ interface SiengeVendasModalProps {
   projects: Project[];
   unidades: SiengeTabelaVendaUnidade[];
   revisoes: SiengeTabelaVendaRevisao[];
+  vendas: SiengeVenda[];
   colunas: SiengeTabelaVendaColuna[];
   regras: SiengeCalculoRegra[];
   onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
@@ -248,8 +249,169 @@ function PercentStepper({ value, onChange }: { value: number; onChange: (v: numb
   );
 }
 
+function formatCurrency(value: number): string {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function DiferencaBadge({ diferenca }: { diferenca: number }) {
+  // Zero absoluto em centavos — só arredonda para não acusar divergência por
+  // erro de ponto flutuante binário (ex.: 0.010000000000047748).
+  const ok = Math.round(diferenca * 100) === 0;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-bold ${ok ? 'text-emerald-400' : 'text-red-400'}`}>
+      {ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
+      {diferenca >= 0 ? '+' : ''}{formatCurrency(diferenca)}
+    </span>
+  );
+}
+
+// Painel de validação: escolhe uma unidade e confere se as parcelas (quantidade
+// x regra) fecham com a coluna base, e se a soma de todas as colunas monetárias
+// fecha com o Valor da Unidade — ambas as diferenças devem ficar em zero.
+function ValidarPanel({ unidades, colunas, regras, onClose }: {
+  unidades: SiengeTabelaVendaUnidade[];
+  colunas: SiengeTabelaVendaColuna[];
+  regras: SiengeCalculoRegra[];
+  onClose: () => void;
+}) {
+  const sorted = useMemo(() => [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true })), [unidades]);
+  const [unidadeId, setUnidadeId] = useState(sorted[0]?.id || '');
+  useEffect(() => { if (!sorted.find(u => u.id === unidadeId)) setUnidadeId(sorted[0]?.id || ''); }, [sorted, unidadeId]);
+
+  const item = sorted.find(u => u.id === unidadeId);
+  const resultado = useMemo(() => item ? validarUnidade(item, colunas, regras) : null, [item, colunas, regras]);
+
+  return (
+    <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-100">Validar Tabela</h3>
+          <p className="text-[11px] text-zinc-500">Confere se as parcelas fecham com a coluna base, e se a soma das colunas monetárias fecha com o Valor da Unidade.</p>
+        </div>
+        <button type="button" onClick={onClose} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+          <X size={13} />
+        </button>
+      </div>
+
+      <select
+        value={unidadeId}
+        onChange={e => setUnidadeId(e.target.value)}
+        className="w-fit bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none cursor-pointer"
+      >
+        {sorted.map(u => (
+          <option key={u.id} value={u.id} className="bg-zinc-900">Unidade {u.unidade}</option>
+        ))}
+      </select>
+
+      {!item || !resultado ? (
+        <p className="text-xs text-zinc-600">Nenhuma unidade cadastrada para validar.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {resultado.grupos.length === 0 && (
+            <p className="text-xs text-zinc-600">Nenhuma regra de cálculo cadastrada para este empreendimento.</p>
+          )}
+          {resultado.grupos.map(g => (
+            <div key={g.colunaBaseKey} className="flex flex-col gap-2 p-3 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-zinc-400">
+                {g.regras.map((d, i) => (
+                  <React.Fragment key={d.regra.id}>
+                    {i > 0 && <span className="text-zinc-600">+</span>}
+                    <span className="text-zinc-200 font-medium">{d.regra.quantidade}x {formatCurrency(d.valorParcela)}</span>
+                    <span className="text-zinc-600">({d.regra.titulo})</span>
+                  </React.Fragment>
+                ))}
+                <span className="text-zinc-600">=</span>
+                <span className="font-semibold text-zinc-100">{formatCurrency(g.somaParcelas)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-500">{g.label}: <span className="font-semibold text-zinc-200">{formatCurrency(g.valorBase)}</span></span>
+                <DiferencaBadge diferenca={g.diferenca} />
+              </div>
+            </div>
+          ))}
+
+          <div className="flex flex-col gap-2 p-3 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-zinc-400">
+              {resultado.colunasMoeda.map((c, i) => (
+                <React.Fragment key={c.coluna.id}>
+                  {i > 0 && <span className="text-zinc-600">+</span>}
+                  <span className="text-zinc-200 font-medium">{formatCurrency(c.valor)}</span>
+                  <span className="text-zinc-600">({c.coluna.label})</span>
+                </React.Fragment>
+              ))}
+              <span className="text-zinc-600">=</span>
+              <span className="font-semibold text-zinc-100">{formatCurrency(resultado.somaMoeda)}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-500">Valor da Unidade: <span className="font-semibold text-zinc-200">{formatCurrency(resultado.valorUnidade)}</span></span>
+              <DiferencaBadge diferenca={resultado.diferencaTotal} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Tabela de Histórico de Vendas: só unidades vendidas, com os valores
+// congelados no instante da venda (não os valores atuais da tabela viva) e a
+// data em que cada uma virou vendida.
+function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colunas: SiengeTabelaVendaColuna[] }) {
+  const sortedColunas = [...colunas].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  if (vendas.length === 0) {
+    return <p className="text-xs text-zinc-600 text-center py-6">Nenhuma unidade vendida ainda neste empreendimento.</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto custom-scrollbar">
+      <table className="w-full border-separate border-spacing-y-1">
+        <thead>
+          <tr>
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Unidade</th>
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Comprador</th>
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Data da Venda</th>
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor Congelado</th>
+            {sortedColunas.map(c => (
+              <th key={c.key} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{c.label}</th>
+            ))}
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {vendas.map(v => (
+            <tr key={v.id} className="[&>td]:bg-zinc-900/40 [&>td]:border-y [&>td]:border-zinc-800/50 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
+              <td className="px-3 py-2 text-xs font-medium text-zinc-100">{v.unidade}</td>
+              <td className="px-3 py-2 text-xs text-zinc-300">{v.comprador || '—'}</td>
+              <td className="px-3 py-2 text-xs text-zinc-400 whitespace-nowrap">{formatDateTime(v.dataVenda)}</td>
+              <td className="px-3 py-2 text-xs font-semibold text-zinc-100 whitespace-nowrap">{formatCurrency(v.valorCongelado)}</td>
+              {sortedColunas.map(c => {
+                const raw = v.camposExtraCongelados[c.key];
+                if (c.tipo === 'texto') return <td key={c.key} className="px-3 py-2 text-xs text-zinc-300">{raw != null ? String(raw) : '—'}</td>;
+                const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0').replace(',', '.')) || 0;
+                return (
+                  <td key={c.key} className="px-3 py-2 text-xs text-zinc-300 whitespace-nowrap">
+                    {n > 0 ? (c.tipo === 'moeda' ? formatCurrency(n) : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}
+                  </td>
+                );
+              })}
+              <td className="px-3 py-2 text-xs whitespace-nowrap">
+                {v.dataDistrato ? (
+                  <span className="text-zinc-500">Distratada em {formatDateTime(v.dataDistrato)}</span>
+                ) : (
+                  <span className="text-emerald-400 font-semibold">Ativa</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 // Busca por unidade: prioriza correspondência exata, depois prefixo, depois
@@ -272,7 +434,7 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
 }
 
 export default function SiengeVendasModal({
-  projects, unidades, revisoes, colunas, regras,
+  projects, unidades, revisoes, vendas, colunas, regras,
   onSaveUnidade, onDeleteUnidade, onApplyReajuste, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra, onClose,
 }: SiengeVendasModalProps) {
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
@@ -283,6 +445,8 @@ export default function SiengeVendasModal({
   const [showHistorico, setShowHistorico] = useState(false);
   const [showCalculo, setShowCalculo] = useState(false);
   const [showColunas, setShowColunas] = useState(false);
+  const [showValidar, setShowValidar] = useState(false);
+  const [showHistoricoVendas, setShowHistoricoVendas] = useState(false);
   const [reajusteTipo, setReajusteTipo] = useState<'geral' | 'seletiva'>('geral');
   const [reajustePercentual, setReajustePercentual] = useState(0);
   const [reajusteDescricao, setReajusteDescricao] = useState('');
@@ -322,6 +486,11 @@ export default function SiengeVendasModal({
   const projectRevisoes = useMemo(
     () => revisoes.filter(r => r.projectId === selectedProjectId).sort((a, b) => b.numero - a.numero),
     [revisoes, selectedProjectId]
+  );
+
+  const projectVendas = useMemo(
+    () => vendas.filter(v => v.projectId === selectedProjectId).sort((a, b) => new Date(b.dataVenda).getTime() - new Date(a.dataVenda).getTime()),
+    [vendas, selectedProjectId]
   );
 
   const toggleUnit = (id: string) => {
@@ -513,7 +682,7 @@ export default function SiengeVendasModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowColunas(v => !v); setShowReajuste(false); setShowHistorico(false); setShowCalculo(false); }}
+                  onClick={() => { setShowColunas(v => !v); setShowReajuste(false); setShowHistorico(false); setShowCalculo(false); setShowValidar(false); setShowHistoricoVendas(false); }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
                     showColunas ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
                   }`}
@@ -522,7 +691,7 @@ export default function SiengeVendasModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowReajuste(v => !v); setShowHistorico(false); setShowCalculo(false); setShowColunas(false); }}
+                  onClick={() => { setShowReajuste(v => !v); setShowHistorico(false); setShowCalculo(false); setShowColunas(false); setShowValidar(false); setShowHistoricoVendas(false); }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
                     showReajuste ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
                   }`}
@@ -531,7 +700,7 @@ export default function SiengeVendasModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowCalculo(v => !v); setShowReajuste(false); setShowHistorico(false); setShowColunas(false); }}
+                  onClick={() => { setShowCalculo(v => !v); setShowReajuste(false); setShowHistorico(false); setShowColunas(false); setShowValidar(false); setShowHistoricoVendas(false); }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
                     showCalculo ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
                   }`}
@@ -540,7 +709,7 @@ export default function SiengeVendasModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowHistorico(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); }}
+                  onClick={() => { setShowHistorico(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowValidar(false); setShowHistoricoVendas(false); }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
                     showHistorico ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
                   }`}
@@ -548,6 +717,27 @@ export default function SiengeVendasModal({
                   <History size={13} /> Histórico de Revisões
                   {projectRevisoes.length > 0 && (
                     <span className="bg-zinc-800 text-zinc-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{projectRevisoes.length}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowValidar(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowHistorico(false); setShowHistoricoVendas(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                    showValidar ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  }`}
+                >
+                  <ShieldCheck size={13} /> Validar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowHistoricoVendas(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowHistorico(false); setShowValidar(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                    showHistoricoVendas ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  }`}
+                >
+                  <ReceiptText size={13} /> Histórico de Vendas
+                  {projectVendas.length > 0 && (
+                    <span className="bg-zinc-800 text-zinc-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{projectVendas.length}</span>
                   )}
                 </button>
               </div>
@@ -744,6 +934,30 @@ export default function SiengeVendasModal({
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {showValidar && (
+              <ValidarPanel
+                unidades={projectUnidades}
+                colunas={projectColunas}
+                regras={projectRegras}
+                onClose={() => setShowValidar(false)}
+              />
+            )}
+
+            {showHistoricoVendas && (
+              <div className="flex flex-col gap-2 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-100">Histórico de Vendas</h3>
+                    <p className="text-[11px] text-zinc-500">Valores congelados no instante de cada venda — não mudam com reajustes ou edições posteriores na tabela principal.</p>
+                  </div>
+                  <button type="button" onClick={() => setShowHistoricoVendas(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                    <X size={13} />
+                  </button>
+                </div>
+                <HistoricoVendasTable vendas={projectVendas} colunas={projectColunas} />
               </div>
             )}
 

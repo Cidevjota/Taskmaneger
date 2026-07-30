@@ -113,6 +113,49 @@ function DynamicCell({ coluna, text, onChange, onCommit }: { coluna: SiengeTabel
   );
 }
 
+// Balão de confirmação ao marcar uma unidade como vendida: pede o nome do
+// comprador antes de aplicar — o congelamento (sienge_vendas) só acontece
+// depois que o usuário confirma aqui.
+function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string; onConfirm: (comprador: string) => void; onCancel: () => void }) {
+  const [comprador, setComprador] = useState('');
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onCancel} />
+      <div className="absolute z-50 top-full left-0 mt-1.5 w-64 bg-[#18181b] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 p-3 flex flex-col gap-2 animate-fade-in">
+        <p className="text-xs font-semibold text-zinc-200">Confirmar venda da unidade {unidade}</p>
+        <input
+          type="text"
+          value={comprador}
+          onChange={e => setComprador(e.target.value)}
+          placeholder="Nome do comprador"
+          autoFocus
+          onKeyDown={e => {
+            if (e.key === 'Enter') onConfirm(comprador.trim());
+            if (e.key === 'Escape') onCancel();
+          }}
+          className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500/50 transition-colors"
+        />
+        <div className="flex justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-2.5 py-1 text-[11px] font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(comprador.trim())}
+            className="px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-md transition-colors"
+          >
+            Confirmar Venda
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function VendaRow({ item, colunas, regras, onSave, onDelete }: {
   item: SiengeTabelaVendaUnidade;
   colunas: SiengeTabelaVendaColuna[];
@@ -128,6 +171,7 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
   const [camposText, setCamposText] = useState<Record<string, string>>(savedCampos);
   const [situacao, setSituacao] = useState<SiengeVendaSituacao>(item.situacao);
   const [descricaoText, setDescricaoText] = useState(item.descricao || '');
+  const [showVendaConfirm, setShowVendaConfirm] = useState(false);
 
   useEffect(() => {
     setUnidadeText(item.unidade);
@@ -150,6 +194,28 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
   const commit = () => {
     if (!unidadeText.trim()) return;
     onSave({ ...draftItem, unidade: unidadeText.trim(), situacao, descricao: descricaoText.trim() || null, updatedAt: new Date().toISOString() });
+  };
+
+  const handleSituacaoChange = (value: SiengeVendaSituacao) => {
+    if (value === 'vendida' && item.situacao !== 'vendida') {
+      setShowVendaConfirm(true);
+      return;
+    }
+    setSituacao(value);
+  };
+
+  const confirmVenda = (comprador: string) => {
+    setShowVendaConfirm(false);
+    setSituacao('vendida');
+    if (!unidadeText.trim()) return;
+    onSave({
+      ...draftItem,
+      unidade: unidadeText.trim(),
+      situacao: 'vendida',
+      compradorAtual: comprador || null,
+      descricao: descricaoText.trim() || null,
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   return (
@@ -194,16 +260,23 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
           </td>
         );
       })}
-      <td className="px-3 py-2">
+      <td className="px-3 py-2 relative">
         <select
           value={situacao}
-          onChange={e => setSituacao(e.target.value as SiengeVendaSituacao)}
+          onChange={e => handleSituacaoChange(e.target.value as SiengeVendaSituacao)}
           className={`text-[11px] font-medium rounded-md border px-2 py-1 outline-none cursor-pointer transition-colors ${SITUACAO_STYLES[situacao]}`}
         >
           {(Object.keys(SITUACAO_LABELS) as SiengeVendaSituacao[]).map(s => (
             <option key={s} value={s} className="bg-zinc-900 text-zinc-100">{SITUACAO_LABELS[s]}</option>
           ))}
         </select>
+        {showVendaConfirm && (
+          <ConfirmVendaPopover
+            unidade={item.unidade}
+            onConfirm={confirmVenda}
+            onCancel={() => setShowVendaConfirm(false)}
+          />
+        )}
       </td>
       <td className="px-3 py-2 min-w-[180px]">
         <input
@@ -271,6 +344,7 @@ function NewUnidadeRow({ projectId, colunas, regras, existingUnidades, onSave, o
       camposExtra,
       situacao,
       descricao: descricaoText.trim() || null,
+      compradorAtual: null,
       frozenSince: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

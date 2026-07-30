@@ -273,6 +273,7 @@ export default function SiengeMetasDashboard({
               projects={visibleProjects}
               unidades={tabelaVendas}
               revisoes={tabelaVendaRevisoes}
+              vendas={vendas}
               colunas={tabelaVendaColunas}
               regras={calculoRegras}
               onSaveUnidade={onSaveTabelaVenda}
