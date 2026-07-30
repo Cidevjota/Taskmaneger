@@ -184,7 +184,7 @@ export default function HomeView({
                 </div>
               )}
               <div className="flex flex-col">
-                <span className="text-sm font-bold text-white tracking-tight leading-tight">{currentUser?.name || userName}</span>
+                <span className="text-sm font-bold text-zinc-100 tracking-tight leading-tight">{currentUser?.name || userName}</span>
                 <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider mt-0.5">{currentUser?.role || 'Usuário'}</span>
               </div>
             </div>

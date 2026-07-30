@@ -262,7 +262,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           <button
             type="button"
             onClick={() => setShowRejectModal(false)}
-            className="px-3 py-1.5 text-[13px] font-medium text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+            className="px-3 py-1.5 text-[13px] font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
           >
             Cancelar
           </button>
@@ -454,7 +454,7 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
 
       {/* Bottom Row: Valor & Ícones */}
       <div className="flex justify-between items-center pt-2 border-t border-zinc-800/40">
-        <span className="text-sm text-white font-bold tracking-tight">
+        <span className="text-sm text-zinc-100 font-bold tracking-tight">
           {formatCurrencyDisplay(title.valor)}
         </span>
         <div className="flex items-center gap-2">
@@ -560,7 +560,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all bg-[#121214] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 min-w-[140px] shadow-sm"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all bg-[#121214] border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 min-w-[140px] shadow-sm"
       >
         <span className="truncate flex-1 text-left">{selectedLote ? selectedLote.nome : 'Todos os Lotes'}</span>
         <ChevronDown size={12} className={`text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -570,7 +570,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
         <div className="absolute right-0 top-full mt-1.5 w-[220px] bg-[#1a1a1e] border border-zinc-800 rounded-lg shadow-2xl py-1 z-50 animate-fade-in origin-top-right flex flex-col max-h-[300px] overflow-y-auto no-scrollbar">
           <button
             onClick={() => { onChange('all'); setIsOpen(false); }}
-            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${value === 'all' ? 'text-blue-400 bg-blue-500/10' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-white'}`}
+            className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${value === 'all' ? 'text-blue-400 bg-blue-500/10' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}`}
           >
             <span>Todos os Lotes</span>
             {value === 'all' && <Check size={14} />}
@@ -582,7 +582,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
             <button
               key={lote.id}
               onClick={() => { onChange(lote.id); setIsOpen(false); }}
-              className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${value === lote.id ? 'text-blue-400 bg-blue-500/10' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-white'}`}
+              className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${value === lote.id ? 'text-blue-400 bg-blue-500/10' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}`}
             >
               <span className="truncate pr-2 text-left">{lote.nome}</span>
               {value === lote.id && <Check size={14} className="shrink-0" />}

@@ -203,14 +203,14 @@ export default function FullscreenImageEditor({
           <div className="flex items-center gap-1.5 bg-zinc-900/50 p-1 rounded-lg border border-zinc-800/50">
             <button
               onClick={() => setIsEraser(false)}
-              className={`p-2 rounded-md transition-all ${!isEraser ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+              className={`p-2 rounded-md transition-all ${!isEraser ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
               title="Caneta"
             >
               <Pen size={18} />
             </button>
             <button
               onClick={() => setIsEraser(true)}
-              className={`p-2 rounded-md transition-all ${isEraser ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+              className={`p-2 rounded-md transition-all ${isEraser ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
               title="Borracha"
             >
               <Eraser size={18} />
@@ -251,7 +251,7 @@ export default function FullscreenImageEditor({
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-full transition-colors"
+            className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-full transition-colors"
             title="Fechar"
           >
             <X size={20} />
@@ -268,7 +268,7 @@ export default function FullscreenImageEditor({
         {imageUrls.length > 1 && (
           <button
             onClick={() => changeImage(currentIndex === 0 ? imageUrls.length - 1 : currentIndex - 1)}
-            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-zinc-900/80 hover:bg-zinc-800 text-white rounded-full transition-colors z-50 backdrop-blur-sm border border-zinc-700/50"
+            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-100 rounded-full transition-colors z-50 backdrop-blur-sm border border-zinc-700/50"
           >
             <Undo2 size={24} className="rotate-[-45deg]" /> {/* just a placeholder icon or import ChevronLeft */}
           </button>
@@ -301,7 +301,7 @@ export default function FullscreenImageEditor({
         {imageUrls.length > 1 && (
           <button
             onClick={() => changeImage(currentIndex === imageUrls.length - 1 ? 0 : currentIndex + 1)}
-            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-zinc-900/80 hover:bg-zinc-800 text-white rounded-full transition-colors z-50 backdrop-blur-sm border border-zinc-700/50"
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-100 rounded-full transition-colors z-50 backdrop-blur-sm border border-zinc-700/50"
           >
             <Undo2 size={24} className="rotate-[135deg]" />
           </button>

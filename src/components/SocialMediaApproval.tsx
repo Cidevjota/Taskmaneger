@@ -56,7 +56,7 @@ function MinimalSelect({ value, onChange, options, placeholder, disabled, classN
                   {opt.avatarUrl ? (
                     <img src={opt.avatarUrl} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
                   ) : opt.initials ? (
-                    <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[9px] font-bold shrink-0 text-white">
+                    <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[9px] font-bold shrink-0 text-zinc-100">
                       {opt.initials}
                     </div>
                   ) : null}

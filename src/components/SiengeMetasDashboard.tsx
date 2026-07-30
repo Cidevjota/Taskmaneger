@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart3, Settings2, Eye, Building2, ChevronDown, Check, Table2, PieChart, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig } from '../types';
+import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra } from '../types';
 import { useAuth } from '../context/AuthContext';
 import MonthFilterDropdown, { MonthFilterValue } from './MonthFilterDropdown';
 import { MONTHS_FULL } from './MonthSelectDropdown';
@@ -36,6 +36,12 @@ interface SiengeMetasDashboardProps {
   vendas: SiengeVenda[];
   orcamentoConfig?: SiengeOrcamentoConfig;
   onSaveOrcamentoConfig: (config: SiengeOrcamentoConfig) => void;
+  tabelaVendaColunas: SiengeTabelaVendaColuna[];
+  onSaveTabelaVendaColuna: (coluna: SiengeTabelaVendaColuna) => void;
+  onDeleteTabelaVendaColuna: (id: string) => void;
+  calculoRegras: SiengeCalculoRegra[];
+  onSaveCalculoRegra: (regra: SiengeCalculoRegra) => void;
+  onDeleteCalculoRegra: (id: string) => void;
   taxonomy: SiengeTaxonomy;
 }
 
@@ -102,7 +108,8 @@ export default function SiengeMetasDashboard({
   titles, projects, projectMetas, categoriaOrcamento, projectTotais, projectDisplays,
   onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
   tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
-  vendas, orcamentoConfig, onSaveOrcamentoConfig, taxonomy,
+  vendas, orcamentoConfig, onSaveOrcamentoConfig,
+  tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra, taxonomy,
 }: SiengeMetasDashboardProps) {
   const { currentUser } = useAuth();
   const now = new Date();
@@ -266,9 +273,15 @@ export default function SiengeMetasDashboard({
               projects={visibleProjects}
               unidades={tabelaVendas}
               revisoes={tabelaVendaRevisoes}
+              colunas={tabelaVendaColunas}
+              regras={calculoRegras}
               onSaveUnidade={onSaveTabelaVenda}
               onDeleteUnidade={onDeleteTabelaVenda}
               onApplyReajuste={onApplyTabelaVendaReajuste}
+              onSaveColuna={onSaveTabelaVendaColuna}
+              onDeleteColuna={onDeleteTabelaVendaColuna}
+              onSaveRegra={onSaveCalculoRegra}
+              onDeleteRegra={onDeleteCalculoRegra}
               onClose={() => setShowVendasPanel(false)}
             />
           </motion.div>
@@ -306,14 +319,14 @@ export default function SiengeMetasDashboard({
                 </button>
                 <button
                   onClick={() => setShowVendasPanel(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#1A1A1C] hover:bg-[#1F1F22] rounded-md transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-100 bg-[#1A1A1C] hover:bg-[#1F1F22] rounded-md transition-colors"
                 >
                   <Table2 size={13} />
                   Tabela de Vendas
                 </button>
                 <button
                   onClick={() => setShowAlocacaoPanel(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#1A1A1C] hover:bg-[#1F1F22] rounded-md transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-100 bg-[#1A1A1C] hover:bg-[#1F1F22] rounded-md transition-colors"
                 >
                   <PieChart size={13} />
                   Alocação de Orçamento

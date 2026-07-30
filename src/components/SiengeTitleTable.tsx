@@ -314,7 +314,7 @@ function ColumnsMenu({ hidden, onToggle }: { hidden: Set<string>; onToggle: (key
                 key={col.key}
                 type="button"
                 onClick={() => onToggle(col.key)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-zinc-300 hover:bg-zinc-800/50 hover:text-white transition-colors text-left"
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100 transition-colors text-left"
               >
                 <span className={isHidden ? 'text-zinc-600' : ''}>{col.label}</span>
                 {!isHidden && <Check size={13} className="text-blue-400" />}

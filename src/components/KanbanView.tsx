@@ -468,7 +468,7 @@ export default function KanbanView({
           <div className="flex items-center gap-3">
             <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
             <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-              <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
+              <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
               <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
               <div className="flex items-center pl-1 pr-1 gap-1">
                 {sortedUsers.map(u => (
@@ -487,7 +487,7 @@ export default function KanbanView({
           <div className="flex items-center gap-3 ml-6">
             <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
             <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-              <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
+              <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
               <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
               <div className="flex items-center pl-1 pr-1 gap-1">
                 {[
@@ -610,7 +610,7 @@ export default function KanbanView({
                   </div>
                   <button
                     onClick={() => triggerQuickAdd(column.id)}
-                    className="opacity-0 group-hover/column:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-white hover:bg-zinc-900 transition-all duration-150"
+                    className="opacity-0 group-hover/column:opacity-100 focus:opacity-100 p-1 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900 transition-all duration-150"
                     title="Adicionar Tarefa na Coluna"
                   >
                     <Plus size={13} />
@@ -630,7 +630,7 @@ export default function KanbanView({
                       />
                       <div className="flex justify-end gap-1.5 text-[10px]">
                         <button type="button" onClick={() => setQuickAddColId(null)} className="px-2 py-1 text-zinc-500 hover:text-zinc-300 font-sans font-medium">Cancelar</button>
-                        <button type="submit" className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-white rounded font-medium transition-colors">Adicionar</button>
+                        <button type="submit" className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-100 rounded font-medium transition-colors">Adicionar</button>
                       </div>
                     </div>
                   </form>
@@ -815,7 +815,7 @@ export default function KanbanView({
                                 {/* Title */}
                                 <div className="mb-1.5 flex items-start gap-1.5">
                                   {ThemeIcon && <div className={`shrink-0 mt-[1px] ${themeTextColor}`}><ThemeIcon size={14} /></div>}
-                                  <h4 className="text-xs font-semibold text-zinc-100 group-hover:text-white leading-snug tracking-normal break-words w-full">{task.title}</h4>
+                                  <h4 className="text-xs font-semibold text-zinc-100 group-hover:text-zinc-100 leading-snug tracking-normal break-words w-full">{task.title}</h4>
                                 </div>
 
 

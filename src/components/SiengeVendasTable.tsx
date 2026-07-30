@@ -1,21 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Trash2, Plus, X } from 'lucide-react';
-import { SiengeTabelaVendaUnidade, SiengeVendaSituacao } from '../types';
+import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeVendaSituacao } from '../types';
+import { SITUACAO_LABELS, calcRegraValor, formatBrNumber, parseBrNumber } from '../lib/siengeVendasTabela';
 
 interface SiengeVendasTableProps {
   projectId: string;
   unidades: SiengeTabelaVendaUnidade[];
   allUnidadeNames: string[];
+  colunas: SiengeTabelaVendaColuna[];
+  regras: SiengeCalculoRegra[];
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
 }
-
-const SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
-  disponivel: 'Disponível',
-  vendida: 'Vendida',
-  permuta: 'Permuta',
-  bloqueada: 'Bloqueada',
-};
 
 const SITUACAO_STYLES: Record<SiengeVendaSituacao, string> = {
   disponivel: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
@@ -36,13 +32,13 @@ function parseCurrencyInput(formatted: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-function formatAreaInput(value: string): string {
+function formatDecimalInput(value: string): string {
   const cleaned = value.replace(/[^\d,]/g, '');
   const [intPart, ...rest] = cleaned.split(',');
   return rest.length ? `${intPart},${rest.join('')}` : intPart;
 }
 
-function parseAreaInput(value: string): number {
+function parseDecimalInput(value: string): number {
   return parseFloat(value.replace(',', '.')) || 0;
 }
 
@@ -50,40 +46,110 @@ function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Texto editável (dirty state comparado ao valor salvo) para uma coluna
+// dinâmica — moeda usa máscara de centavos, número usa decimal livre, texto é livre.
+function campoToText(coluna: SiengeTabelaVendaColuna, value: number | string | undefined): string {
+  if (coluna.tipo === 'texto') return value != null ? String(value) : '';
+  const n = typeof value === 'number' ? value : parseBrNumber(String(value ?? '0'));
+  if (!n) return '';
+  return coluna.tipo === 'moeda'
+    ? n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+}
+
+function campoFromText(coluna: SiengeTabelaVendaColuna, text: string): number | string {
+  if (coluna.tipo === 'texto') return text;
+  return coluna.tipo === 'moeda' ? parseCurrencyInput(text) : parseDecimalInput(text);
+}
+
 const ROW_CLASS = '[&>td]:bg-zinc-900/40 [&>td]:border-y [&>td]:border-zinc-800/50 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg';
 const NEW_ROW_CLASS = '[&>td]:bg-zinc-900/30 [&>td]:border-y [&>td]:border-dashed [&>td]:border-zinc-800/60 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg';
 
-// Linha editável de unidade — mesmo padrão de "rascunho local + botão salvar
-// quando algo muda" já usado em SiengeMetasTable (ProjectTotalRow), para manter
-// a planilha consistente com o resto do módulo.
-function VendaRow({ item, onSave, onDelete }: { item: SiengeTabelaVendaUnidade; onSave: (item: SiengeTabelaVendaUnidade) => void; onDelete: (id: string) => void }) {
-  const savedAreaText = item.areaM2 ? item.areaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '';
+function DynamicCell({ coluna, text, onChange, onCommit }: { coluna: SiengeTabelaVendaColuna; text: string; onChange: (v: string) => void; onCommit: () => void }) {
+  if (coluna.tipo === 'texto') {
+    return (
+      <td className="px-3 py-2 min-w-[140px]">
+        <input
+          type="text"
+          value={text}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
+          placeholder="—"
+          className="w-full min-w-0 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
+        />
+      </td>
+    );
+  }
+  if (coluna.tipo === 'moeda') {
+    return (
+      <td className="px-3 py-2">
+        <div className="inline-flex items-baseline gap-1">
+          <span className="text-zinc-600 text-[9px] font-medium shrink-0">R$</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={text}
+            onChange={e => onChange(formatCurrencyInput(e.target.value))}
+            onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
+            placeholder="0,00"
+            className="w-24 shrink-0 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
+          />
+        </div>
+      </td>
+    );
+  }
+  return (
+    <td className="px-3 py-2">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onChange={e => onChange(formatDecimalInput(e.target.value))}
+        onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
+        placeholder="0"
+        className="w-16 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
+      />
+    </td>
+  );
+}
+
+function VendaRow({ item, colunas, regras, onSave, onDelete }: {
+  item: SiengeTabelaVendaUnidade;
+  colunas: SiengeTabelaVendaColuna[];
+  regras: SiengeCalculoRegra[];
+  onSave: (item: SiengeTabelaVendaUnidade) => void;
+  onDelete: (id: string) => void;
+}) {
   const savedValorText = item.valorTabela ? item.valorTabela.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+  const savedCampos = Object.fromEntries(colunas.map(c => [c.key, campoToText(c, item.camposExtra[c.key])]));
 
   const [unidadeText, setUnidadeText] = useState(item.unidade);
-  const [areaText, setAreaText] = useState(savedAreaText);
   const [valorText, setValorText] = useState(savedValorText);
+  const [camposText, setCamposText] = useState<Record<string, string>>(savedCampos);
   const [situacao, setSituacao] = useState<SiengeVendaSituacao>(item.situacao);
   const [descricaoText, setDescricaoText] = useState(item.descricao || '');
 
   useEffect(() => {
     setUnidadeText(item.unidade);
-    setAreaText(savedAreaText);
     setValorText(savedValorText);
+    setCamposText(savedCampos);
     setSituacao(item.situacao);
     setDescricaoText(item.descricao || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.unidade, item.areaM2, item.valorTabela, item.situacao, item.descricao]);
+  }, [item.unidade, item.valorTabela, item.camposExtra, item.situacao, item.descricao, colunas]);
 
-  const dirty = unidadeText !== item.unidade || areaText !== savedAreaText || valorText !== savedValorText
-    || situacao !== item.situacao || descricaoText !== (item.descricao || '');
-  const areaM2 = parseAreaInput(areaText);
+  const dirty = unidadeText !== item.unidade || valorText !== savedValorText
+    || situacao !== item.situacao || descricaoText !== (item.descricao || '')
+    || colunas.some(c => camposText[c.key] !== savedCampos[c.key]);
+
   const valorTabela = parseCurrencyInput(valorText);
-  const valorM2 = areaM2 > 0 ? valorTabela / areaM2 : 0;
+  const camposExtra: Record<string, number | string> = {};
+  colunas.forEach(c => { camposExtra[c.key] = campoFromText(c, camposText[c.key] || ''); });
+  const draftItem: SiengeTabelaVendaUnidade = { ...item, valorTabela, camposExtra };
 
   const commit = () => {
     if (!unidadeText.trim()) return;
-    onSave({ ...item, unidade: unidadeText.trim(), areaM2, valorTabela, situacao, descricao: descricaoText.trim() || null, updatedAt: new Date().toISOString() });
+    onSave({ ...draftItem, unidade: unidadeText.trim(), situacao, descricao: descricaoText.trim() || null, updatedAt: new Date().toISOString() });
   };
 
   return (
@@ -96,20 +162,6 @@ function VendaRow({ item, onSave, onDelete }: { item: SiengeTabelaVendaUnidade; 
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           className="w-14 bg-transparent text-xs font-medium text-zinc-100 placeholder-zinc-600 outline-none"
         />
-      </td>
-      <td className="px-3 py-2">
-        <div className="inline-flex items-baseline gap-0.5">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={areaText}
-            onChange={e => setAreaText(formatAreaInput(e.target.value))}
-            onKeyDown={e => { if (e.key === 'Enter') commit(); }}
-            placeholder="0"
-            className="w-12 shrink-0 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
-          />
-          <span className="text-zinc-600 text-[9px] shrink-0">m²</span>
-        </div>
       </td>
       <td className="px-3 py-2">
         <div className="inline-flex items-baseline gap-1">
@@ -125,9 +177,23 @@ function VendaRow({ item, onSave, onDelete }: { item: SiengeTabelaVendaUnidade; 
           />
         </div>
       </td>
-      <td className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
-        {valorM2 > 0 ? formatCurrency(valorM2) : '—'}
-      </td>
+      {colunas.map(c => (
+        <DynamicCell
+          key={c.key}
+          coluna={c}
+          text={camposText[c.key] || ''}
+          onChange={v => setCamposText(prev => ({ ...prev, [c.key]: v }))}
+          onCommit={commit}
+        />
+      ))}
+      {regras.map(r => {
+        const valor = calcRegraValor(draftItem, r);
+        return (
+          <td key={r.id} className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
+            {valor > 0 ? formatCurrency(valor) : '—'}
+          </td>
+        );
+      })}
       <td className="px-3 py-2">
         <select
           value={situacao}
@@ -175,10 +241,17 @@ function VendaRow({ item, onSave, onDelete }: { item: SiengeTabelaVendaUnidade; 
   );
 }
 
-function NewUnidadeRow({ projectId, existingUnidades, onSave, onCancel }: { projectId: string; existingUnidades: string[]; onSave: (item: SiengeTabelaVendaUnidade) => void; onCancel: () => void }) {
+function NewUnidadeRow({ projectId, colunas, regras, existingUnidades, onSave, onCancel }: {
+  projectId: string;
+  colunas: SiengeTabelaVendaColuna[];
+  regras: SiengeCalculoRegra[];
+  existingUnidades: string[];
+  onSave: (item: SiengeTabelaVendaUnidade) => void;
+  onCancel: () => void;
+}) {
   const [unidadeText, setUnidadeText] = useState('');
-  const [areaText, setAreaText] = useState('');
   const [valorText, setValorText] = useState('');
+  const [camposText, setCamposText] = useState<Record<string, string>>({});
   const [situacao, setSituacao] = useState<SiengeVendaSituacao>('disponivel');
   const [descricaoText, setDescricaoText] = useState('');
 
@@ -188,12 +261,14 @@ function NewUnidadeRow({ projectId, existingUnidades, onSave, onCancel }: { proj
 
   const add = () => {
     if (!canAdd) return;
+    const camposExtra: Record<string, number | string> = {};
+    colunas.forEach(c => { camposExtra[c.key] = campoFromText(c, camposText[c.key] || ''); });
     onSave({
       id: crypto.randomUUID(),
       projectId,
       unidade: trimmed,
-      areaM2: parseAreaInput(areaText),
       valorTabela: parseCurrencyInput(valorText),
+      camposExtra,
       situacao,
       descricao: descricaoText.trim() || null,
       frozenSince: null,
@@ -216,20 +291,6 @@ function NewUnidadeRow({ projectId, existingUnidades, onSave, onCancel }: { proj
         />
       </td>
       <td className="px-3 py-2">
-        <div className="inline-flex items-baseline gap-0.5">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={areaText}
-            onChange={e => setAreaText(formatAreaInput(e.target.value))}
-            onKeyDown={e => { if (e.key === 'Enter') add(); }}
-            placeholder="0"
-            className="w-12 shrink-0 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
-          />
-          <span className="text-zinc-600 text-[9px] shrink-0">m²</span>
-        </div>
-      </td>
-      <td className="px-3 py-2">
         <div className="inline-flex items-baseline gap-1">
           <span className="text-zinc-600 text-[9px] font-medium shrink-0">R$</span>
           <input
@@ -243,7 +304,18 @@ function NewUnidadeRow({ projectId, existingUnidades, onSave, onCancel }: { proj
           />
         </div>
       </td>
-      <td className="px-3 py-2 text-xs text-zinc-600">—</td>
+      {colunas.map(c => (
+        <DynamicCell
+          key={c.key}
+          coluna={c}
+          text={camposText[c.key] || ''}
+          onChange={v => setCamposText(prev => ({ ...prev, [c.key]: v }))}
+          onCommit={add}
+        />
+      ))}
+      {regras.map(r => (
+        <td key={r.id} className="px-3 py-2 text-xs text-zinc-600">—</td>
+      ))}
       <td className="px-3 py-2">
         <select
           value={situacao}
@@ -294,18 +366,13 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-function average(values: number[]): number {
-  return values.length > 0 ? sum(values) / values.length : 0;
-}
-
-export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames, onSave, onDelete }: SiengeVendasTableProps) {
+export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames, colunas, regras, onSave, onDelete }: SiengeVendasTableProps) {
   const [addingNew, setAddingNew] = useState(false);
+  const sortedColunas = [...colunas].sort((a, b) => a.sortOrder - b.sortOrder);
+  const sortedRegras = [...regras].sort((a, b) => a.sortOrder - b.sortOrder);
   const sorted = [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
 
-  const avgArea = average(sorted.filter(u => u.areaM2 > 0).map(u => u.areaM2));
-  const avgValor = average(sorted.filter(u => u.valorTabela > 0).map(u => u.valorTabela));
-  const avgValorM2 = average(sorted.filter(u => u.areaM2 > 0 && u.valorTabela > 0).map(u => u.valorTabela / u.areaM2));
-  const sumArea = sum(sorted.map(u => u.areaM2));
+  const totalCols = 3 + sortedColunas.length + sortedRegras.length + 2; // unidade + valor + actions... usado no colSpan da linha "adicionar"
   const sumValor = sum(sorted.map(u => u.valorTabela));
 
   return (
@@ -314,9 +381,13 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
         <thead>
           <tr>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Unidade</th>
-            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">m²</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor da Unidade</th>
-            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor por m²</th>
+            {sortedColunas.map(c => (
+              <th key={c.key} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{c.label}</th>
+            ))}
+            {sortedRegras.map(r => (
+              <th key={r.id} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{r.titulo}</th>
+            ))}
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Situação</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Descrição</th>
             <th className="px-3 py-1" />
@@ -324,13 +395,13 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
         </thead>
         <tbody>
           {sorted.map(item => (
-            <VendaRow key={item.id} item={item} onSave={onSave} onDelete={onDelete} />
+            <VendaRow key={item.id} item={item} colunas={sortedColunas} regras={sortedRegras} onSave={onSave} onDelete={onDelete} />
           ))}
           {addingNew ? (
-            <NewUnidadeRow projectId={projectId} existingUnidades={allUnidadeNames} onSave={onSave} onCancel={() => setAddingNew(false)} />
+            <NewUnidadeRow projectId={projectId} colunas={sortedColunas} regras={sortedRegras} existingUnidades={allUnidadeNames} onSave={onSave} onCancel={() => setAddingNew(false)} />
           ) : (
             <tr>
-              <td colSpan={7} className="px-3 py-1.5">
+              <td colSpan={totalCols} className="px-3 py-1.5">
                 <button
                   type="button"
                   onClick={() => setAddingNew(true)}
@@ -345,17 +416,9 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
         {sorted.length > 0 && (
           <tfoot>
             <tr className="[&>td]:bg-zinc-900/70 [&>td]:border-y [&>td]:border-zinc-800 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
-              <td className="px-3 py-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Média</td>
-              <td className="px-3 py-2 text-xs text-zinc-300 whitespace-nowrap">{avgArea > 0 ? `${avgArea.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²` : '—'}</td>
-              <td className="px-3 py-2 text-xs font-semibold text-zinc-100 whitespace-nowrap">{avgValor > 0 ? formatCurrency(avgValor) : '—'}</td>
-              <td className="px-3 py-2 text-xs text-zinc-300 whitespace-nowrap">{avgValorM2 > 0 ? formatCurrency(avgValorM2) : '—'}</td>
-              <td className="px-3 py-2" colSpan={3} />
-            </tr>
-            <tr className="[&>td]:bg-zinc-900/70 [&>td]:border-y [&>td]:border-zinc-800 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               <td className="px-3 py-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Soma</td>
-              <td className="px-3 py-2 text-xs text-zinc-300 whitespace-nowrap">{sumArea > 0 ? `${sumArea.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²` : '—'}</td>
               <td className="px-3 py-2 text-xs font-semibold text-zinc-100 whitespace-nowrap">{sumValor > 0 ? formatCurrency(sumValor) : '—'}</td>
-              <td className="px-3 py-2 text-xs text-zinc-600" colSpan={4}>—</td>
+              <td className="px-3 py-2 text-xs text-zinc-600" colSpan={sortedColunas.length + sortedRegras.length + 3}>—</td>
             </tr>
           </tfoot>
         )}

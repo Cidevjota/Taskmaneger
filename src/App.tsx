@@ -21,8 +21,8 @@ import { useAuth } from './context/AuthContext';
 import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
-import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
+import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra } from './types';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
 import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -184,6 +184,8 @@ export default function App() {
   const { data: siengeTabelaVendaRevisoes = [] } = useQuery({ queryKey: ['siengeTabelaVendaRevisoes'], queryFn: fetchSiengeTabelaVendaRevisoes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeVendas = [] } = useQuery({ queryKey: ['siengeVendas'], queryFn: fetchSiengeVendas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeOrcamentoConfig } = useQuery({ queryKey: ['siengeOrcamentoConfig'], queryFn: fetchSiengeOrcamentoConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTabelaVendaColunas = [] } = useQuery({ queryKey: ['siengeTabelaVendaColunas'], queryFn: fetchSiengeTabelaVendaColunas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeCalculoRegras = [] } = useQuery({ queryKey: ['siengeCalculoRegras'], queryFn: fetchSiengeCalculoRegras, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeCentrosCusto = [] } = useQuery({ queryKey: ['siengeCentrosCusto'], queryFn: fetchSiengeCentrosCusto, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeCategorias = [] } = useQuery({ queryKey: ['siengeCategorias'], queryFn: fetchSiengeCategorias, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeSubcategorias = [] } = useQuery({ queryKey: ['siengeSubcategorias'], queryFn: fetchSiengeSubcategorias, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
@@ -217,7 +219,14 @@ export default function App() {
   // Modal togglers
   const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  // Theme preference survives reloads; falls back to the OS setting on a first
+  // visit so the app doesn't flash the wrong theme at people who run light.
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const stored = localStorage.getItem('orbit:theme');
+    if (stored === 'light') return false;
+    if (stored === 'dark') return true;
+    return !window.matchMedia?.('(prefers-color-scheme: light)').matches;
+  });
   const [socialMediaFilter, setSocialMediaFilter] = useState(false);
 
   // Presence + Broadcast channel: tracks who has which task open.
@@ -474,9 +483,11 @@ export default function App() {
         else if (table === 'sienge_project_display') invalidate('siengeProjectDisplays');
         else if (table === 'sienge_title_status_history') invalidate('siengeTitleStatusHistory');
         else if (table === 'sienge_tabela_vendas') invalidate('siengeTabelaVendas');
+        else if (table === 'sienge_tabela_vendas_colunas') invalidate('siengeTabelaVendaColunas');
         else if (table === 'sienge_tabela_vendas_revisoes') invalidate('siengeTabelaVendaRevisoes');
         else if (table === 'sienge_vendas') invalidate('siengeVendas');
         else if (table === 'sienge_orcamento_config') invalidate('siengeOrcamentoConfig');
+        else if (table === 'sienge_calculo_regras') invalidate('siengeCalculoRegras');
         else if (table === 'sienge_centros_custo') invalidate('siengeCentrosCusto');
         else if (table === 'sienge_categorias') invalidate('siengeCategorias');
         else if (table === 'sienge_subcategorias') invalidate('siengeSubcategorias');
@@ -908,16 +919,14 @@ export default function App() {
     }
   }, [tasks, selectedTask?.id]);
 
-  // Handle dark mode DOM properties class allocations
+  // The `dark` class on <html> is what index.css keys the whole token system
+  // off of — every zinc/gray/accent value flips when it toggles.
   useEffect(() => {
     const root = window.document.documentElement;
-    if (isDarkMode) {
-      root.classList.add('dark');
-      root.style.backgroundColor = '#08090a';
-    } else {
-      root.classList.remove('dark');
-      root.style.backgroundColor = '#fafafa';
-    }
+    root.classList.toggle('dark', isDarkMode);
+    root.style.backgroundColor = isDarkMode ? '#08080a' : '#e8eaed';
+    root.style.colorScheme = isDarkMode ? 'dark' : 'light';
+    localStorage.setItem('orbit:theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   // Queue for debouncing saveTask per task ID
@@ -1215,7 +1224,7 @@ export default function App() {
   }
 
   return (
-    <div className={`h-screen flex overflow-hidden bg-[#08080a] ${isDarkMode ? 'dark text-zinc-100' : 'text-zinc-900 bg-zinc-50'}`}>
+    <div className={`h-screen flex overflow-hidden bg-[#08080a] text-zinc-100 ${isDarkMode ? 'dark' : ''}`}>
       
       {/* Collapsible Sidebar block */}
       <Sidebar
@@ -1255,7 +1264,7 @@ export default function App() {
                 <span>{activeProjectObject.name}</span>
                 <button
                   onClick={() => setCurrentProjectFilter(null)}
-                  className="hover:text-white transition-colors ml-1 text-zinc-400 font-bold"
+                  className="hover:text-zinc-100 transition-colors ml-1 text-zinc-400 font-bold"
                   title="Remover filtro"
                 >
                   <X size={10} />
@@ -1277,7 +1286,7 @@ export default function App() {
             {/* Nova Tarefa right button */}
             <button
               onClick={handleAddNewTaskPrompt}
-              className="hidden md:flex h-7 items-center gap-1.5 px-2.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-medium text-zinc-200 hover:text-white rounded-md transition-all active:scale-[0.98]"
+              className="hidden md:flex h-7 items-center gap-1.5 px-2.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-medium text-zinc-200 hover:text-zinc-100 rounded-md transition-all active:scale-[0.98]"
             >
               <span>+ Novo Item</span>
             </button>
@@ -1514,6 +1523,34 @@ export default function App() {
               onSaveOrcamentoConfig={async (config) => {
                 queryClient.setQueryData(['siengeOrcamentoConfig'], config);
                 saveSiengeOrcamentoConfig(config).catch(console.error);
+              }}
+              tabelaVendaColunas={siengeTabelaVendaColunas}
+              onSaveTabelaVendaColuna={async (coluna) => {
+                queryClient.setQueryData<SiengeTabelaVendaColuna[]>(['siengeTabelaVendaColunas'], prev => {
+                  const exists = (prev || []).find(c => c.id === coluna.id);
+                  return exists
+                    ? (prev || []).map(c => c.id === coluna.id ? coluna : c)
+                    : [...(prev || []), coluna];
+                });
+                saveSiengeTabelaVendaColuna(coluna).catch(console.error);
+              }}
+              onDeleteTabelaVendaColuna={async (id) => {
+                queryClient.setQueryData<SiengeTabelaVendaColuna[]>(['siengeTabelaVendaColunas'], prev => (prev || []).filter(c => c.id !== id));
+                deleteSiengeTabelaVendaColuna(id).catch(console.error);
+              }}
+              calculoRegras={siengeCalculoRegras}
+              onSaveCalculoRegra={async (regra) => {
+                queryClient.setQueryData<SiengeCalculoRegra[]>(['siengeCalculoRegras'], prev => {
+                  const exists = (prev || []).find(r => r.id === regra.id);
+                  return exists
+                    ? (prev || []).map(r => r.id === regra.id ? regra : r)
+                    : [...(prev || []), regra];
+                });
+                saveSiengeCalculoRegra(regra).catch(console.error);
+              }}
+              onDeleteCalculoRegra={async (id) => {
+                queryClient.setQueryData<SiengeCalculoRegra[]>(['siengeCalculoRegras'], prev => (prev || []).filter(r => r.id !== id));
+                deleteSiengeCalculoRegra(id).catch(console.error);
               }}
               taxonomy={siengeTaxonomy}
               onAddCentroCusto={async (nome) => {

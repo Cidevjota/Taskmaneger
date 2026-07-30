@@ -17,6 +17,22 @@ interface SiengeSpendChartProps {
 
 const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+// Paleta do gráfico vinda dos tokens de tema (index.css), para que o SVG
+// acompanhe claro/escuro. Atributos de apresentação do SVG (fill="…",
+// stroke="…") não resolvem var(), então estas cores entram sempre via `style`.
+const CHART = {
+  grid: 'var(--t-chart-grid)',
+  wash: 'var(--t-chart-wash)',
+  crosshair: 'var(--t-chart-crosshair)',
+  label: 'var(--t-text-3)',
+  labelMid: 'var(--t-text-2)',
+  labelStrong: 'var(--t-text-1)',
+  dotCore: 'var(--t-canvas)',
+  gasto: 'var(--t-info)',
+  orcamento: 'var(--t-success)',
+  over: 'var(--t-danger)',
+} as const;
+
 function formatCurrencyShort(value: number): string {
   if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}mi`;
   if (value >= 1_000) return `R$ ${(value / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}mil`;
@@ -134,21 +150,21 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
         >
           {/* Grade horizontal */}
           {[0, 0.5, 1].map(f => (
-            <line key={f} x1={padL} x2={W - PAD_R} y1={PAD_T + innerH * (1 - f)} y2={PAD_T + innerH * (1 - f)} stroke="#1F1F22" strokeWidth={1} />
+            <line key={f} x1={padL} x2={W - PAD_R} y1={PAD_T + innerH * (1 - f)} y2={PAD_T + innerH * (1 - f)} strokeWidth={1} style={{ stroke: CHART.grid }} />
           ))}
           {/* Eixo Y labels — ancorados à esquerda, todos na mesma coluna x */}
           {[0, 0.5, 1].map(f => (
-            <text key={f} x={0} y={PAD_T + innerH * (1 - f) + 3} textAnchor="start" fontSize={Y_LABEL_FONT_SIZE} fill="#6B6B70">
+            <text key={f} x={0} y={PAD_T + innerH * (1 - f) + 3} textAnchor="start" fontSize={Y_LABEL_FONT_SIZE} style={{ fill: CHART.label }}>
               {formatCurrencyShort(maxVal * f)}
             </text>
           ))}
           {/* Destaque do mês atual */}
           {isCurrentYear && (
-            <rect x={padL + barSlot * now.getMonth()} y={PAD_T} width={barSlot} height={innerH} fill="#3B82F6" opacity={0.05} rx={4} />
+            <rect x={padL + barSlot * now.getMonth()} y={PAD_T} width={barSlot} height={innerH} opacity={0.05} rx={4} style={{ fill: CHART.gasto }} />
           )}
           {/* Coluna de hover */}
           {hoverIndex !== null && (
-            <rect x={padL + barSlot * hoverIndex} y={PAD_T} width={barSlot} height={innerH} fill="rgba(255,255,255,0.03)" />
+            <rect x={padL + barSlot * hoverIndex} y={PAD_T} width={barSlot} height={innerH} style={{ fill: CHART.wash }} />
           )}
           {/* Barras de gasto */}
           {yearly.map((m, i) => {
@@ -163,16 +179,15 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
                 width={barW}
                 height={barH}
                 rx={3}
-                fill={over ? '#F85149' : '#3B82F6'}
                 opacity={over ? 0.9 : isCurrent ? 1 : hoverIndex === null || hoverIndex === i ? 0.7 : 0.35}
-                style={{ transition: 'opacity 120ms ease' }}
+                style={{ transition: 'opacity 120ms ease', fill: over ? CHART.over : CHART.gasto }}
               />
             );
           })}
           {/* Linha de orçamento real gerado no mês (2% do VGV vendido naquele mês) */}
-          <polyline points={orcamentoPoints} fill="none" stroke="#6B6B70" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1 5" />
+          <polyline points={orcamentoPoints} fill="none" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1 5" style={{ stroke: CHART.label }} />
           {yearly.map((m, i) => (
-            <circle key={i} cx={padL + barSlot * i + barSlot / 2} cy={yFor(m.orcamentoReal)} r={hoverIndex === i ? 4 : 2.5} fill="#6B6B70" style={{ transition: 'r 120ms ease' }} />
+            <circle key={i} cx={padL + barSlot * i + barSlot / 2} cy={yFor(m.orcamentoReal)} r={hoverIndex === i ? 4 : 2.5} style={{ transition: 'r 120ms ease', fill: CHART.label }} />
           ))}
           {/* Eixo X labels */}
           {yearly.map((m, i) => (
@@ -183,7 +198,7 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
               textAnchor="middle"
               fontSize={9}
               fontWeight={400}
-              fill={hoverIndex === i ? '#EDEDED' : isCurrentYear && m.month === now.getMonth() ? '#A0A0A5' : '#6B6B70'}
+              style={{ fill: hoverIndex === i ? CHART.labelStrong : isCurrentYear && m.month === now.getMonth() ? CHART.labelMid : CHART.label }}
             >
               {MONTHS_SHORT[m.month]}
             </text>
@@ -225,8 +240,8 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
     const orcamentoRealFinal = daily.length > 0 ? daily[daily.length - 1].orcamentoRealAcumulado : 0;
     const overBudget = maxGasto > orcamentoRealFinal;
     const todayInMonth = isCurrentYear && month === now.getMonth();
-    const gastoColor = '#3B82F6';
-    const orcamentoColor = '#3FB950';
+    const gastoColor = CHART.gasto;
+    const orcamentoColor = CHART.orcamento;
     const gradientId = 'sienge-spend-area-gasto';
     const hovered = hoverIndex !== null ? daily[hoverIndex] : null;
 
@@ -250,55 +265,55 @@ export default function SiengeSpendChart({ projects, titles, projectMetas, categ
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={gastoColor} stopOpacity={0.28} />
-                <stop offset="100%" stopColor={gastoColor} stopOpacity={0} />
+                <stop offset="0%" stopOpacity={0.28} style={{ stopColor: gastoColor }} />
+                <stop offset="100%" stopOpacity={0} style={{ stopColor: gastoColor }} />
               </linearGradient>
             </defs>
 
             {[0, 0.5, 1].map(f => (
-              <line key={f} x1={padL} x2={W - padR} y1={PAD_T + innerH * (1 - f)} y2={PAD_T + innerH * (1 - f)} stroke="#1F1F22" strokeWidth={1} />
+              <line key={f} x1={padL} x2={W - padR} y1={PAD_T + innerH * (1 - f)} y2={PAD_T + innerH * (1 - f)} strokeWidth={1} style={{ stroke: CHART.grid }} />
             ))}
             {[0, 0.5, 1].map(f => (
-              <text key={f} x={0} y={PAD_T + innerH * (1 - f) + 3} textAnchor="start" fontSize={Y_LABEL_FONT_SIZE} fill="#6B6B70">
+              <text key={f} x={0} y={PAD_T + innerH * (1 - f) + 3} textAnchor="start" fontSize={Y_LABEL_FONT_SIZE} style={{ fill: CHART.label }}>
                 {formatCurrencyShort(yMax * f)}
               </text>
             ))}
 
             {/* Linha tracejada de referência: projeção por meta (Camada 2) */}
             {budgetMeta > 0 && (
-              <line x1={padL} x2={W - padR} y1={budgetMetaY} y2={budgetMetaY} stroke="#6B6B70" strokeWidth={1} strokeDasharray="1 5" strokeLinecap="round" />
+              <line x1={padL} x2={W - padR} y1={budgetMetaY} y2={budgetMetaY} strokeWidth={1} strokeDasharray="1 5" strokeLinecap="round" style={{ stroke: CHART.label }} />
             )}
 
             {/* Marcador do dia de hoje */}
             {todayInMonth && (
-              <line x1={xFor(now.getDate())} x2={xFor(now.getDate())} y1={PAD_T} y2={PAD_T + innerH} stroke="#1F1F22" strokeWidth={1} strokeDasharray="2 3" />
+              <line x1={xFor(now.getDate())} x2={xFor(now.getDate())} y1={PAD_T} y2={PAD_T + innerH} strokeWidth={1} strokeDasharray="2 3" style={{ stroke: CHART.grid }} />
             )}
 
             {/* Linha de crosshair no hover */}
             {hovered && (
-              <line x1={xFor(hovered.day)} x2={xFor(hovered.day)} y1={PAD_T} y2={PAD_T + innerH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+              <line x1={xFor(hovered.day)} x2={xFor(hovered.day)} y1={PAD_T} y2={PAD_T + innerH} strokeWidth={1} style={{ stroke: CHART.crosshair }} />
             )}
 
             {/* Área sob a linha de gasto real acumulado */}
             <polygon points={areaPoints} fill={`url(#${gradientId})`} />
 
             {/* Orçamento Real Acumulado — sobe a cada venda confirmada */}
-            <polyline points={orcamentoRealPoints} fill="none" stroke={orcamentoColor} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={orcamentoRealPoints} fill="none" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ stroke: orcamentoColor }} />
 
             {/* Gasto real acumulado desde o início do controle */}
-            <polyline points={linePoints} fill="none" stroke={gastoColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={linePoints} fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ stroke: gastoColor }} />
             {daily.length > 0 && (
-              <circle cx={xFor(daily[daily.length - 1].day)} cy={yFor(maxGasto)} r={3} fill={gastoColor} />
+              <circle cx={xFor(daily[daily.length - 1].day)} cy={yFor(maxGasto)} r={3} style={{ fill: gastoColor }} />
             )}
             {hovered && (
               <>
-                <circle cx={xFor(hovered.day)} cy={yFor(hovered.gastoAcumulado)} r={4} fill="#0A0A0A" stroke={gastoColor} strokeWidth={2} />
+                <circle cx={xFor(hovered.day)} cy={yFor(hovered.gastoAcumulado)} r={4} strokeWidth={2} style={{ fill: CHART.dotCore, stroke: gastoColor }} />
               </>
             )}
 
             {/* Eixo X: dias do mês (a cada ~5 dias para não poluir) */}
             {daily.map(d => (d.day === 1 || d.day % 5 === 0 || d.day === daily.length) && (
-              <text key={d.day} x={xFor(d.day)} y={H - 10} textAnchor="middle" fontSize={9} fill="#6B6B70">
+              <text key={d.day} x={xFor(d.day)} y={H - 10} textAnchor="middle" fontSize={9} style={{ fill: CHART.label }}>
                 {d.day}
               </text>
             ))}

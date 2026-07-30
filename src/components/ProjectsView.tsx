@@ -235,7 +235,7 @@ export default function ProjectsView({
             </button>
             <button
               type="submit"
-              className="px-4 py-1 bg-zinc-800 hover:bg-zinc-700 text-white rounded font-semibold border border-zinc-700/40"
+              className="px-4 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded font-semibold border border-zinc-700/40"
             >
               Confirmar
             </button>

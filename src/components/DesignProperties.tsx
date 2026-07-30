@@ -469,7 +469,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                     href={url.startsWith('http') ? url : `https://${url}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-600 transition-all group"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 border border-zinc-800 hover:border-zinc-600 transition-all group"
                   >
                     <ExternalLink size={10} className="opacity-50 group-hover:opacity-100 transition-opacity" />
                     Inspiração {idx + 1}
@@ -796,7 +796,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                         <button
                           key={copy.editorId}
                           onClick={() => handleImportCopy(copy.editorId)}
-                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors"
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
                         >
                           {copy.title}
                         </button>

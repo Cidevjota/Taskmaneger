@@ -116,7 +116,7 @@ export default function RoutineProperties({ routine, onChange, align = 'right' }
                 <button
                   onClick={() => setType('interval')}
                   className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    type === 'interval' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-300'
+                    type === 'interval' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-300'
                   }`}
                 >
                   Intervalo
@@ -124,7 +124,7 @@ export default function RoutineProperties({ routine, onChange, align = 'right' }
                 <button
                   onClick={() => setType('weekdays')}
                   className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    type === 'weekdays' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-300'
+                    type === 'weekdays' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-300'
                   }`}
                 >
                   Dias da Semana
@@ -140,13 +140,13 @@ export default function RoutineProperties({ routine, onChange, align = 'right' }
                       min={1}
                       value={intervalValue}
                       onChange={(e) => setIntervalValue(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-16 bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-center text-white focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="w-16 bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-center text-zinc-100 focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <div className="relative flex-1" ref={unitDropdownRef}>
                       <button
                         type="button"
                         onClick={() => setIsUnitDropdownOpen(!isUnitDropdownOpen)}
-                        className="w-full flex items-center justify-between bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-white hover:border-zinc-700 transition-colors focus:outline-none focus:border-purple-500"
+                        className="w-full flex items-center justify-between bg-zinc-950 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-100 hover:border-zinc-700 transition-colors focus:outline-none focus:border-purple-500"
                       >
                         <span>{intervalUnit === 'days' ? 'Dia(s)' : intervalUnit === 'weeks' ? 'Semana(s)' : 'Mês(es)'}</span>
                         <ChevronDown size={12} className="opacity-50" />

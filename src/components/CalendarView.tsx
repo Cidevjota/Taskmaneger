@@ -382,7 +382,7 @@ export default function CalendarView({
             <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-            <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
+            <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
             <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
             <div className="flex items-center pl-1 pr-1 gap-1">
               {sortedUsers.map(u => (
@@ -401,7 +401,7 @@ export default function CalendarView({
         <div className="flex items-center gap-3 ml-6">
           <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
-            <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-white shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
+            <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
             <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
             <div className="flex items-center pl-1 pr-1 gap-1">
               {[
@@ -486,9 +486,9 @@ export default function CalendarView({
         </div>
 
         <div className="flex items-center gap-1">
-          <button onClick={goToToday} className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all font-medium">Hoje</button>
-          <button onClick={prevMonth} className="p-1 px-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400 hover:text-white transition-all"><ChevronLeft size={12} /></button>
-          <button onClick={nextMonth} className="p-1 px-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400 hover:text-white transition-all"><ChevronRight size={12} /></button>
+          <button onClick={goToToday} className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all font-medium">Hoje</button>
+          <button onClick={prevMonth} className="p-1 px-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-all"><ChevronLeft size={12} /></button>
+          <button onClick={nextMonth} className="p-1 px-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-all"><ChevronRight size={12} /></button>
         </div>
       </div>
 
@@ -628,7 +628,7 @@ export default function CalendarView({
 
                   <button 
                     onClick={() => handleDayClick(dateStr)}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all absolute right-1.5 top-1.5 shrink-0"
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 transition-all absolute right-1.5 top-1.5 shrink-0"
                     title="Adicionar evento"
                   >
                     <Plus size={9} />

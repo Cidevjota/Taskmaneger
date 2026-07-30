@@ -25,7 +25,11 @@ export default function SettingsView({
   onToggleDarkMode,
   onResetMockData
 }: SettingsViewProps) {
-  const [selectedThemePreset, setSelectedThemePreset] = useState<'linear' | 'notion' | 'oled'>('linear');
+  // Parte do tema realmente ativo: abrir os Ajustes no claro e ver "Linear Dark"
+  // marcado passaria uma informação errada.
+  const [selectedThemePreset, setSelectedThemePreset] = useState<'linear' | 'notion' | 'oled'>(
+    isDarkMode ? 'linear' : 'notion'
+  );
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
     title: string;
@@ -83,15 +87,20 @@ export default function SettingsView({
             {/* Toggle dark mode button */}
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-medium block text-zinc-300">Modo Escuro Permanente</span>
-                <span className="text-[10px] text-zinc-650">Suporte a paletas escuras premium (Linear e Vercel)</span>
+                <span className="text-xs font-medium block text-zinc-300">Modo Escuro</span>
+                <span className="text-[10px] text-zinc-650">
+                  {isDarkMode ? 'Superfícies escuras, texto claro' : 'Superfícies claras, texto escuro'}
+                </span>
               </div>
               <button
-                className="w-10 h-6 bg-zinc-900 border border-zinc-805 rounded-full relative flex items-center p-0.5 transition-all outline-none cursor-not-allowed"
-                disabled
+                onClick={onToggleDarkMode}
+                role="switch"
+                aria-checked={isDarkMode}
+                aria-label={isDarkMode ? 'Desativar modo escuro' : 'Ativar modo escuro'}
+                className="w-10 h-6 bg-zinc-900 border border-zinc-805 rounded-full relative flex items-center p-0.5 transition-all outline-none cursor-pointer hover:border-zinc-700"
               >
-                <div className="w-4 h-4 rounded-full bg-zinc-400 shadow-md transform translate-x-4 flex items-center justify-center">
-                  <Moon size={9} className="text-zinc-900" />
+                <div className={`w-4 h-4 rounded-full bg-zinc-400 shadow-md transform transition-transform duration-200 flex items-center justify-center ${isDarkMode ? 'translate-x-4' : 'translate-x-0'}`}>
+                  {isDarkMode ? <Moon size={9} className="text-zinc-900" /> : <Sun size={9} className="text-zinc-900" />}
                 </div>
               </button>
             </div>
@@ -120,8 +129,8 @@ export default function SettingsView({
                       : 'bg-zinc-950 border-zinc-900 text-zinc-555 hover:bg-zinc-900/40'
                   }`}
                 >
-                  <span className="font-semibold text-zinc-200">Notion Dark</span>
-                  <span className="text-[9px] text-zinc-555">Contraste Claro</span>
+                  <span className="font-semibold text-zinc-200">Notion Light</span>
+                  <span className="text-[9px] text-zinc-555">Cinza & quase-branco</span>
                 </button>
 
                 <button

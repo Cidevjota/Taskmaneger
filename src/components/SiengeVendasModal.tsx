@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, TrendingUp, History, Minus, Plus, X, Check, Search } from 'lucide-react';
-import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Table2, Building2, ChevronDown, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2 } from 'lucide-react';
+import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeColunaTipo } from '../types';
 import SiengeVendasTable from './SiengeVendasTable';
+import { exportSiengeVendasCsv, parseSiengeVendasCsv } from '../lib/siengeVendasTabela';
 
 const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -10,18 +11,207 @@ const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   bloqueada: 'Bloqueada',
 };
 
+const TIPO_LABELS: Record<SiengeColunaTipo, string> = {
+  numero: 'Número',
+  moeda: 'Moeda (R$)',
+  texto: 'Texto',
+};
+
 interface SiengeVendasModalProps {
   projects: Project[];
   unidades: SiengeTabelaVendaUnidade[];
   revisoes: SiengeTabelaVendaRevisao[];
+  colunas: SiengeTabelaVendaColuna[];
+  regras: SiengeCalculoRegra[];
   onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteUnidade: (id: string) => void;
   onApplyReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null }) => Promise<void> | void;
+  onSaveColuna: (coluna: SiengeTabelaVendaColuna) => void;
+  onDeleteColuna: (id: string) => void;
+  onSaveRegra: (regra: SiengeCalculoRegra) => void;
+  onDeleteRegra: (id: string) => void;
   onClose: () => void;
 }
 
-// Stepper de % com botões +/- no lugar do spinner nativo — mesmo padrão usado
-// em SiengeMetasModal (o spinner nativo quebrava a identidade visual do app).
+function slugifyKeyLocal(label: string): string {
+  return label.trim().toLowerCase().normalize('NFD').replace(/[^\w\s]/g, '').replace(/\s+/g, '_') || 'coluna';
+}
+
+// Linha editável de definição de coluna — rascunho local + commit no blur,
+// mesmo padrão usado no resto do módulo Sienge.
+function ColunaRow({ coluna, onCommit, onDelete }: { coluna: SiengeTabelaVendaColuna; onCommit: (c: SiengeTabelaVendaColuna) => void; onDelete: (id: string) => void }) {
+  const [label, setLabel] = useState(coluna.label);
+  useEffect(() => setLabel(coluna.label), [coluna.label]);
+
+  const inputClass = 'flex-1 min-w-0 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors';
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        value={label}
+        onChange={e => setLabel(e.target.value)}
+        onBlur={() => { if (label.trim() && label.trim() !== coluna.label) onCommit({ ...coluna, label: label.trim() }); }}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        className={inputClass}
+      />
+      <select
+        value={coluna.tipo}
+        onChange={e => onCommit({ ...coluna, tipo: e.target.value as SiengeColunaTipo })}
+        className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-2 text-xs text-zinc-300 outline-none cursor-pointer"
+      >
+        {(Object.keys(TIPO_LABELS) as SiengeColunaTipo[]).map(t => (
+          <option key={t} value={t} className="bg-zinc-900">{TIPO_LABELS[t]}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => onDelete(coluna.id)}
+        title="Remover coluna"
+        className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+function NovaColunaForm({ projectId, nextSortOrder, onAdd }: { projectId: string; nextSortOrder: number; onAdd: (c: SiengeTabelaVendaColuna) => void }) {
+  const [label, setLabel] = useState('');
+  const [tipo, setTipo] = useState<SiengeColunaTipo>('moeda');
+
+  const add = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    onAdd({
+      id: crypto.randomUUID(),
+      projectId,
+      key: slugifyKeyLocal(trimmed),
+      label: trimmed,
+      tipo,
+      sortOrder: nextSortOrder,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    setLabel('');
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        value={label}
+        onChange={e => setLabel(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') add(); }}
+        placeholder="Nome da nova coluna"
+        className="flex-1 min-w-0 bg-zinc-900/60 border border-dashed border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500/50 transition-colors"
+      />
+      <select
+        value={tipo}
+        onChange={e => setTipo(e.target.value as SiengeColunaTipo)}
+        className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-2 text-xs text-zinc-300 outline-none cursor-pointer"
+      >
+        {(Object.keys(TIPO_LABELS) as SiengeColunaTipo[]).map(t => (
+          <option key={t} value={t} className="bg-zinc-900">{TIPO_LABELS[t]}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={add}
+        disabled={!label.trim()}
+        className="flex items-center gap-1 px-3 py-2 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 rounded-lg transition-colors shrink-0"
+      >
+        <Plus size={12} strokeWidth={3} /> Adicionar
+      </button>
+    </div>
+  );
+}
+
+// Linha editável de regra de cálculo — título (era "descrição"), quantidade de
+// parcelas, percentual e a coluna sobre a qual o percentual incide.
+function RegraRow({ regra, colunas, onCommit, onDelete }: {
+  regra: SiengeCalculoRegra;
+  colunas: SiengeTabelaVendaColuna[];
+  onCommit: (r: SiengeCalculoRegra) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [titulo, setTitulo] = useState(regra.titulo);
+  const [quantidadeText, setQuantidadeText] = useState(String(regra.quantidade));
+  const [percentualText, setPercentualText] = useState(String(regra.percentual));
+
+  useEffect(() => {
+    setTitulo(regra.titulo);
+    setQuantidadeText(String(regra.quantidade));
+    setPercentualText(String(regra.percentual));
+  }, [regra.titulo, regra.quantidade, regra.percentual]);
+
+  const inputClass = 'w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors';
+  const baseOptions = [{ key: 'valor_tabela', label: 'Valor da Unidade' }, ...colunas.filter(c => c.tipo !== 'texto').map(c => ({ key: c.key, label: c.label }))];
+
+  return (
+    <div className="grid grid-cols-[1.4fr_0.7fr_0.9fr_1.2fr_auto] gap-2 items-end">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Título da Coluna</label>
+        <input
+          type="text"
+          value={titulo}
+          onChange={e => setTitulo(e.target.value)}
+          onBlur={() => { if (titulo.trim()) onCommit({ ...regra, titulo: titulo.trim() }); }}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          className={inputClass}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Quantidade</label>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={quantidadeText}
+          onChange={e => setQuantidadeText(e.target.value.replace(/\D/g, ''))}
+          onBlur={() => { const n = parseInt(quantidadeText, 10) || 0; onCommit({ ...regra, quantidade: n }); }}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          className={inputClass}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Percentual</label>
+        <div className="flex items-center bg-zinc-900/60 border border-zinc-800 rounded-lg focus-within:border-blue-500/50 transition-colors">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={percentualText}
+            onChange={e => setPercentualText(e.target.value.replace(/[^\d,]/g, ''))}
+            onBlur={() => { const n = parseFloat(percentualText.replace(',', '.')) || 0; onCommit({ ...regra, percentual: n }); }}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            className="w-full bg-transparent px-3 py-2 text-xs text-zinc-100 outline-none"
+          />
+          <span className="pr-3 text-[10px] text-zinc-500 select-none">%</span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Referência do %</label>
+        <select
+          value={regra.colunaBaseKey}
+          onChange={e => onCommit({ ...regra, colunaBaseKey: e.target.value })}
+          className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none cursor-pointer"
+        >
+          {baseOptions.map(o => (
+            <option key={o.key} value={o.key} className="bg-zinc-900">{o.label}</option>
+          ))}
+        </select>
+      </div>
+      <button
+        type="button"
+        onClick={() => onDelete(regra.id)}
+        title="Remover regra"
+        className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
 function PercentStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const format = (v: number) => (v ? v.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '');
   const [text, setText] = useState(format(value));
@@ -82,7 +272,8 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
 }
 
 export default function SiengeVendasModal({
-  projects, unidades, revisoes, onSaveUnidade, onDeleteUnidade, onApplyReajuste, onClose,
+  projects, unidades, revisoes, colunas, regras,
+  onSaveUnidade, onDeleteUnidade, onApplyReajuste, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra, onClose,
 }: SiengeVendasModalProps) {
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
@@ -90,17 +281,30 @@ export default function SiengeVendasModal({
   const [searchText, setSearchText] = useState('');
   const [showReajuste, setShowReajuste] = useState(false);
   const [showHistorico, setShowHistorico] = useState(false);
+  const [showCalculo, setShowCalculo] = useState(false);
+  const [showColunas, setShowColunas] = useState(false);
   const [reajusteTipo, setReajusteTipo] = useState<'geral' | 'seletiva'>('geral');
   const [reajustePercentual, setReajustePercentual] = useState(0);
   const [reajusteDescricao, setReajusteDescricao] = useState('');
   const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
   const [applying, setApplying] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
   const projectUnidades = useMemo(
     () => unidades.filter(u => u.projectId === selectedProjectId),
     [unidades, selectedProjectId]
+  );
+
+  const projectColunas = useMemo(
+    () => colunas.filter(c => c.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [colunas, selectedProjectId]
+  );
+
+  const projectRegras = useMemo(
+    () => regras.filter(r => r.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [regras, selectedProjectId]
   );
 
   const filteredUnidades = useMemo(() => {
@@ -154,6 +358,31 @@ export default function SiengeVendasModal({
     }
   };
 
+  const handleExportCsv = () => {
+    if (!selectedProjectId) return;
+    const csv = exportSiengeVendasCsv(projectUnidades, projectColunas, projectRegras);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(selectedProject?.name || 'tabela-vendas').replace(/\s+/g, '-').toLowerCase()}-tabela-vendas.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      const { unidades: parsed, novasColunas } = parseSiengeVendasCsv(
+        text, selectedProjectId, projectUnidades, projectColunas, projectRegras.map(r => r.titulo)
+      );
+      novasColunas.forEach(onSaveColuna);
+      parsed.forEach(onSaveUnidade);
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#08080a]">
       {/* Header */}
@@ -164,13 +393,13 @@ export default function SiengeVendasModal({
           </div>
           <div>
             <h2 className="text-sm font-bold text-zinc-100">Tabela de Vendas</h2>
-            <p className="text-[11px] text-zinc-600">Valor de tabela, área e situação das unidades por empreendimento</p>
+            <p className="text-[11px] text-zinc-600">Valor de tabela, colunas e situação das unidades por empreendimento</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-colors"
         >
           <ArrowLeft size={13} /> Voltar
         </button>
@@ -260,10 +489,40 @@ export default function SiengeVendasModal({
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ''; }}
+                />
                 <button
                   type="button"
-                  onClick={() => { setShowReajuste(v => !v); setShowHistorico(false); }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800"
+                >
+                  <Upload size={13} /> Importar CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800"
+                >
+                  <Download size={13} /> Exportar CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowColunas(v => !v); setShowReajuste(false); setShowHistorico(false); setShowCalculo(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                    showColunas ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  }`}
+                >
+                  <Columns3 size={13} /> Colunas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowReajuste(v => !v); setShowHistorico(false); setShowCalculo(false); setShowColunas(false); }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
                     showReajuste ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
                   }`}
@@ -272,7 +531,16 @@ export default function SiengeVendasModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowHistorico(v => !v); setShowReajuste(false); }}
+                  onClick={() => { setShowCalculo(v => !v); setShowReajuste(false); setShowHistorico(false); setShowColunas(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                    showCalculo ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  }`}
+                >
+                  <Calculator size={13} /> Regras de Cálculo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowHistorico(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); }}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
                     showHistorico ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
                   }`}
@@ -291,6 +559,30 @@ export default function SiengeVendasModal({
           <p className="text-xs text-zinc-600 text-center py-10">Nenhum empreendimento cadastrado.</p>
         ) : (
           <>
+            {showColunas && (
+              <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-100">Colunas da Tabela</h3>
+                    <p className="text-[11px] text-zinc-500">Adicione, remova ou renomeie as colunas deste empreendimento. Unidade, Valor da Unidade e Situação são fixas.</p>
+                  </div>
+                  <button type="button" onClick={() => setShowColunas(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                    <X size={13} />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {projectColunas.map(c => (
+                    <ColunaRow key={c.id} coluna={c} onCommit={onSaveColuna} onDelete={onDeleteColuna} />
+                  ))}
+                  <NovaColunaForm
+                    projectId={selectedProjectId}
+                    nextSortOrder={projectColunas.length > 0 ? Math.max(...projectColunas.map(c => c.sortOrder)) + 1 : 1}
+                    onAdd={onSaveColuna}
+                  />
+                </div>
+              </div>
+            )}
+
             {showReajuste && (
               <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
                 <div className="flex items-center justify-between">
@@ -382,6 +674,45 @@ export default function SiengeVendasModal({
               </div>
             )}
 
+            {showCalculo && (
+              <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-100">Regras de Cálculo</h3>
+                    <p className="text-[11px] text-zinc-500">Cada regra vira uma coluna calculada: percentual da coluna de referência, dividido pela quantidade de parcelas.</p>
+                  </div>
+                  <button type="button" onClick={() => setShowCalculo(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                    <X size={13} />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {projectRegras.map(r => (
+                    <RegraRow key={r.id} regra={r} colunas={projectColunas} onCommit={onSaveRegra} onDelete={onDeleteRegra} />
+                  ))}
+                  {projectRegras.length === 0 && (
+                    <p className="text-xs text-zinc-600">Nenhuma regra cadastrada ainda.</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onSaveRegra({
+                      id: crypto.randomUUID(),
+                      projectId: selectedProjectId,
+                      titulo: 'Nova Regra',
+                      quantidade: 1,
+                      percentual: 0,
+                      colunaBaseKey: 'valor_tabela',
+                      sortOrder: projectRegras.length > 0 ? Math.max(...projectRegras.map(r => r.sortOrder)) + 1 : 1,
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
+                    })}
+                    className="flex items-center gap-1.5 w-fit px-3 py-2 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <Plus size={12} strokeWidth={3} /> Adicionar regra
+                  </button>
+                </div>
+              </div>
+            )}
+
             {showHistorico && (
               <div className="flex flex-col gap-2 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
                 <h3 className="text-xs font-semibold text-zinc-200">Histórico de Revisões</h3>
@@ -420,6 +751,8 @@ export default function SiengeVendasModal({
               projectId={selectedProjectId}
               unidades={filteredUnidades}
               allUnidadeNames={projectUnidades.map(u => u.unidade)}
+              colunas={projectColunas}
+              regras={projectRegras}
               onSave={onSaveUnidade}
               onDelete={onDeleteUnidade}
             />

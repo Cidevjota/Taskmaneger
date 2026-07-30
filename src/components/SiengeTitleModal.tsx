@@ -587,7 +587,7 @@ export default function SiengeTitleModal({
             {/* Valor */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor</span>
-              <span className="text-lg font-bold text-white tracking-tight">{`R$ ${valorDisplay || '0,00'}`}</span>
+              <span className="text-lg font-bold text-zinc-100 tracking-tight">{`R$ ${valorDisplay || '0,00'}`}</span>
             </div>
 
             {/* Grid resumo */}
@@ -1356,7 +1356,7 @@ export default function SiengeTitleModal({
             <button
               type="button"
               onClick={() => setShowRejectModal(false)}
-              className="px-3 py-1.5 text-[13px] font-medium text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+              className="px-3 py-1.5 text-[13px] font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
             >
               Cancelar
             </button>

@@ -443,7 +443,7 @@ export default function ListView({
                 <ThemeIcon size={12} />
               </div>
             )}
-            <span className="font-semibold text-zinc-200 group-hover:text-white truncate block">
+            <span className="font-semibold text-zinc-200 group-hover:text-zinc-100 truncate block">
               {task.title}
             </span>
           </div>
@@ -746,7 +746,7 @@ export default function ListView({
                 onClick={() => setFilterAssigneeId('all')}
                 className={`text-[9px] px-2.5 py-1 rounded-full font-medium transition-all ${
                   filterAssigneeId === 'all' 
-                    ? 'bg-zinc-800 text-white shadow-sm' 
+                    ? 'bg-zinc-800 text-zinc-100 shadow-sm' 
                     : 'bg-transparent text-zinc-500 hover:text-zinc-300'
                 }`}
               >
@@ -785,7 +785,7 @@ export default function ListView({
                 onClick={() => setFilterPriority('all')}
                 className={`text-[9px] px-2.5 py-1 rounded-full font-medium transition-all ${
                   filterPriority === 'all' 
-                    ? 'bg-zinc-800 text-white shadow-sm' 
+                    ? 'bg-zinc-800 text-zinc-100 shadow-sm' 
                     : 'bg-transparent text-zinc-500 hover:text-zinc-300'
                 }`}
               >

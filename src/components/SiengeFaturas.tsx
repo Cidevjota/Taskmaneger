@@ -500,7 +500,7 @@ export default function SiengeFaturas({ faturas, titles, onSaveFatura, onDeleteF
                           setFilterStatus(opt.value);
                           setFilterDropdownOpen(false);
                         }}
-                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors text-left"
+                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors text-left"
                       >
                         {opt.label}
                         {filterStatus === opt.value && <Check size={14} className="text-blue-500" />}

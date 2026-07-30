@@ -193,7 +193,7 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
             <button
               type="button"
               onClick={handlePrevMonth}
-              className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+              className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
             >
               <ChevronLeft size={13} />
             </button>
@@ -203,7 +203,7 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
             <button
               type="button"
               onClick={handleNextMonth}
-              className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+              className="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
             >
               <ChevronRight size={13} />
             </button>
@@ -244,7 +244,7 @@ export default function DatePicker({ value, onChange, trigger, enableTime, onQui
                         ? 'bg-blue-600 text-white font-bold shadow-sm shadow-blue-900/40'
                         : isSuggested
                         ? 'bg-emerald-500/10 text-emerald-400 font-semibold ring-1 ring-inset ring-emerald-500/20'
-                        : 'hover:bg-zinc-800 hover:text-white',
+                        : 'hover:bg-zinc-800 hover:text-zinc-100',
                       isToday && !isSelected && !isSuggested
                         ? 'text-blue-400 font-semibold ring-1 ring-inset ring-blue-500/30'
                         : '',

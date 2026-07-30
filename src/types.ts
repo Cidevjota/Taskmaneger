@@ -404,15 +404,31 @@ export interface SiengeCategoriaOrcamento {
 
 export type SiengeVendaSituacao = 'vendida' | 'disponivel' | 'permuta' | 'bloqueada';
 
+// Unidade, valor de tabela e situação são fixos (sustentam o congelamento de
+// venda e o reajuste de INCC no banco). Todas as demais colunas variam por
+// empreendimento e ficam em camposExtra, descritas por SiengeTabelaVendaColuna.
 export interface SiengeTabelaVendaUnidade {
   id: string;
   projectId: string;
   unidade: string;
-  areaM2: number;
   valorTabela: number;
   situacao: SiengeVendaSituacao;
+  camposExtra: Record<string, number | string>;
   descricao: string | null;
   frozenSince: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SiengeColunaTipo = 'numero' | 'moeda' | 'texto';
+
+export interface SiengeTabelaVendaColuna {
+  id: string;
+  projectId: string;
+  key: string;
+  label: string;
+  tipo: SiengeColunaTipo;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -432,6 +448,22 @@ export interface SiengeVenda {
 
 export interface SiengeOrcamentoConfig {
   controleInicio: string; // YYYY-MM-DD — data a partir da qual o gasto real passa a ser contado
+}
+
+// Regra de cálculo: vira uma coluna calculada na Tabela de Vendas — título +
+// (percentual da colunaBaseKey) dividido pela quantidade de parcelas. A coluna
+// base pode ser 'valor_tabela' ou qualquer key de SiengeTabelaVendaColuna do
+// mesmo empreendimento (ex.: Rivage usa 'custo_construcao').
+export interface SiengeCalculoRegra {
+  id: string;
+  projectId: string;
+  titulo: string;
+  quantidade: number; // número de parcelas
+  percentual: number; // % da coluna base dividido entre as parcelas
+  colunaBaseKey: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SiengeTabelaVendaRevisao {

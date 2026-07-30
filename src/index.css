@@ -7,6 +7,23 @@
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
 
+/* ============================================================================
+   ORBIT — SISTEMA DE TEMA (DUAL: ESCURO + CLARO)
+   ----------------------------------------------------------------------------
+   O app foi escrito "dark-first": superfícies usam zinc-700..950 e texto usa
+   zinc-100..600. Em vez de reescrever 27k linhas de componente, os tokens da
+   paleta apontam para variáveis (--t-*) que trocam de valor quando a classe
+   `dark` sai do <html>.
+
+   Regra de inversão: NÃO invertemos luminosidade cegamente — invertemos
+   ELEVAÇÃO. No escuro, "mais claro" = elevado. No claro, "mais branco" =
+   elevado e "mais cinza" = recuado. Por isso zinc-900 (card) fica quase branco
+   enquanto zinc-950 (canvas) fica cinza.
+
+   Nunca usamos #fff ou #000 puros: o claro vive entre #e8eaed e #fcfcfd, e o
+   texto entre #1b1c20 e #7a7f8a.
+   ========================================================================== */
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-slate-*: initial;
@@ -15,31 +32,121 @@
   --color-neutral-*: initial;
   --color-stone-*: initial;
 
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1f2937;
-  --color-gray-900: #111827;
-  --color-gray-950: #030712;
+  /* Duas escalas neutras, como no original: `gray` é a azulada (usada só como
+     texto, na área estilo GitHub da CommandBar) e `zinc` é a neutra. Colapsar
+     uma na outra mudaria o tema escuro, então cada uma tem seus tokens. */
+  --color-gray-50: var(--t-g-50);
+  --color-gray-100: var(--t-g-100);
+  --color-gray-200: var(--t-g-200);
+  --color-gray-300: var(--t-g-300);
+  --color-gray-400: var(--t-g-400);
+  --color-gray-500: var(--t-g-500);
+  --color-gray-600: var(--t-g-600);
+  --color-gray-700: var(--t-g-700);
+  --color-gray-800: var(--t-g-800);
+  --color-gray-900: var(--t-g-900);
+  --color-gray-950: var(--t-g-950);
 
-  /* Custom Zinc scale - slightly cooler but deep */
-  --color-zinc-50: #fafafa;
-  --color-zinc-100: #f4f4f5;
-  --color-zinc-200: #e4e4e7;
-  --color-zinc-300: #d4d4d8;
-  --color-zinc-400: #a1a1aa;
-  --color-zinc-500: #71717a;
-  --color-zinc-600: #52525b;
-  --color-zinc-650: #44444c;
-  --color-zinc-700: #3f3f46;
-  --color-zinc-800: #27272a;
-  --color-zinc-900: #18181b;
-  --color-zinc-950: #09090b;
+  --color-zinc-50: var(--t-n-50);
+  --color-zinc-100: var(--t-n-100);
+  --color-zinc-150: var(--t-n-150);
+  --color-zinc-200: var(--t-n-200);
+  --color-zinc-250: var(--t-n-250);
+  --color-zinc-300: var(--t-n-300);
+  --color-zinc-350: var(--t-n-350);
+  --color-zinc-400: var(--t-n-400);
+  --color-zinc-450: var(--t-n-450);
+  --color-zinc-500: var(--t-n-500);
+  --color-zinc-550: var(--t-n-550);
+  --color-zinc-555: var(--t-n-555);
+  --color-zinc-600: var(--t-n-600);
+  --color-zinc-650: var(--t-n-650);
+  --color-zinc-700: var(--t-n-700);
+  --color-zinc-750: var(--t-n-750);
+  --color-zinc-800: var(--t-n-800);
+  --color-zinc-805: var(--t-n-805);
+  --color-zinc-850: var(--t-n-850);
+  --color-zinc-900: var(--t-n-900);
+  --color-zinc-950: var(--t-n-950);
+
+  /* Acentos — no claro, cada tom é remapeado para a ponta escura da rampa
+     para manter contraste AA em superfície clara (ver --t-a-* abaixo). */
+  --color-blue-100: var(--t-a-blue-100);
+  --color-blue-200: var(--t-a-blue-200);
+  --color-blue-300: var(--t-a-blue-300);
+  --color-blue-400: var(--t-a-blue-400);
+  --color-blue-500: var(--t-a-blue-500);
+  --color-blue-600: var(--t-a-blue-600);
+  --color-blue-900: var(--t-a-blue-900);
+  --color-blue-950: var(--t-a-blue-950);
+
+  --color-red-200: var(--t-a-red-200);
+  --color-red-300: var(--t-a-red-300);
+  --color-red-400: var(--t-a-red-400);
+  --color-red-500: var(--t-a-red-500);
+  --color-red-600: var(--t-a-red-600);
+  --color-red-900: var(--t-a-red-900);
+  --color-red-950: var(--t-a-red-950);
+
+  --color-emerald-300: var(--t-a-emerald-300);
+  --color-emerald-400: var(--t-a-emerald-400);
+  --color-emerald-450: var(--t-a-emerald-450);
+  --color-emerald-500: var(--t-a-emerald-500);
+  --color-emerald-600: var(--t-a-emerald-600);
+  --color-emerald-900: var(--t-a-emerald-900);
+  --color-emerald-950: var(--t-a-emerald-950);
+
+  --color-green-400: var(--t-a-green-400);
+  --color-green-500: var(--t-a-green-500);
+  --color-green-600: var(--t-a-green-600);
+  --color-green-900: var(--t-a-green-900);
+
+  --color-amber-300: var(--t-a-amber-300);
+  --color-amber-400: var(--t-a-amber-400);
+  --color-amber-500: var(--t-a-amber-500);
+  --color-amber-550: var(--t-a-amber-550);
+  --color-amber-600: var(--t-a-amber-600);
+  --color-amber-900: var(--t-a-amber-900);
+
+  --color-yellow-300: var(--t-a-yellow-300);
+  --color-yellow-400: var(--t-a-yellow-400);
+  --color-yellow-500: var(--t-a-yellow-500);
+  --color-yellow-600: var(--t-a-yellow-600);
+  --color-yellow-900: var(--t-a-yellow-900);
+  --color-yellow-950: var(--t-a-yellow-950);
+
+  --color-orange-300: var(--t-a-orange-300);
+  --color-orange-400: var(--t-a-orange-400);
+  --color-orange-500: var(--t-a-orange-500);
+  --color-orange-600: var(--t-a-orange-600);
+  --color-orange-900: var(--t-a-orange-900);
+
+  --color-pink-300: var(--t-a-pink-300);
+  --color-pink-400: var(--t-a-pink-400);
+  --color-pink-500: var(--t-a-pink-500);
+  --color-pink-600: var(--t-a-pink-600);
+  --color-pink-900: var(--t-a-pink-900);
+
+  --color-purple-300: var(--t-a-purple-300);
+  --color-purple-400: var(--t-a-purple-400);
+  --color-purple-500: var(--t-a-purple-500);
+  --color-purple-600: var(--t-a-purple-600);
+  --color-purple-900: var(--t-a-purple-900);
+
+  --color-violet-300: var(--t-a-violet-300);
+  --color-violet-400: var(--t-a-violet-400);
+  --color-violet-500: var(--t-a-violet-500);
+  --color-violet-600: var(--t-a-violet-600);
+
+  --color-indigo-400: var(--t-a-indigo-400);
+  --color-indigo-500: var(--t-a-indigo-500);
+  --color-indigo-600: var(--t-a-indigo-600);
+
+  --color-sky-400: var(--t-a-sky-400);
+  --color-sky-500: var(--t-a-sky-500);
+
+  --color-rose-400: var(--t-a-rose-400);
+  --color-rose-500: var(--t-a-rose-500);
 
   --animate-slide-up: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-fade-in: fadeIn 0.2s ease-out;
@@ -82,7 +189,7 @@
       box-shadow: 0 0 0 0 transparent;
     }
   }
-  
+
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -109,15 +216,597 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   TEMA ESCURO (padrão) — valores idênticos aos originais
+   ------------------------------------------------------------------------- */
+:root {
+  /* Escala azulada (gray) — valores originais do Tailwind */
+  --t-g-50:  #f9fafb;
+  --t-g-100: #f3f4f6;
+  --t-g-200: #e5e7eb;
+  --t-g-300: #d1d5db;
+  --t-g-400: #9ca3af;
+  --t-g-500: #6b7280;
+  --t-g-600: #4b5563;
+  --t-g-700: #374151;
+  --t-g-800: #1f2937;
+  --t-g-900: #111827;
+  --t-g-950: #030712;
+
+  --t-n-50:  #fafafa;
+  --t-n-100: #f4f4f5;
+  --t-n-150: #ededee;
+  --t-n-200: #e4e4e7;
+  --t-n-250: #dcdcdf;
+  --t-n-300: #d4d4d8;
+  --t-n-350: #bbbbc2;
+  --t-n-400: #a1a1aa;
+  --t-n-450: #8a8a93;
+  --t-n-500: #71717a;
+  --t-n-550: #62626b;
+  --t-n-555: #5d5d66;
+  --t-n-600: #52525b;
+  --t-n-650: #44444c;
+  --t-n-700: #3f3f46;
+  --t-n-750: #333338;
+  --t-n-800: #27272a;
+  --t-n-805: #26262a;
+  --t-n-850: #1f1f23;
+  --t-n-900: #18181b;
+  --t-n-950: #09090b;
+
+  /* Superfícies semânticas (usadas pelos overrides de hex e por .rte-*) */
+  --t-canvas:    #08080a;
+  --t-well:      #0c0c0e;
+  --t-card:      #121214;
+  --t-card-2:    #161619;
+  --t-chip:      #18181b;
+  --t-chip-2:    #1f1f22;
+  --t-chip-3:    #27272a;
+  --t-hairline:  #30363d;
+  --t-tint-cool: #1f2937;
+
+  /* Texto semântico */
+  --t-text-1: #ededed;
+  --t-text-2: #a0a0a5;
+  --t-text-3: #6b6b70;
+  --t-text-4: #5a5a5e;
+  --t-text-5: #4a4a4e;
+  --t-text-6: #3a3a3e;
+
+  /* Bordas semânticas */
+  --t-border-subtle: #18181b;
+  --t-border:        #27272a;
+  --t-border-strong: #3f3f46;
+  --t-border-focus:  #52525b;
+  --t-border-loud:   #71717a;
+
+  /* Acentos pontuais (hex literais do código) */
+  --t-danger:      #f85149;
+  --t-danger-bg:   #f85149;
+  --t-success:     #3fb950;
+  --t-success-bg:  #3fb950;
+  --t-warning:     #d29922;
+
+  /* Tints dos badges de acento. No escuro é o próprio acento a 12%; no claro
+     NÃO pode ser 12% do acento escuro — isso gera um fundo saturado médio que
+     derruba o contraste com o texto. Ali entra um tom claro de verdade. */
+  --t-danger-tint:  color-mix(in srgb, #f85149 12%, transparent);
+  --t-success-tint: color-mix(in srgb, #3fb950 12%, transparent);
+  --t-warning-tint: color-mix(in srgb, #d29922 12%, transparent);
+  --t-danger-alt:  #c24941;
+  --t-success-alt: #2f9e52;
+  --t-brand:       #5e6ad2;
+  --t-brand-soft:  #8b8bf0;
+  --t-info:        #3b82f6;
+
+  /* Controles do editor sobre a toolbar. No escuro a toolbar é --t-canvas e o
+     controle ativo é mais claro; no claro a lógica inverte (a toolbar é cinza e
+     o controle fica branco), então `bg-zinc-800` não serve para os dois. */
+  --t-control-hover:  #27272a;
+  --t-control-active: #27272a;
+
+  /* Gráficos (SiengeSpendChart) */
+  --t-chart-grid:      #1f1f22;
+  --t-chart-wash:      rgba(255, 255, 255, 0.03);
+  --t-chart-crosshair: rgba(255, 255, 255, 0.12);
+
+  /* Sombras */
+  --t-shadow-rgb: 0 0 0;
+
+  /* Scrollbar */
+  --t-scroll-thumb: rgba(255, 255, 255, 0.15);
+  --t-scroll-thumb-hover: rgba(255, 255, 255, 0.25);
+
+  /* Acentos — rampa nativa */
+  --t-a-blue-100: #dbeafe;
+  --t-a-blue-200: #bfdbfe;
+  --t-a-blue-300: #93c5fd;
+  --t-a-blue-400: #60a5fa;
+  --t-a-blue-500: #3b82f6;
+  --t-a-blue-600: #2563eb;
+  --t-a-blue-900: #1e3a8a;
+  --t-a-blue-950: #172554;
+
+  --t-a-red-200: #fecaca;
+  --t-a-red-300: #fca5a5;
+  --t-a-red-400: #f87171;
+  --t-a-red-500: #ef4444;
+  --t-a-red-600: #dc2626;
+  --t-a-red-900: #7f1d1d;
+  --t-a-red-950: #450a0a;
+
+  --t-a-emerald-300: #6ee7b7;
+  --t-a-emerald-400: #34d399;
+  --t-a-emerald-450: #22c99b;
+  --t-a-emerald-500: #10b981;
+  --t-a-emerald-600: #059669;
+  --t-a-emerald-900: #064e3b;
+  --t-a-emerald-950: #022c22;
+
+  --t-a-green-400: #4ade80;
+  --t-a-green-500: #22c55e;
+  --t-a-green-600: #16a34a;
+  --t-a-green-900: #14532d;
+
+  --t-a-amber-300: #fcd34d;
+  --t-a-amber-400: #fbbf24;
+  --t-a-amber-500: #f59e0b;
+  --t-a-amber-550: #ee9308;
+  --t-a-amber-600: #d97706;
+  --t-a-amber-900: #78350f;
+
+  --t-a-yellow-300: #fde047;
+  --t-a-yellow-400: #facc15;
+  --t-a-yellow-500: #eab308;
+  --t-a-yellow-600: #ca8a04;
+  --t-a-yellow-900: #713f12;
+  --t-a-yellow-950: #422006;
+
+  --t-a-orange-300: #fdba74;
+  --t-a-orange-400: #fb923c;
+  --t-a-orange-500: #f97316;
+  --t-a-orange-600: #ea580c;
+  --t-a-orange-900: #7c2d12;
+
+  --t-a-pink-300: #f9a8d4;
+  --t-a-pink-400: #f472b6;
+  --t-a-pink-500: #ec4899;
+  --t-a-pink-600: #db2777;
+  --t-a-pink-900: #831843;
+
+  --t-a-purple-300: #d8b4fe;
+  --t-a-purple-400: #c084fc;
+  --t-a-purple-500: #a855f7;
+  --t-a-purple-600: #9333ea;
+  --t-a-purple-900: #581c87;
+
+  --t-a-violet-300: #c4b5fd;
+  --t-a-violet-400: #a78bfa;
+  --t-a-violet-500: #8b5cf6;
+  --t-a-violet-600: #7c3aed;
+
+  --t-a-indigo-400: #818cf8;
+  --t-a-indigo-500: #6366f1;
+  --t-a-indigo-600: #4f46e5;
+
+  --t-a-sky-400: #38bdf8;
+  --t-a-sky-500: #0ea5e9;
+
+  --t-a-rose-400: #fb7185;
+  --t-a-rose-500: #f43f5e;
+}
+
+/* ---------------------------------------------------------------------------
+   TEMA CLARO — ativado quando `dark` sai do <html>
+   ------------------------------------------------------------------------- */
+:root:not(.dark) {
+  /* Escala azulada invertida. No código `gray` aparece só como texto (nenhum
+     `bg-gray-*` ou `border-gray-*`), então toda a rampa vira cinza-frio escuro. */
+  --t-g-50:  #111722;
+  --t-g-100: #171e2a;
+  --t-g-200: #1f2937;
+  --t-g-300: #313d50;
+  --t-g-400: #454f63;
+  --t-g-500: #545e73;
+  --t-g-600: #5f6a80;
+  --t-g-700: #6c7789;
+  --t-g-800: #7d8797;
+  --t-g-900: #8e97a6;
+  --t-g-950: #a0a8b5;
+
+  /* Texto: 50..650 (contraste medido sobre --t-card #fcfcfd)
+     100 15.9:1 · 200 12.3:1 · 300 8.9:1 · 400 6.6:1 · 500 5.5:1 · 600 4.6:1 */
+  --t-n-50:  #141519;
+  --t-n-100: #1b1c20;
+  --t-n-150: #212328;
+  --t-n-200: #292b31;
+  --t-n-250: #31343a;
+  --t-n-300: #3b3e45;
+  --t-n-350: #454951;
+  --t-n-400: #4f535c;
+  --t-n-450: #52575f;
+  --t-n-500: #585d68;
+  --t-n-550: #5d626d;
+  --t-n-555: #60656f;
+  --t-n-600: #61666f;
+  --t-n-650: #636873;
+
+  /* Superfícies: 700..950 — inversão de ELEVAÇÃO, não de luminosidade.
+     950 = canvas recuado (mais cinza) · 900 = card elevado (mais branco) */
+  --t-n-700: #d3d6dd;
+  --t-n-750: #dfe1e6;
+  --t-n-800: #e7e9ed;
+  --t-n-805: #eaecef;
+  --t-n-850: #eef0f3;
+  --t-n-900: #f4f5f7;
+  --t-n-950: #e8eaed;
+
+  --t-canvas:    #e8eaed;
+  --t-well:      #eceef1;
+  --t-card:      #fcfcfd;
+  --t-card-2:    #f2f3f6;
+  --t-chip:      #edeff2;
+  --t-chip-2:    #e4e7ec;
+  --t-chip-3:    #dfe2e8;
+  --t-hairline:  #d6d9df;
+  --t-tint-cool: #e3e9f2;
+
+  --t-text-1: #1b1c20;
+  --t-text-2: #4f535c;
+  --t-text-3: #585d68;
+  --t-text-4: #656a75;
+  --t-text-5: #6f747f;
+  --t-text-6: #7a7f8a;
+
+  /* Bordas mais firmes que a inversão literal pediria: no claro a separação
+     percebida entre superfícies é menor, então uma hairline de 1,04:1 (fiel ao
+     escuro) simplesmente desaparece. */
+  --t-border-subtle: #d8dbe2;
+  --t-border:        #c9cdd6;
+  --t-border-strong: #b4b9c3;
+  --t-border-focus:  #979ea9;
+  --t-border-loud:   #868d99;
+
+  /* Acentos pontuais recalibrados para fundo claro (AA em texto pequeno) */
+  --t-danger:      #c62828;
+  --t-danger-bg:   #d32f2f;
+  --t-success:     #146029;
+  --t-success-bg:  #22883c;
+  --t-warning:     #8a6100;
+
+  --t-danger-tint:  #fde8e7;
+  --t-success-tint: #e4f5e9;
+  --t-warning-tint: #fbf0d6;
+  --t-danger-alt:  #b3261e;
+  --t-success-alt: #197f3d;
+  --t-brand:       #4348bd;
+  --t-brand-soft:  #5d61d6;
+  --t-info:        #2563eb;
+
+  --t-control-hover:  #f4f5f7;
+  --t-control-active: #fcfcfd;
+
+  --t-chart-grid:      #dfe2e8;
+  --t-chart-wash:      rgba(23, 25, 31, 0.04);
+  --t-chart-crosshair: rgba(23, 25, 31, 0.18);
+
+  --t-shadow-rgb: 23 25 31;
+
+  --t-scroll-thumb: rgba(23, 25, 31, 0.20);
+  --t-scroll-thumb-hover: rgba(23, 25, 31, 0.34);
+
+  /* Acentos: rampa espelhada. 200→900, 300→800, 400→700, 500→600, 600→700,
+     900→100, 950→50 — transforma qualquer badge escuro em badge claro. Os tons
+     200/300/400 são quase só texto (~560 usos contra 21 de fundo), então descem
+     até a ponta escura da rampa; 500/600 seguem fundos sólidos com texto branco. */
+  --t-a-blue-100: #1e3a8a;
+  --t-a-blue-200: #1e3a8a;
+  --t-a-blue-300: #1e40af;
+  --t-a-blue-400: #1d4ed8;
+  --t-a-blue-500: #2563eb;
+  --t-a-blue-600: #1d4ed8;
+  --t-a-blue-900: #dbeafe;
+  --t-a-blue-950: #eff6ff;
+
+  --t-a-red-200: #7f1d1d;
+  --t-a-red-300: #991b1b;
+  --t-a-red-400: #b91c1c;
+  --t-a-red-500: #dc2626;
+  --t-a-red-600: #b91c1c;
+  --t-a-red-900: #fee2e2;
+  --t-a-red-950: #fef2f2;
+
+  --t-a-emerald-300: #065f46;
+  --t-a-emerald-400: #047857;
+  --t-a-emerald-450: #04795a;
+  --t-a-emerald-500: #059669;
+  --t-a-emerald-600: #047857;
+  --t-a-emerald-900: #d1fae5;
+  --t-a-emerald-950: #ecfdf5;
+
+  --t-a-green-400: #15803d;
+  --t-a-green-500: #16a34a;
+  --t-a-green-600: #15803d;
+  --t-a-green-900: #dcfce7;
+
+  --t-a-amber-300: #92400e;
+  --t-a-amber-400: #b45309;
+  --t-a-amber-500: #a35c00;
+  --t-a-amber-550: #9a5700;
+  --t-a-amber-600: #92400e;
+  --t-a-amber-900: #fef3c7;
+
+  --t-a-yellow-300: #854d0e;
+  --t-a-yellow-400: #a16207;
+  --t-a-yellow-500: #8a5a00;
+  --t-a-yellow-600: #713f12;
+  --t-a-yellow-900: #fef9c3;
+  --t-a-yellow-950: #fefce8;
+
+  --t-a-orange-300: #9a3412;
+  --t-a-orange-400: #c2410c;
+  --t-a-orange-500: #c2410c;
+  --t-a-orange-600: #9a3412;
+  --t-a-orange-900: #ffedd5;
+
+  --t-a-pink-300: #9d174d;
+  --t-a-pink-400: #be185d;
+  --t-a-pink-500: #db2777;
+  --t-a-pink-600: #be185d;
+  --t-a-pink-900: #fce7f3;
+
+  --t-a-purple-300: #6b21a8;
+  --t-a-purple-400: #7e22ce;
+  --t-a-purple-500: #9333ea;
+  --t-a-purple-600: #7e22ce;
+  --t-a-purple-900: #f3e8ff;
+
+  --t-a-violet-300: #5b21b6;
+  --t-a-violet-400: #6d28d9;
+  --t-a-violet-500: #7c3aed;
+  --t-a-violet-600: #6d28d9;
+
+  --t-a-indigo-400: #4338ca;
+  --t-a-indigo-500: #4f46e5;
+  --t-a-indigo-600: #4338ca;
+
+  --t-a-sky-400: #0369a1;
+  --t-a-sky-500: #0369a1;
+
+  --t-a-rose-400: #be123c;
+  --t-a-rose-500: #e11d48;
+}
+
 @layer base {
   body {
     @apply antialiased text-zinc-200 selection:bg-blue-500/30 selection:text-blue-200 transition-colors duration-300;
   }
 }
 
-/* Base Editor Styles */
+/* ============================================================================
+   OVERRIDES DO TEMA CLARO
+   ----------------------------------------------------------------------------
+   Duas classes de override que as variáveis não cobrem:
+
+   1) Papéis conflitantes: zinc-700/800/900 são superfície E borda no mesmo
+      token. As variáveis servem a superfície; as bordas ganham regra própria.
+   2) Valores arbitrários (bg-[#121214]): não passam por variável, então cada
+      hex do código recebe seu equivalente claro.
+
+   As regras vivem em @layer utilities para respeitar a cascata do Tailwind:
+   `hover:` (0,3,1) continua vencendo o estado base (0,2,1).
+   ========================================================================== */
+@layer utilities {
+  /* --- 1. Bordas ---------------------------------------------------------- */
+  :root:not(.dark) .border-zinc-900,
+  :root:not(.dark) .border-zinc-900\/80,
+  :root:not(.dark) .border-zinc-900\/60,
+  :root:not(.dark) .border-zinc-900\/50,
+  :root:not(.dark) .border-zinc-900\/40 { border-color: var(--t-border-subtle); }
+
+  :root:not(.dark) .border-zinc-800,
+  :root:not(.dark) .border-zinc-800\/80,
+  :root:not(.dark) .border-zinc-800\/70,
+  :root:not(.dark) .border-zinc-800\/60,
+  :root:not(.dark) .border-zinc-800\/50,
+  :root:not(.dark) .border-zinc-800\/40,
+  :root:not(.dark) .border-zinc-800\/30,
+  :root:not(.dark) .border-zinc-805 { border-color: var(--t-border); }
+
+  :root:not(.dark) .border-zinc-750,
+  :root:not(.dark) .border-zinc-700,
+  :root:not(.dark) .border-zinc-700\/80,
+  :root:not(.dark) .border-zinc-700\/60,
+  :root:not(.dark) .border-zinc-700\/55,
+  :root:not(.dark) .border-zinc-700\/50,
+  :root:not(.dark) .border-zinc-700\/40,
+  :root:not(.dark) .border-zinc-700\/30 { border-color: var(--t-border-strong); }
+
+  :root:not(.dark) .border-zinc-600 { border-color: var(--t-border-focus); }
+
+  :root:not(.dark) .border-zinc-500,
+  :root:not(.dark) .border-zinc-500\/20,
+  :root:not(.dark) .border-zinc-500\/15 { border-color: var(--t-border-loud); }
+
+  :root:not(.dark) .divide-zinc-900 > :not(:last-child),
+  :root:not(.dark) .divide-zinc-900\/60 > :not(:last-child) { border-color: var(--t-border-subtle); }
+
+  /* Estados — precisam vencer as regras base acima */
+  :root:not(.dark) .hover\:border-zinc-800:hover,
+  :root:not(.dark) .hover\:border-zinc-800\/80:hover,
+  :root:not(.dark) .hover\:border-zinc-800\/60:hover,
+  :root:not(.dark) .hover\:border-zinc-800\/50:hover { border-color: var(--t-border-strong); }
+
+  :root:not(.dark) .hover\:border-zinc-700:hover,
+  :root:not(.dark) .hover\:border-zinc-700\/80:hover,
+  :root:not(.dark) .hover\:border-zinc-700\/50:hover,
+  :root:not(.dark) .hover\:border-zinc-600:hover,
+  :root:not(.dark) .group:hover .group-hover\:border-zinc-700 { border-color: var(--t-border-focus); }
+
+  :root:not(.dark) .hover\:border-zinc-500:hover { border-color: var(--t-border-loud); }
+
+  :root:not(.dark) .focus\:border-zinc-750:focus,
+  :root:not(.dark) .focus\:border-zinc-700\/60:focus,
+  :root:not(.dark) .focus\:border-zinc-600:focus { border-color: var(--t-border-focus); }
+
+  :root:not(.dark) .focus\:border-zinc-500:focus { border-color: var(--t-border-loud); }
+
+  :root:not(.dark) .ring-zinc-600 { --tw-ring-color: var(--t-border-focus); }
+
+  /* `red-900` tem o mesmo conflito do zinc: é tint de fundo (7 usos) e borda de
+     card de erro (8 usos). A variável serve o fundo; a borda vem daqui. */
+  :root:not(.dark) .border-red-900,
+  :root:not(.dark) .border-red-900\/50,
+  :root:not(.dark) .border-red-900\/30 { border-color: #f0a8a4; }
+
+  /* Hairline branca sobre superfície escura inverte para hairline escura sobre
+     superfície clara — `border-white/5` no claro seria invisível. */
+  :root:not(.dark) .border-white\/5 { border-color: rgb(var(--t-shadow-rgb) / 0.08); }
+  :root:not(.dark) .border-white\/10 { border-color: rgb(var(--t-shadow-rgb) / 0.13); }
+
+  /* --- 2. Papéis minoritários (token de superfície usado como texto) ------ */
+  :root:not(.dark) .text-zinc-700 { color: var(--t-text-5); }
+  :root:not(.dark) .text-zinc-750 { color: var(--t-text-6); }
+  :root:not(.dark) .placeholder-zinc-700::placeholder { color: var(--t-text-6); }
+  :root:not(.dark) .decoration-zinc-700 { text-decoration-color: var(--t-border-strong); }
+
+  /* --- 3. Sombras: no claro, sombra é neutra e suave --------------------- */
+  :root:not(.dark) .shadow-black,
+  :root:not(.dark) .shadow-black\/70,
+  :root:not(.dark) .shadow-black\/60,
+  :root:not(.dark) .shadow-black\/50,
+  :root:not(.dark) .shadow-black\/40 { --tw-shadow-color: rgb(var(--t-shadow-rgb) / 0.16); }
+  :root:not(.dark) .shadow-black\/20 { --tw-shadow-color: rgb(var(--t-shadow-rgb) / 0.10); }
+
+  /* Sombras arbitrárias em preto puro (7 elementos). Seletor por substring da
+     classe para não depender do escape de vírgula/parêntese do Tailwind. */
+  :root:not(.dark) [class*="rgba(0,0,0,0.5)"],
+  :root:not(.dark) [class*="rgb(0,0,0,0.5)"] {
+    box-shadow: 0 8px 24px rgb(var(--t-shadow-rgb) / 0.14);
+  }
+
+  /* --- 4. Valores arbitrários: superfícies ------------------------------- */
+  :root:not(.dark) .bg-\[\#08080a\],
+  :root:not(.dark) .bg-\[\#0a0a0c\],
+  :root:not(.dark) .bg-\[\#0A0A0A\],
+  :root:not(.dark) .bg-black { background-color: var(--t-canvas); }
+
+  :root:not(.dark) .bg-\[\#08080a\]\/60 { background-color: color-mix(in srgb, var(--t-canvas) 60%, transparent); }
+  :root:not(.dark) .bg-\[\#08080a\]\/40 { background-color: color-mix(in srgb, var(--t-canvas) 40%, transparent); }
+
+  :root:not(.dark) .bg-\[\#0c0c0e\],
+  :root:not(.dark) .bg-\[\#0d0d10\],
+  :root:not(.dark) .bg-\[\#0D0D0F\],
+  :root:not(.dark) .bg-\[\#0e0e10\],
+  :root:not(.dark) .bg-\[\#0d1117\] { background-color: var(--t-well); }
+
+  :root:not(.dark) .bg-\[\#0d1117\]\/95 { background-color: color-mix(in srgb, var(--t-well) 95%, transparent); }
+  :root:not(.dark) .bg-\[\#0d1117\]\/50 { background-color: color-mix(in srgb, var(--t-well) 50%, transparent); }
+
+  :root:not(.dark) .bg-\[\#111113\],
+  :root:not(.dark) .bg-\[\#121214\],
+  :root:not(.dark) .bg-\[\#141417\] { background-color: var(--t-card); }
+
+  :root:not(.dark) .bg-\[\#121214\]\/40 { background-color: color-mix(in srgb, var(--t-card) 40%, transparent); }
+  :root:not(.dark) .bg-\[\#121214\]\/30 { background-color: color-mix(in srgb, var(--t-card) 30%, transparent); }
+
+  :root:not(.dark) .bg-\[\#151519\],
+  :root:not(.dark) .bg-\[\#161619\],
+  :root:not(.dark) .bg-\[\#161b22\] { background-color: var(--t-card-2); }
+
+  :root:not(.dark) .bg-\[\#18181b\],
+  :root:not(.dark) .bg-\[\#1a1a1e\],
+  :root:not(.dark) .bg-\[\#1A1A1E\],
+  :root:not(.dark) .bg-\[\#1a1b1e\],
+  :root:not(.dark) .bg-\[\#1A1A1C\],
+  :root:not(.dark) .bg-\[\#1f1f23\] { background-color: var(--t-chip); }
+
+  :root:not(.dark) .bg-\[\#1C1C21\],
+  :root:not(.dark) .bg-\[\#1F1F22\] { background-color: var(--t-chip-2); }
+
+  :root:not(.dark) .bg-\[\#27272a\] { background-color: var(--t-chip-3); }
+
+  :root:not(.dark) .bg-\[\#30363d\] { background-color: var(--t-hairline); }
+  :root:not(.dark) .bg-\[\#30363d\]\/40 { background-color: color-mix(in srgb, var(--t-hairline) 55%, transparent); }
+
+  :root:not(.dark) .bg-\[\#1f2937\] { background-color: var(--t-tint-cool); }
+  :root:not(.dark) .bg-\[\#1f2937\]\/60 { background-color: color-mix(in srgb, var(--t-tint-cool) 80%, transparent); }
+  :root:not(.dark) .bg-\[\#1f2937\]\/40 { background-color: color-mix(in srgb, var(--t-tint-cool) 62%, transparent); }
+  :root:not(.dark) .bg-\[\#1f2937\]\/30 { background-color: color-mix(in srgb, var(--t-tint-cool) 50%, transparent); }
+  :root:not(.dark) .bg-\[\#1f2937\]\/20 { background-color: color-mix(in srgb, var(--t-tint-cool) 38%, transparent); }
+
+  /* Bordas arbitrárias */
+  :root:not(.dark) .border-\[\#1F1F22\] { border-color: var(--t-border); }
+  :root:not(.dark) .border-\[\#30363d\],
+  :root:not(.dark) .border-\[\#30363d\]\/45 { border-color: var(--t-border); }
+  :root:not(.dark) .border-\[\#0d1117\] { border-color: var(--t-border-subtle); }
+  :root:not(.dark) .border-\[\#6B6B70\] { border-color: var(--t-border-loud); }
+
+  /* Gradientes de fade sobre conteúdo */
+  :root:not(.dark) .from-\[\#0c0c0e\] { --tw-gradient-from: var(--t-well); }
+  :root:not(.dark) .from-\[\#08080a\] { --tw-gradient-from: var(--t-canvas); }
+  :root:not(.dark) .to-\[\#08080a\] { --tw-gradient-to: var(--t-canvas); }
+  :root:not(.dark) .via-\[\#08080a\]\/90 { --tw-gradient-via: color-mix(in srgb, var(--t-canvas) 90%, transparent); }
+  :root:not(.dark) .via-\[\#08080a\]\/80 { --tw-gradient-via: color-mix(in srgb, var(--t-canvas) 80%, transparent); }
+
+  /* --- 5. Valores arbitrários: texto ------------------------------------ */
+  :root:not(.dark) .text-\[\#EDEDED\] { color: var(--t-text-1); }
+  :root:not(.dark) .text-\[\#A0A0A5\] { color: var(--t-text-2); }
+  :root:not(.dark) .text-\[\#6B6B70\],
+  :root:not(.dark) .text-\[\#9ca3af\] { color: var(--t-text-3); }
+  :root:not(.dark) .text-\[\#5A5A5E\] { color: var(--t-text-4); }
+  :root:not(.dark) .text-\[\#4A4A4E\] { color: var(--t-text-5); }
+  :root:not(.dark) .text-\[\#3A3A3E\] { color: var(--t-text-6); }
+
+  /* --- 6. Valores arbitrários: acentos ---------------------------------- */
+  :root:not(.dark) .text-\[\#F85149\] { color: var(--t-danger); }
+  :root:not(.dark) .bg-\[\#F85149\] { background-color: var(--t-danger-bg); }
+  :root:not(.dark) .bg-\[\#F85149\]\/10 { background-color: var(--t-danger-tint); }
+  :root:not(.dark) .text-\[\#3FB950\] { color: var(--t-success); }
+  :root:not(.dark) .bg-\[\#3FB950\] { background-color: var(--t-success-bg); }
+  :root:not(.dark) .bg-\[\#3FB950\]\/10 { background-color: var(--t-success-tint); }
+  :root:not(.dark) .text-\[\#D29922\] { color: var(--t-warning); }
+  :root:not(.dark) .bg-\[\#D29922\]\/10 { background-color: var(--t-warning-tint); }
+  :root:not(.dark) .text-\[\#C24941\] { color: var(--t-danger-alt); }
+  :root:not(.dark) .text-\[\#2F9E52\] { color: var(--t-success-alt); }
+  :root:not(.dark) .text-\[\#5E6AD2\] { color: var(--t-brand); }
+  :root:not(.dark) .bg-\[\#5E6AD2\] { background-color: var(--t-brand); }
+  :root:not(.dark) .bg-\[\#8B8BF0\] { background-color: var(--t-brand-soft); }
+  :root:not(.dark) .bg-\[\#3B82F6\] { background-color: var(--t-info); }
+  :root:not(.dark) .text-\[\#3b82f6\]\/80 { color: color-mix(in srgb, var(--t-info) 90%, transparent); }
+
+  /* --- 7. Estados sobre valores arbitrários (vencem as regras base) ----- */
+  :root:not(.dark) .hover\:text-\[\#EDEDED\]:hover { color: var(--t-text-1); }
+  :root:not(.dark) .hover\:bg-\[\#121214\]:hover { background-color: var(--t-card); }
+  :root:not(.dark) .hover\:bg-\[\#151519\]:hover,
+  :root:not(.dark) .hover\:bg-\[\#161619\]:hover,
+  :root:not(.dark) .group:hover .group-hover\:bg-\[\#161619\] { background-color: var(--t-card-2); }
+  :root:not(.dark) .hover\:bg-\[\#18181b\]:hover,
+  :root:not(.dark) .hover\:bg-\[\#1A1A1C\]:hover,
+  :root:not(.dark) .hover\:bg-\[\#1f1f23\]:hover { background-color: var(--t-chip); }
+  :root:not(.dark) .hover\:bg-\[\#1F1F22\]:hover { background-color: var(--t-chip-2); }
+  :root:not(.dark) .hover\:bg-\[\#30363d\]:hover { background-color: var(--t-hairline); }
+  :root:not(.dark) .hover\:bg-\[\#1f2937\]\/60:hover { background-color: color-mix(in srgb, var(--t-tint-cool) 88%, transparent); }
+  :root:not(.dark) .hover\:bg-\[\#1f2937\]\/40:hover { background-color: color-mix(in srgb, var(--t-tint-cool) 70%, transparent); }
+}
+
+/* ============================================================================
+   EDITOR DE TEXTO RICO (TipTap)
+   ========================================================================== */
+/* Nota: `@apply border-zinc-800` inlinaria o valor do token de SUPERFÍCIE
+   (que no claro é quase branco), e não passaria pelos overrides de borda —
+   estes valem para a classe `.border-zinc-800`, não para o inline. Por isso as
+   bordas do editor usam as variáveis semânticas direto. */
 .rte-wrapper {
-  @apply relative flex flex-col border border-zinc-900 rounded-lg overflow-hidden bg-[#0d0d10] focus-within:border-zinc-700 focus-within:ring-1 focus-within:ring-zinc-700 transition-all;
+  @apply relative flex flex-col border rounded-lg overflow-hidden focus-within:ring-1 transition-all;
+  background-color: var(--t-well);
+  border-color: var(--t-border-subtle);
+}
+
+.rte-wrapper:focus-within {
+  border-color: var(--t-border-strong);
+  --tw-ring-color: var(--t-border-strong);
 }
 
 .rte-borderless {
@@ -125,15 +814,22 @@
 }
 
 .rte-toolbar {
-  @apply flex flex-wrap items-center gap-1 p-2 border-b border-zinc-900 bg-[#08080a] sticky top-0 z-10;
+  @apply flex flex-wrap items-center gap-1 p-2 border-b sticky top-0 z-10;
+  background-color: var(--t-canvas);
+  border-color: var(--t-border-subtle);
 }
 
 .rte-btn {
-  @apply p-1.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors flex items-center justify-center;
+  @apply p-1.5 rounded text-zinc-500 hover:text-zinc-200 transition-colors flex items-center justify-center;
+}
+
+.rte-btn:hover {
+  background-color: var(--t-control-hover);
 }
 
 .rte-btn--active {
-  @apply bg-zinc-800 text-zinc-100 shadow-sm;
+  @apply text-zinc-100 shadow-sm;
+  background-color: var(--t-control-active);
 }
 
 .rte-btn:disabled {
@@ -141,16 +837,20 @@
 }
 
 .rte-divider {
-  @apply w-px h-4 bg-zinc-800 mx-1;
+  @apply w-px h-4 mx-1;
+  background-color: var(--t-border);
 }
 
 /* Color Picker Popover */
 .rte-color-panel {
-  @apply absolute top-full left-0 mt-1 flex flex-wrap gap-1 p-2 bg-[#121214] border border-zinc-800 rounded shadow-xl z-50 w-36;
+  @apply absolute top-full left-0 mt-1 flex flex-wrap gap-1 p-2 border rounded shadow-xl z-50 w-36;
+  background-color: var(--t-card);
+  border-color: var(--t-border);
 }
 
 .rte-color-swatch {
-  @apply w-5 h-5 rounded-full border border-zinc-700 hover:scale-110 transition-transform cursor-pointer;
+  @apply w-5 h-5 rounded-full border hover:scale-110 transition-transform cursor-pointer;
+  border-color: var(--t-border-strong);
 }
 
 .rte-color-reset {
@@ -168,7 +868,7 @@
 
 /* TipTap Placeholder */
 .rte-content p.is-editor-empty:first-child::before {
-  color: #52525b;
+  color: var(--t-n-600);
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -176,8 +876,8 @@
 }
 
 /* Headings */
-.rte-content h1, 
-.rte-content h2, 
+.rte-content h1,
+.rte-content h2,
 .rte-content h3 {
   @apply font-semibold text-zinc-100 mt-6 mb-4 leading-tight;
 }
@@ -195,7 +895,7 @@
 }
 
 /* Lists */
-.rte-content ul, 
+.rte-content ul,
 .rte-content ol {
   @apply my-4 pl-5;
 }
@@ -250,13 +950,15 @@
 
 /* Tables */
 .rte-content table {
-  @apply w-full border-collapse my-5 border border-zinc-800 rounded-sm overflow-hidden;
+  @apply w-full border-collapse my-5 border rounded-sm overflow-hidden;
   max-width: 100%;
+  border-color: var(--t-border);
 }
 
 .rte-content table td,
 .rte-content table th {
-  @apply border border-zinc-800 p-2 min-w-[3em] relative text-left align-top;
+  @apply border p-2 min-w-[3em] relative text-left align-top;
+  border-color: var(--t-border);
 }
 
 .rte-content table th {
@@ -333,10 +1035,13 @@
 }
 
 .rte-content hr {
-  @apply border-0 h-px bg-zinc-800 my-8;
+  @apply border-0 h-px my-8;
+  background-color: var(--t-border);
 }
 
-/* Modern Global Scrollbar (Linear/Notion style) */
+/* ============================================================================
+   SCROLLBARS — trilho transparente, polegar segue o tema
+   ========================================================================== */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -347,21 +1052,21 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--t-scroll-thumb);
   border-radius: 100px;
   border: 3px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--t-scroll-thumb-hover);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: var(--t-scroll-thumb) transparent;
 }
 
 /* Custom Scrollbar utility (keep for specific uses if needed) */
@@ -375,12 +1080,12 @@
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--t-scroll-thumb);
   border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--t-scroll-thumb-hover);
 }
 
 /* Minimalist Scrollbar (Linear/Notion style) */
@@ -394,14 +1099,14 @@
 }
 
 .scrollbar-minimal::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--t-scroll-thumb);
   border-radius: 10px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
 
 .scrollbar-minimal::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--t-scroll-thumb-hover);
 }
 
 /* Utility to hide scrollbar but keep scroll functionality */

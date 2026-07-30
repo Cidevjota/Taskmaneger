@@ -298,7 +298,7 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
         {activeTab === 'propostas' && (
           <button
             onClick={handleAddProposal}
-            className="flex items-center gap-1.5 mb-2 px-2.5 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded-md text-[11px] font-semibold text-zinc-300 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 mb-2 px-2.5 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded-md text-[11px] font-semibold text-zinc-300 hover:text-zinc-100 transition-colors"
           >
             <Plus size={12} /> Adicionar Proposta
           </button>

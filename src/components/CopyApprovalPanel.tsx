@@ -222,7 +222,7 @@ const DynamicDocument = ({ submission, tempHtml, feedbacks, revNum, isCompact, i
         </span>
         <div 
           id={isInteractive ? 'copy-document-container' : undefined}
-          className={`copy-content [&>p]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-white [&>h3]:mb-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-4 transition-colors ${toolMode === 'highlighter' ? 'cursor-crosshair selection:bg-yellow-500/30' : 'cursor-text'}`}
+          className={`copy-content [&>p]:mb-4 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-zinc-100 [&>h3]:mb-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-4 transition-colors ${toolMode === 'highlighter' ? 'cursor-crosshair selection:bg-yellow-500/30' : 'cursor-text'}`}
           dangerouslySetInnerHTML={{ __html: contentToRender }}
         />
       </div>
@@ -576,7 +576,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
         {/* COLUNA: CENTRO (Flex) - Documento */}
         <div className="flex-1 flex flex-col bg-[#121214] overflow-hidden relative">
           <div className="p-4 border-b border-zinc-800/50 h-[60px] flex items-center justify-between shrink-0">
-            <button onClick={onClose} className="text-zinc-500 hover:text-white flex items-center gap-1.5 text-xs font-medium tracking-wide transition-colors">
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-100 flex items-center gap-1.5 text-xs font-medium tracking-wide transition-colors">
               <ChevronLeft size={14} /> VOLTAR
             </button>
             
@@ -585,7 +585,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
               <div className="flex items-center gap-1 bg-[#1C1C21] border border-zinc-800/50 rounded-lg p-1 shadow-sm">
                 <button
                   onClick={() => setToolMode('cursor')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${toolMode === 'cursor' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${toolMode === 'cursor' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
                   title="Modo Cursor (Selecionar e Copiar texto normalmente)"
                 >
                   <MousePointer2 size={14} /> Cursor
@@ -593,7 +593,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
                 <div className="w-px h-4 bg-zinc-800 mx-1" />
                 <button
                   onClick={() => setToolMode('highlighter')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${toolMode === 'highlighter' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${toolMode === 'highlighter' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
                   title="Modo Marcador (Grifar trechos e adicionar comentários)"
                 >
                   <Highlighter size={14} className={toolMode === 'highlighter' ? colorStyles[selectedColor].icon : ''} /> Marcador
@@ -631,7 +631,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
                 <div className={`${isLeftCollapsed ? 'w-16' : (showPastComments ? 'w-[55%] pr-[240px]' : 'w-[45%] pr-8')} border-r border-zinc-800/30 relative overflow-y-auto transition-all duration-300`}>
                   {isLeftCollapsed ? (
                     <div className="flex flex-col items-center pt-4">
-                      <button onClick={() => setIsLeftCollapsed(false)} className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Expandir Anotações">
+                      <button onClick={() => setIsLeftCollapsed(false)} className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Expandir Anotações">
                         <ChevronRight size={16} />
                       </button>
                     </div>
@@ -640,10 +640,10 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
                       <div className="mb-4 flex items-center justify-between">
                         <span className="text-[10px] font-medium text-zinc-500 uppercase">Antes (Com Anotações)</span>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setShowPastComments(!showPastComments)} className="text-[10px] font-medium text-zinc-400 hover:text-white transition-colors bg-zinc-800/50 hover:bg-zinc-700 px-2 py-1 rounded">
+                          <button onClick={() => setShowPastComments(!showPastComments)} className="text-[10px] font-medium text-zinc-400 hover:text-zinc-100 transition-colors bg-zinc-800/50 hover:bg-zinc-700 px-2 py-1 rounded">
                             {showPastComments ? 'Ocultar Anotações' : 'Mostrar Anotações'}
                           </button>
-                          <button onClick={() => setIsLeftCollapsed(true)} className="p-1 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Recolher Coluna">
+                          <button onClick={() => setIsLeftCollapsed(true)} className="p-1 text-zinc-400 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Recolher Coluna">
                             <ChevronLeft size={16} />
                           </button>
                         </div>
@@ -687,7 +687,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
                 <div className={`${isLeftCollapsed ? 'w-16' : (showPastComments ? 'w-[55%] pr-[240px]' : 'w-[45%] pr-8')} border-r border-zinc-800/30 relative overflow-y-auto transition-all duration-300`}>
                   {isLeftCollapsed ? (
                     <div className="flex flex-col items-center pt-4">
-                      <button onClick={() => setIsLeftCollapsed(false)} className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Expandir Revisão Anterior">
+                      <button onClick={() => setIsLeftCollapsed(false)} className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Expandir Revisão Anterior">
                         <ChevronRight size={16} />
                       </button>
                     </div>
@@ -696,10 +696,10 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
                       <div className="mb-4 flex items-center justify-between">
                         <span className="text-[10px] font-medium text-zinc-500 uppercase">Revisão Anterior (Com Anotações e Diff)</span>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setShowPastComments(!showPastComments)} className="text-[10px] font-medium text-zinc-400 hover:text-white transition-colors bg-zinc-800/50 hover:bg-zinc-700 px-2 py-1 rounded">
+                          <button onClick={() => setShowPastComments(!showPastComments)} className="text-[10px] font-medium text-zinc-400 hover:text-zinc-100 transition-colors bg-zinc-800/50 hover:bg-zinc-700 px-2 py-1 rounded">
                             {showPastComments ? 'Ocultar Anotações' : 'Mostrar Anotações'}
                           </button>
-                          <button onClick={() => setIsLeftCollapsed(true)} className="p-1 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Recolher Coluna">
+                          <button onClick={() => setIsLeftCollapsed(true)} className="p-1 text-zinc-400 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700 rounded transition-colors" title="Recolher Coluna">
                             <ChevronLeft size={16} />
                           </button>
                         </div>
@@ -761,7 +761,7 @@ export default function CopyApprovalPanel({ delivery, currentText, onClose, onUp
                   <button onClick={cancelDraftComment} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-1.5 px-3 rounded-md transition-colors text-[10px]">
                     Cancelar
                   </button>
-                  <button onClick={submitDraftComment} disabled={!draftCommentText} className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white font-medium py-1.5 px-3 rounded-md transition-colors text-[10px] disabled:opacity-50 disabled:cursor-not-allowed">
+                  <button onClick={submitDraftComment} disabled={!draftCommentText} className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-100 font-medium py-1.5 px-3 rounded-md transition-colors text-[10px] disabled:opacity-50 disabled:cursor-not-allowed">
                     Salvar Anotação
                   </button>
                 </div>

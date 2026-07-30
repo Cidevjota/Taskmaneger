@@ -210,7 +210,7 @@ export default function WeeklyPlanner({ tasks, onUpdateTask, onSelectTask }: Wee
                             {task.priority === 'medium' && <Minus size={14} className="text-blue-500" />}
                             {task.priority === 'low' && <ChevronDown size={14} className="text-emerald-500" />}
                           </div>
-                          <span className={`text-[11px] font-medium truncate ${task.status === 'done' ? 'text-zinc-500 line-through' : 'text-zinc-200 group-hover:text-white transition-colors'}`}>
+                          <span className={`text-[11px] font-medium truncate ${task.status === 'done' ? 'text-zinc-500 line-through' : 'text-zinc-200 group-hover:text-zinc-100 transition-colors'}`}>
                             {task.title}
                           </span>
                         </div>

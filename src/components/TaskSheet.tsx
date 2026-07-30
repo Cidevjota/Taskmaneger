@@ -299,7 +299,7 @@ const AttachmentsSection = ({ attachments = [], onUpdate, taskId, taskTitle, tas
                   href={att.url} 
                   target={att.isLink ? "_blank" : undefined}
                   download={!att.isLink ? att.name : undefined} 
-                  className="p-1 px-2 text-[10px] font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded transition-colors flex items-center gap-1"
+                  className="p-1 px-2 text-[10px] font-medium text-zinc-400 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors flex items-center gap-1"
                 >
                   {att.isLink ? <ExternalLink size={11} /> : <Download size={11} />}
                   Abrir
@@ -2176,7 +2176,7 @@ export default function TaskSheet({
                               {onAddTask && (
                                 <button 
                                   onClick={handleAddChildTask}
-                                  className={`flex-1 text-[10px] text-zinc-400 hover:text-white bg-zinc-900/50 ${theme.badgeHover} border border-transparent hover:${theme.badgeBorder} p-2 rounded-md transition-all flex items-center justify-center gap-1.5 font-medium`}
+                                  className={`flex-1 text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900/50 ${theme.badgeHover} border border-transparent hover:${theme.badgeBorder} p-2 rounded-md transition-all flex items-center justify-center gap-1.5 font-medium`}
                                 >
                                   <Plus size={13} /> Criar Nova
                                 </button>
@@ -2185,7 +2185,7 @@ export default function TaskSheet({
                                 <div className="flex-1 relative">
                                   <button 
                                     onClick={() => setIsLinkDropdownOpen(!isLinkDropdownOpen)}
-                                    className={`w-full text-[10px] text-zinc-400 hover:text-white bg-zinc-900/50 ${theme.badgeHover} border border-transparent hover:${theme.badgeBorder} p-2 rounded-md transition-all flex items-center justify-center gap-1.5 font-medium`}
+                                    className={`w-full text-[10px] text-zinc-400 hover:text-zinc-100 bg-zinc-900/50 ${theme.badgeHover} border border-transparent hover:${theme.badgeBorder} p-2 rounded-md transition-all flex items-center justify-center gap-1.5 font-medium`}
                                   >
                                     <Link2 size={13} /> Vincular Existente
                                   </button>
@@ -2433,7 +2433,7 @@ export default function TaskSheet({
                   e.stopPropagation();
                   setShowDeleteConfirm(false);
                 }}
-                className="px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+                className="px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
@@ -2477,7 +2477,7 @@ export default function TaskSheet({
             </div>
             <button
               onClick={() => { setIsFullscreenDesc(false); setDescEditorKey(k => k + 1); }}
-              className="flex items-center gap-2 text-zinc-400 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 px-3 py-1.5 rounded-md transition-colors text-xs font-semibold"
+              className="flex items-center gap-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/50 hover:bg-zinc-800 px-3 py-1.5 rounded-md transition-colors text-xs font-semibold"
             >
               <Minimize2 size={14} /> Fechar Tela Cheia
             </button>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig } from '../types';
+import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra } from '../types';
 import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
@@ -44,6 +44,12 @@ interface SiengeViewProps {
   vendas: SiengeVenda[];
   orcamentoConfig?: SiengeOrcamentoConfig;
   onSaveOrcamentoConfig: (config: SiengeOrcamentoConfig) => void;
+  tabelaVendaColunas: SiengeTabelaVendaColuna[];
+  onSaveTabelaVendaColuna: (coluna: SiengeTabelaVendaColuna) => void;
+  onDeleteTabelaVendaColuna: (id: string) => void;
+  calculoRegras: SiengeCalculoRegra[];
+  onSaveCalculoRegra: (regra: SiengeCalculoRegra) => void;
+  onDeleteCalculoRegra: (id: string) => void;
   taxonomy: SiengeTaxonomy;
   onAddCentroCusto: (nome: string) => Promise<void> | void;
   onAddCategoria: (centroCusto: string, categoria: string) => Promise<void> | void;
@@ -60,6 +66,7 @@ export default function SiengeView({
   projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
   tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
+  tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
   taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria,
 }: SiengeViewProps) {
   const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas'>('titulos');
@@ -186,6 +193,12 @@ export default function SiengeView({
             vendas={vendas}
             orcamentoConfig={orcamentoConfig}
             onSaveOrcamentoConfig={onSaveOrcamentoConfig}
+            tabelaVendaColunas={tabelaVendaColunas}
+            onSaveTabelaVendaColuna={onSaveTabelaVendaColuna}
+            onDeleteTabelaVendaColuna={onDeleteTabelaVendaColuna}
+            calculoRegras={calculoRegras}
+            onSaveCalculoRegra={onSaveCalculoRegra}
+            onDeleteCalculoRegra={onDeleteCalculoRegra}
             taxonomy={taxonomy}
           />
         )}
