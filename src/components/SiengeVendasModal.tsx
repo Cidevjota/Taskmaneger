@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText } from 'lucide-react';
-import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeColunaTipo, SiengeVenda } from '../types';
+import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText } from 'lucide-react';
+import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeCalculoOperacao, SiengeColunaTipo, SiengeVenda, SiengeValidacao, SiengeValidacaoTermo } from '../types';
 import SiengeVendasTable from './SiengeVendasTable';
-import { exportSiengeVendasCsv, parseSiengeVendasCsv, validarUnidade } from '../lib/siengeVendasTabela';
+import { ColunaOuRegra, calcRegraValor, colunaBaseLabel, exportSiengeVendasCsv, getColunaBaseValue, mergeColunasRegras, parseSiengeVendasCsv, parseSiengeVendasXlsx, round6 } from '../lib/siengeVendasTabela';
 
 const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -15,6 +15,7 @@ const TIPO_LABELS: Record<SiengeColunaTipo, string> = {
   numero: 'Número',
   moeda: 'Moeda (R$)',
   texto: 'Texto',
+  area: 'Área (m²)',
 };
 
 interface SiengeVendasModalProps {
@@ -31,7 +32,10 @@ interface SiengeVendasModalProps {
   onDeleteColuna: (id: string) => void;
   onSaveRegra: (regra: SiengeCalculoRegra) => void;
   onDeleteRegra: (id: string) => void;
-  onClose: () => void;
+  validacoes: SiengeValidacao[];
+  onSaveValidacao: (validacao: SiengeValidacao) => void;
+  onDeleteValidacao: (id: string) => void;
+  onClose?: () => void;
 }
 
 function slugifyKeyLocal(label: string): string {
@@ -40,7 +44,38 @@ function slugifyKeyLocal(label: string): string {
 
 // Linha editável de definição de coluna — rascunho local + commit no blur,
 // mesmo padrão usado no resto do módulo Sienge.
-function ColunaRow({ coluna, onCommit, onDelete }: { coluna: SiengeTabelaVendaColuna; onCommit: (c: SiengeTabelaVendaColuna) => void; onDelete: (id: string) => void }) {
+// Reordena trocando o sortOrder entre a entrada e a vizinha — funciona tanto
+// entre colunas quanto entre colunas e regras, já que o merge intercala as
+// duas listas numa única sequência visual (ver mergeColunasRegras).
+function moveEntry(
+  merged: ColunaOuRegra[],
+  index: number,
+  direction: -1 | 1,
+  onSaveColuna: (c: SiengeTabelaVendaColuna) => void,
+  onSaveRegra: (r: SiengeCalculoRegra) => void
+) {
+  const target = index + direction;
+  if (target < 0 || target >= merged.length) return;
+  const a = merged[index];
+  const b = merged[target];
+  const now = new Date().toISOString();
+  const soA = a.item.sortOrder;
+  const soB = b.item.sortOrder;
+  if (a.kind === 'coluna') onSaveColuna({ ...a.item, sortOrder: soB, updatedAt: now });
+  else onSaveRegra({ ...a.item, sortOrder: soB, updatedAt: now });
+  if (b.kind === 'coluna') onSaveColuna({ ...b.item, sortOrder: soA, updatedAt: now });
+  else onSaveRegra({ ...b.item, sortOrder: soA, updatedAt: now });
+}
+
+function ColunaRow({ coluna, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: {
+  coluna: SiengeTabelaVendaColuna;
+  onCommit: (c: SiengeTabelaVendaColuna) => void;
+  onDelete: (id: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
   const [label, setLabel] = useState(coluna.label);
   useEffect(() => setLabel(coluna.label), [coluna.label]);
 
@@ -48,6 +83,26 @@ function ColunaRow({ coluna, onCommit, onDelete }: { coluna: SiengeTabelaVendaCo
 
   return (
     <div className="flex items-center gap-2">
+      <div className="flex flex-col shrink-0">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={isFirst}
+          title="Mover para cima"
+          className="p-0.5 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors disabled:opacity-25 disabled:pointer-events-none"
+        >
+          <ChevronUp size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={isLast}
+          title="Mover para baixo"
+          className="p-0.5 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors disabled:opacity-25 disabled:pointer-events-none"
+        >
+          <ChevronDown size={13} />
+        </button>
+      </div>
       <input
         type="text"
         value={label}
@@ -69,6 +124,73 @@ function ColunaRow({ coluna, onCommit, onDelete }: { coluna: SiengeTabelaVendaCo
         type="button"
         onClick={() => onDelete(coluna.id)}
         title="Remover coluna"
+        className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
+// Coluna calculada (regra) dentro da mesma lista de "Colunas da Tabela" —
+// só título e reordenação aqui; fórmula (operação, quantidade, % e referência)
+// se edita no painel "Regras de Cálculo".
+function RegraColunaRow({ regra, colunas, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: {
+  regra: SiengeCalculoRegra;
+  colunas: SiengeTabelaVendaColuna[];
+  onCommit: (r: SiengeCalculoRegra) => void;
+  onDelete: (id: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const [titulo, setTitulo] = useState(regra.titulo);
+  useEffect(() => setTitulo(regra.titulo), [regra.titulo]);
+
+  const operacao: SiengeCalculoOperacao = regra.operacao === 'multiplicar' ? 'multiplicar' : 'dividir';
+  const quantidadeLabel = regra.quantidadeColunaKey
+    ? colunaBaseLabel(regra.quantidadeColunaKey, colunas)
+    : regra.quantidade;
+  const resumo = `${regra.percentual}% de ${colunaBaseLabel(regra.colunaBaseKey, colunas)} ${operacao === 'multiplicar' ? '×' : '÷'} ${quantidadeLabel}`;
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex flex-col shrink-0">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={isFirst}
+          title="Mover para cima"
+          className="p-0.5 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors disabled:opacity-25 disabled:pointer-events-none"
+        >
+          <ChevronUp size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={isLast}
+          title="Mover para baixo"
+          className="p-0.5 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors disabled:opacity-25 disabled:pointer-events-none"
+        >
+          <ChevronDown size={13} />
+        </button>
+      </div>
+      <input
+        type="text"
+        value={titulo}
+        onChange={e => setTitulo(e.target.value)}
+        onBlur={() => { if (titulo.trim() && titulo.trim() !== regra.titulo) onCommit({ ...regra, titulo: titulo.trim() }); }}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        className="flex-1 min-w-0 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors"
+      />
+      <span title={resumo} className="flex items-center gap-1.5 px-2.5 py-2 text-[10px] font-semibold text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-lg shrink-0 max-w-[220px] truncate">
+        <Calculator size={11} className="shrink-0" /> {resumo}
+      </span>
+      <button
+        type="button"
+        onClick={() => onDelete(regra.id)}
+        title="Remover regra"
         className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
       >
         <Trash2 size={13} />
@@ -149,8 +271,11 @@ function RegraRow({ regra, colunas, onCommit, onDelete }: {
   const inputClass = 'w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors';
   const baseOptions = [{ key: 'valor_tabela', label: 'Valor da Unidade' }, ...colunas.filter(c => c.tipo !== 'texto').map(c => ({ key: c.key, label: c.label }))];
 
+  const operacao: SiengeCalculoOperacao = regra.operacao === 'multiplicar' ? 'multiplicar' : 'dividir';
+  const usaColuna = !!regra.quantidadeColunaKey;
+
   return (
-    <div className="grid grid-cols-[1.4fr_0.7fr_0.9fr_1.2fr_auto] gap-2 items-end">
+    <div className="grid grid-cols-[1.1fr_0.6fr_0.9fr_0.9fr_1.1fr_auto] gap-2 items-end">
       <div className="flex flex-col gap-1.5">
         <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Título da Coluna</label>
         <input
@@ -163,16 +288,48 @@ function RegraRow({ regra, colunas, onCommit, onDelete }: {
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Quantidade</label>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={quantidadeText}
-          onChange={e => setQuantidadeText(e.target.value.replace(/\D/g, ''))}
-          onBlur={() => { const n = parseInt(quantidadeText, 10) || 0; onCommit({ ...regra, quantidade: n }); }}
-          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-          className={inputClass}
-        />
+        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Operação</label>
+        <select
+          value={operacao}
+          onChange={e => onCommit({ ...regra, operacao: e.target.value as SiengeCalculoOperacao })}
+          className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none cursor-pointer"
+        >
+          <option value="dividir" className="bg-zinc-900">Dividir (÷)</option>
+          <option value="multiplicar" className="bg-zinc-900">Multiplicar (×)</option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider truncate">{operacao === 'multiplicar' ? 'Multiplicador' : 'Quantidade'}</label>
+          <button
+            type="button"
+            onClick={() => onCommit({ ...regra, quantidadeColunaKey: usaColuna ? null : (baseOptions[0]?.key || null) })}
+            className="text-[10px] font-semibold text-blue-400 hover:text-blue-300 transition-colors shrink-0"
+          >
+            {usaColuna ? 'Digitar' : 'Coluna'}
+          </button>
+        </div>
+        {usaColuna ? (
+          <select
+            value={regra.quantidadeColunaKey || ''}
+            onChange={e => onCommit({ ...regra, quantidadeColunaKey: e.target.value })}
+            className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none cursor-pointer"
+          >
+            {baseOptions.map(o => (
+              <option key={o.key} value={o.key} className="bg-zinc-900">{o.label}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            inputMode="numeric"
+            value={quantidadeText}
+            onChange={e => setQuantidadeText(e.target.value.replace(/\D/g, ''))}
+            onBlur={() => { const n = parseInt(quantidadeText, 10) || 0; onCommit({ ...regra, quantidade: n }); }}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            className={inputClass}
+          />
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Percentual</label>
@@ -265,13 +422,205 @@ function DiferencaBadge({ diferenca }: { diferenca: number }) {
   );
 }
 
-// Painel de validação: escolhe uma unidade e confere se as parcelas (quantidade
-// x regra) fecham com a coluna base, e se a soma de todas as colunas monetárias
-// fecha com o Valor da Unidade — ambas as diferenças devem ficar em zero.
-function ValidarPanel({ unidades, colunas, regras, onClose }: {
+const REGRA_KEY_PREFIX = 'regra:';
+
+// Chaves de coluna real resolvem via getColunaBaseValue; chaves prefixadas com
+// "regra:" apontam pra uma coluna calculada (regra de cálculo), que não fica em
+// camposExtra — precisa recalcular na hora via calcRegraValor.
+function resolveOperando(item: SiengeTabelaVendaUnidade, key: string, regras: SiengeCalculoRegra[]): number {
+  if (key.startsWith(REGRA_KEY_PREFIX)) {
+    const regra = regras.find(r => r.id === key.slice(REGRA_KEY_PREFIX.length));
+    return regra ? calcRegraValor(item, regra) : 0;
+  }
+  return getColunaBaseValue(item, key);
+}
+
+function novoTermoParcela(colunaKey: string): SiengeValidacaoTermo {
+  return { colunaKey, quantidade: 1 };
+}
+
+function novoTermoValor(colunaKey: string): SiengeValidacaoTermo {
+  return { colunaKey, sinal: '+' };
+}
+
+// (quantidade₁ × coluna₁) + (quantidade₂ × coluna₂) + ... deve ser igual à
+// coluna de referência — ex.: (48 × Mensal) + (7 × Semestral) = Custo de Construção.
+function calcValidacaoParcelas(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
+  const soma = round6(validacao.termos.reduce((s, t) => s + (t.quantidade ?? 0) * resolveOperando(item, t.colunaKey, regras), 0));
+  const referencia = validacao.referenciaKey ? resolveOperando(item, validacao.referenciaKey, regras) : 0;
+  return { soma, referencia, diferenca: round6(soma - referencia) };
+}
+
+// (±coluna₁) + (±coluna₂) + ... deve ser igual ao Valor da Unidade — ex.:
+// Custo de Construção + Adesão Total = Valor da Unidade.
+function calcValidacaoValorUnidade(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
+  const soma = round6(validacao.termos.reduce((s, t) => s + (t.sinal === '-' ? -1 : 1) * resolveOperando(item, t.colunaKey, regras), 0));
+  return { soma, valorUnidade: item.valorTabela, diferenca: round6(soma - item.valorTabela) };
+}
+
+function ValidacaoParcelasCard({ validacao, opcoes, regras, item, onCommit, onDelete }: {
+  validacao: SiengeValidacao;
+  opcoes: { key: string; label: string }[];
+  regras: SiengeCalculoRegra[];
+  item?: SiengeTabelaVendaUnidade;
+  onCommit: (v: SiengeValidacao) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [titulo, setTitulo] = useState(validacao.titulo);
+  useEffect(() => setTitulo(validacao.titulo), [validacao.titulo]);
+
+  const selectClass = 'bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2 text-xs text-zinc-100 outline-none cursor-pointer min-w-0';
+  const resultado = item ? calcValidacaoParcelas(item, validacao, regras) : null;
+
+  const updateTermo = (idx: number, termo: SiengeValidacaoTermo) => onCommit({ ...validacao, termos: validacao.termos.map((t, i) => i === idx ? termo : t) });
+  const addTermo = () => onCommit({ ...validacao, termos: [...validacao.termos, novoTermoParcela(opcoes[0]?.key || 'valor_tabela')] });
+  const removeTermo = (idx: number) => onCommit({ ...validacao, termos: validacao.termos.filter((_, i) => i !== idx) });
+
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={titulo}
+          onChange={e => setTitulo(e.target.value)}
+          onBlur={() => { if (titulo.trim() !== validacao.titulo) onCommit({ ...validacao, titulo: titulo.trim() }); }}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          placeholder="Nome da validação"
+          className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-zinc-200 placeholder-zinc-600 outline-none"
+        />
+        <button type="button" onClick={() => onDelete(validacao.id)} title="Remover validação" className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors shrink-0">
+          <Trash2 size={13} />
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {validacao.termos.map((t, idx) => (
+          <div key={idx} className="flex flex-wrap items-center gap-1.5">
+            {idx > 0 && <span className="text-zinc-600 text-xs w-3 text-center shrink-0">+</span>}
+            <input
+              type="text"
+              inputMode="numeric"
+              value={t.quantidade ?? ''}
+              onChange={e => updateTermo(idx, { ...t, quantidade: parseInt(e.target.value.replace(/\D/g, ''), 10) || 0 })}
+              placeholder="Qtd"
+              className="w-14 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-2 text-xs text-zinc-100 text-center outline-none"
+            />
+            <span className="text-zinc-600 text-xs shrink-0">×</span>
+            <select value={t.colunaKey} onChange={e => updateTermo(idx, { ...t, colunaKey: e.target.value })} className={selectClass}>
+              {opcoes.map(o => <option key={o.key} value={o.key} className="bg-zinc-900">{o.label}</option>)}
+            </select>
+            {validacao.termos.length > 1 && (
+              <button type="button" onClick={() => removeTermo(idx)} title="Remover termo" className="p-1 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors shrink-0">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+        <button type="button" onClick={addTermo} className="flex items-center gap-1 w-fit text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+          <Plus size={11} strokeWidth={3} /> Adicionar termo
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-zinc-800/50">
+        <span className="text-zinc-600 text-xs">deve ser igual a</span>
+        <select value={validacao.referenciaKey || ''} onChange={e => onCommit({ ...validacao, referenciaKey: e.target.value })} className={selectClass}>
+          {opcoes.map(o => <option key={o.key} value={o.key} className="bg-zinc-900">{o.label}</option>)}
+        </select>
+      </div>
+
+      {resultado && (
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-zinc-500">Soma: <span className="font-semibold text-zinc-200">{formatCurrency(resultado.soma)}</span> · Referência: <span className="font-semibold text-zinc-200">{formatCurrency(resultado.referencia)}</span></span>
+          <DiferencaBadge diferenca={resultado.diferenca} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ValidacaoValorUnidadeCard({ validacao, opcoes, regras, item, onCommit, onDelete }: {
+  validacao: SiengeValidacao;
+  opcoes: { key: string; label: string }[];
+  regras: SiengeCalculoRegra[];
+  item?: SiengeTabelaVendaUnidade;
+  onCommit: (v: SiengeValidacao) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [titulo, setTitulo] = useState(validacao.titulo);
+  useEffect(() => setTitulo(validacao.titulo), [validacao.titulo]);
+
+  const selectClass = 'bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2 text-xs text-zinc-100 outline-none cursor-pointer min-w-0';
+  const resultado = item ? calcValidacaoValorUnidade(item, validacao, regras) : null;
+
+  const updateTermo = (idx: number, termo: SiengeValidacaoTermo) => onCommit({ ...validacao, termos: validacao.termos.map((t, i) => i === idx ? termo : t) });
+  const addTermo = () => onCommit({ ...validacao, termos: [...validacao.termos, novoTermoValor(opcoes[0]?.key || 'valor_tabela')] });
+  const removeTermo = (idx: number) => onCommit({ ...validacao, termos: validacao.termos.filter((_, i) => i !== idx) });
+
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={titulo}
+          onChange={e => setTitulo(e.target.value)}
+          onBlur={() => { if (titulo.trim() !== validacao.titulo) onCommit({ ...validacao, titulo: titulo.trim() }); }}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          placeholder="Nome da validação"
+          className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-zinc-200 placeholder-zinc-600 outline-none"
+        />
+        <button type="button" onClick={() => onDelete(validacao.id)} title="Remover validação" className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors shrink-0">
+          <Trash2 size={13} />
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {validacao.termos.map((t, idx) => (
+          <div key={idx} className="flex flex-wrap items-center gap-1.5">
+            <select value={t.sinal || '+'} onChange={e => updateTermo(idx, { ...t, sinal: e.target.value as '+' | '-' })} className={`${selectClass} w-14 text-center`}>
+              <option value="+" className="bg-zinc-900">+</option>
+              <option value="-" className="bg-zinc-900">−</option>
+            </select>
+            <select value={t.colunaKey} onChange={e => updateTermo(idx, { ...t, colunaKey: e.target.value })} className={selectClass}>
+              {opcoes.map(o => <option key={o.key} value={o.key} className="bg-zinc-900">{o.label}</option>)}
+            </select>
+            {validacao.termos.length > 1 && (
+              <button type="button" onClick={() => removeTermo(idx)} title="Remover termo" className="p-1 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors shrink-0">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+        <button type="button" onClick={addTermo} className="flex items-center gap-1 w-fit text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+          <Plus size={11} strokeWidth={3} /> Adicionar termo
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 pt-1.5 border-t border-zinc-800/50 text-xs text-zinc-600">
+        deve ser igual a <span className="text-zinc-400 font-medium">Valor da Unidade</span>
+      </div>
+
+      {resultado && (
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-zinc-500">Soma: <span className="font-semibold text-zinc-200">{formatCurrency(resultado.soma)}</span> · Valor da Unidade: <span className="font-semibold text-zinc-200">{formatCurrency(resultado.valorUnidade)}</span></span>
+          <DiferencaBadge diferenca={resultado.diferenca} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Painel de validação: escolhe uma unidade e monta duas famílias de fórmulas
+// persistidas por empreendimento — Validar Parcelas (soma quantidade×coluna vs.
+// uma coluna de referência) e Validar Valor da Unidade (soma ±coluna vs. o Valor
+// da Unidade) — ambas esperam diferença = 0,00.
+function ValidarPanel({ projectId, unidades, colunas, regras, validacoes, onSaveValidacao, onDeleteValidacao, onClose }: {
+  projectId: string;
   unidades: SiengeTabelaVendaUnidade[];
   colunas: SiengeTabelaVendaColuna[];
   regras: SiengeCalculoRegra[];
+  validacoes: SiengeValidacao[];
+  onSaveValidacao: (v: SiengeValidacao) => void;
+  onDeleteValidacao: (id: string) => void;
   onClose: () => void;
 }) {
   const sorted = useMemo(() => [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true })), [unidades]);
@@ -279,14 +628,56 @@ function ValidarPanel({ unidades, colunas, regras, onClose }: {
   useEffect(() => { if (!sorted.find(u => u.id === unidadeId)) setUnidadeId(sorted[0]?.id || ''); }, [sorted, unidadeId]);
 
   const item = sorted.find(u => u.id === unidadeId);
-  const resultado = useMemo(() => item ? validarUnidade(item, colunas, regras) : null, [item, colunas, regras]);
+
+  const opcoesColunas = useMemo(
+    () => [
+      { key: 'valor_tabela', label: 'Valor da Unidade' },
+      ...colunas.filter(c => c.tipo !== 'texto').map(c => ({ key: c.key, label: c.label })),
+      ...regras.map(r => ({ key: `${REGRA_KEY_PREFIX}${r.id}`, label: r.titulo })),
+    ],
+    [colunas, regras]
+  );
+
+  const validacoesParcelas = validacoes.filter(v => v.tipo === 'parcelas');
+  const validacoesValorUnidade = validacoes.filter(v => v.tipo === 'valor_unidade');
+  const nextSortOrder = validacoes.length > 0 ? Math.max(...validacoes.map(v => v.sortOrder)) + 1 : 1;
+
+  const addValidacaoParcelas = () => {
+    const colunaKey = opcoesColunas[0]?.key || 'valor_tabela';
+    onSaveValidacao({
+      id: crypto.randomUUID(),
+      projectId,
+      tipo: 'parcelas',
+      titulo: '',
+      termos: [novoTermoParcela(colunaKey)],
+      referenciaKey: colunaKey,
+      sortOrder: nextSortOrder,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const addValidacaoValorUnidade = () => {
+    const colunaKey = opcoesColunas[0]?.key || 'valor_tabela';
+    onSaveValidacao({
+      id: crypto.randomUUID(),
+      projectId,
+      tipo: 'valor_unidade',
+      titulo: '',
+      termos: [novoTermoValor(colunaKey)],
+      referenciaKey: null,
+      sortOrder: nextSortOrder,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-zinc-100">Validar Tabela</h3>
-          <p className="text-[11px] text-zinc-500">Confere se as parcelas fecham com a coluna base, e se a soma das colunas monetárias fecha com o Valor da Unidade.</p>
+          <p className="text-[11px] text-zinc-500">Monte fórmulas de validação por empreendimento — o resultado esperado é sempre 0,00.</p>
         </div>
         <button type="button" onClick={onClose} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
           <X size={13} />
@@ -303,51 +694,58 @@ function ValidarPanel({ unidades, colunas, regras, onClose }: {
         ))}
       </select>
 
-      {!item || !resultado ? (
+      {!item ? (
         <p className="text-xs text-zinc-600">Nenhuma unidade cadastrada para validar.</p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {resultado.grupos.length === 0 && (
-            <p className="text-xs text-zinc-600">Nenhuma regra de cálculo cadastrada para este empreendimento.</p>
-          )}
-          {resultado.grupos.map(g => (
-            <div key={g.colunaBaseKey} className="flex flex-col gap-2 p-3 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-zinc-400">
-                {g.regras.map((d, i) => (
-                  <React.Fragment key={d.regra.id}>
-                    {i > 0 && <span className="text-zinc-600">+</span>}
-                    <span className="text-zinc-200 font-medium">{d.regra.quantidade}x {formatCurrency(d.valorParcela)}</span>
-                    <span className="text-zinc-600">({d.regra.titulo})</span>
-                  </React.Fragment>
-                ))}
-                <span className="text-zinc-600">=</span>
-                <span className="font-semibold text-zinc-100">{formatCurrency(g.somaParcelas)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-500">{g.label}: <span className="font-semibold text-zinc-200">{formatCurrency(g.valorBase)}</span></span>
-                <DiferencaBadge diferenca={g.diferenca} />
-              </div>
+        <>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-zinc-300">Validar Parcelas</h4>
+              <button type="button" onClick={addValidacaoParcelas} className="flex items-center gap-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+                <Plus size={12} strokeWidth={3} /> Nova validação
+              </button>
             </div>
-          ))}
-
-          <div className="flex flex-col gap-2 p-3 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-zinc-400">
-              {resultado.colunasMoeda.map((c, i) => (
-                <React.Fragment key={c.coluna.id}>
-                  {i > 0 && <span className="text-zinc-600">+</span>}
-                  <span className="text-zinc-200 font-medium">{formatCurrency(c.valor)}</span>
-                  <span className="text-zinc-600">({c.coluna.label})</span>
-                </React.Fragment>
-              ))}
-              <span className="text-zinc-600">=</span>
-              <span className="font-semibold text-zinc-100">{formatCurrency(resultado.somaMoeda)}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-zinc-500">Valor da Unidade: <span className="font-semibold text-zinc-200">{formatCurrency(resultado.valorUnidade)}</span></span>
-              <DiferencaBadge diferenca={resultado.diferencaTotal} />
-            </div>
+            {validacoesParcelas.length === 0 ? (
+              <p className="text-xs text-zinc-600">Ex.: (48 × Mensal) + (7 × Semestral) deve ser igual a Custo de Construção.</p>
+            ) : (
+              validacoesParcelas.map(v => (
+                <ValidacaoParcelasCard
+                  key={v.id}
+                  validacao={v}
+                  opcoes={opcoesColunas}
+                  regras={regras}
+                  item={item}
+                  onCommit={onSaveValidacao}
+                  onDelete={onDeleteValidacao}
+                />
+              ))
+            )}
           </div>
-        </div>
+
+          <div className="flex flex-col gap-2 pt-2 border-t border-zinc-800/50">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-zinc-300">Validar Valor da Unidade</h4>
+              <button type="button" onClick={addValidacaoValorUnidade} className="flex items-center gap-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+                <Plus size={12} strokeWidth={3} /> Nova validação
+              </button>
+            </div>
+            {validacoesValorUnidade.length === 0 ? (
+              <p className="text-xs text-zinc-600">Ex.: Custo de Construção + Adesão Total deve ser igual ao Valor da Unidade.</p>
+            ) : (
+              validacoesValorUnidade.map(v => (
+                <ValidacaoValorUnidadeCard
+                  key={v.id}
+                  validacao={v}
+                  opcoes={opcoesColunas}
+                  regras={regras}
+                  item={item}
+                  onCommit={onSaveValidacao}
+                  onDelete={onDeleteValidacao}
+                />
+              ))
+            )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -357,18 +755,134 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function toDateInput(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+type PeriodoPreset = 'tudo' | 'mes' | '30d' | 'ano' | 'personalizado';
+
+const PERIODO_PRESETS: { key: PeriodoPreset; label: string }[] = [
+  { key: 'tudo', label: 'Tudo' },
+  { key: 'mes', label: 'Este mês' },
+  { key: '30d', label: 'Últimos 30 dias' },
+  { key: 'ano', label: 'Este ano' },
+];
+
+// Intervalo [de, ate] em YYYY-MM-DD para cada atalho; 'tudo' e 'personalizado'
+// não impõem limites próprios (o personalizado usa o que o usuário digitou).
+function rangeFromPreset(preset: PeriodoPreset): { de: string; ate: string } {
+  const hoje = new Date();
+  if (preset === 'mes') return { de: toDateInput(new Date(hoje.getFullYear(), hoje.getMonth(), 1)), ate: toDateInput(hoje) };
+  if (preset === '30d') {
+    const inicio = new Date(hoje);
+    inicio.setDate(inicio.getDate() - 29);
+    return { de: toDateInput(inicio), ate: toDateInput(hoje) };
+  }
+  if (preset === 'ano') return { de: toDateInput(new Date(hoje.getFullYear(), 0, 1)), ate: toDateInput(hoje) };
+  return { de: '', ate: '' };
+}
+
 // Tabela de Histórico de Vendas: só unidades vendidas, com os valores
 // congelados no instante da venda (não os valores atuais da tabela viva) e a
-// data em que cada uma virou vendida.
+// data em que cada uma virou vendida. O filtro de período recorta pela data da
+// venda, para responder "quantas vendas houve no período".
 function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colunas: SiengeTabelaVendaColuna[] }) {
   const sortedColunas = [...colunas].sort((a, b) => a.sortOrder - b.sortOrder);
+  const [preset, setPreset] = useState<PeriodoPreset>('tudo');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+
+  const aplicarPreset = (p: PeriodoPreset) => {
+    setPreset(p);
+    const r = rangeFromPreset(p);
+    setDe(r.de);
+    setAte(r.ate);
+  };
+
+  const filtradas = useMemo(() => {
+    const deTs = de ? new Date(`${de}T00:00:00`).getTime() : null;
+    const ateTs = ate ? new Date(`${ate}T23:59:59.999`).getTime() : null;
+    return vendas
+      .filter(v => {
+        const ts = new Date(v.dataVenda).getTime();
+        if (deTs !== null && ts < deTs) return false;
+        if (ateTs !== null && ts > ateTs) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.dataVenda).getTime() - new Date(a.dataVenda).getTime());
+  }, [vendas, de, ate]);
+
+  const ativas = filtradas.filter(v => !v.dataDistrato).length;
+  const distratadas = filtradas.length - ativas;
+  const vgvPeriodo = filtradas.reduce((s, v) => s + v.valorCongelado, 0);
+
+  const filtroBar = (
+    <div className="flex flex-col gap-2 mb-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {PERIODO_PRESETS.map(p => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => aplicarPreset(p.key)}
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-colors ${
+              preset === p.key ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-400 bg-zinc-900/60 border-zinc-800 hover:text-zinc-200 hover:border-zinc-700'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+        <div className="flex items-center gap-1.5 ml-1">
+          <input
+            type="date"
+            value={de}
+            onChange={e => { setDe(e.target.value); setPreset('personalizado'); }}
+            className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+          />
+          <span className="text-[11px] text-zinc-600">até</span>
+          <input
+            type="date"
+            value={ate}
+            onChange={e => { setAte(e.target.value); setPreset('personalizado'); }}
+            className="bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+          />
+          {(de || ate) && (
+            <button
+              type="button"
+              onClick={() => aplicarPreset('tudo')}
+              title="Limpar período"
+              className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+        <span><span className="font-semibold text-zinc-100">{filtradas.length}</span> {filtradas.length === 1 ? 'venda' : 'vendas'} no período</span>
+        <span><span className="font-semibold text-emerald-400">{ativas}</span> ativas</span>
+        <span><span className="font-semibold text-zinc-300">{distratadas}</span> distratadas</span>
+        <span>VGV congelado: <span className="font-semibold text-zinc-100">{formatCurrency(vgvPeriodo)}</span></span>
+      </div>
+    </div>
+  );
 
   if (vendas.length === 0) {
     return <p className="text-xs text-zinc-600 text-center py-6">Nenhuma unidade vendida ainda neste empreendimento.</p>;
   }
 
+  if (filtradas.length === 0) {
+    return (
+      <div>
+        {filtroBar}
+        <p className="text-xs text-zinc-600 text-center py-6">Nenhuma venda registrada no período selecionado.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-x-auto custom-scrollbar">
+    <div>
+      {filtroBar}
+      <div className="overflow-x-auto custom-scrollbar">
       <table className="w-full border-separate border-spacing-y-1">
         <thead>
           <tr>
@@ -383,7 +897,7 @@ function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colu
           </tr>
         </thead>
         <tbody>
-          {vendas.map(v => (
+          {filtradas.map(v => (
             <tr key={v.id} className="[&>td]:bg-zinc-900/40 [&>td]:border-y [&>td]:border-zinc-800/50 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               <td className="px-3 py-2 text-xs font-medium text-zinc-100">{v.unidade}</td>
               <td className="px-3 py-2 text-xs text-zinc-300">{v.comprador || '—'}</td>
@@ -395,7 +909,11 @@ function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colu
                 const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0').replace(',', '.')) || 0;
                 return (
                   <td key={c.key} className="px-3 py-2 text-xs text-zinc-300 whitespace-nowrap">
-                    {n > 0 ? (c.tipo === 'moeda' ? formatCurrency(n) : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })) : '—'}
+                    {n > 0 ? (
+                      c.tipo === 'moeda'
+                        ? formatCurrency(n)
+                        : `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}${c.tipo === 'area' ? ' m²' : ''}`
+                    ) : '—'}
                   </td>
                 );
               })}
@@ -410,6 +928,7 @@ function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colu
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -435,7 +954,8 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
 
 export default function SiengeVendasModal({
   projects, unidades, revisoes, vendas, colunas, regras,
-  onSaveUnidade, onDeleteUnidade, onApplyReajuste, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra, onClose,
+  onSaveUnidade, onDeleteUnidade, onApplyReajuste, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
+  validacoes, onSaveValidacao, onDeleteValidacao, onClose,
 }: SiengeVendasModalProps) {
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
@@ -469,6 +989,17 @@ export default function SiengeVendasModal({
   const projectRegras = useMemo(
     () => regras.filter(r => r.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
     [regras, selectedProjectId]
+  );
+
+  const projectMerged = useMemo(
+    () => mergeColunasRegras(projectColunas, projectRegras),
+    [projectColunas, projectRegras]
+  );
+  const nextEntrySortOrder = projectMerged.length > 0 ? Math.max(...projectMerged.map(m => m.item.sortOrder)) + 1 : 1;
+
+  const projectValidacoes = useMemo(
+    () => validacoes.filter(v => v.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [validacoes, selectedProjectId]
   );
 
   const filteredUnidades = useMemo(() => {
@@ -539,12 +1070,24 @@ export default function SiengeVendasModal({
     URL.revokeObjectURL(url);
   };
 
-  const handleImportFile = (file: File) => {
+  const handleImportFile = async (file: File) => {
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    const regraTitulos = projectRegras.map(r => r.titulo);
+
+    if (isExcel) {
+      const { unidades: parsed, novasColunas } = await parseSiengeVendasXlsx(
+        file, selectedProjectId, projectUnidades, projectColunas, regraTitulos
+      );
+      novasColunas.forEach(onSaveColuna);
+      parsed.forEach(onSaveUnidade);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result || '');
       const { unidades: parsed, novasColunas } = parseSiengeVendasCsv(
-        text, selectedProjectId, projectUnidades, projectColunas, projectRegras.map(r => r.titulo)
+        text, selectedProjectId, projectUnidades, projectColunas, regraTitulos
       );
       novasColunas.forEach(onSaveColuna);
       parsed.forEach(onSaveUnidade);
@@ -565,13 +1108,15 @@ export default function SiengeVendasModal({
             <p className="text-[11px] text-zinc-600">Valor de tabela, colunas e situação das unidades por empreendimento</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-colors"
-        >
-          <ArrowLeft size={13} /> Voltar
-        </button>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-zinc-100 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-colors"
+          >
+            <ArrowLeft size={13} /> Voltar
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
@@ -662,7 +1207,7 @@ export default function SiengeVendasModal({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.xlsx,.xls"
                   className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ''; }}
                 />
@@ -671,7 +1216,7 @@ export default function SiengeVendasModal({
                   onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800"
                 >
-                  <Upload size={13} /> Importar CSV
+                  <Upload size={13} /> Importar CSV/Excel
                 </button>
                 <button
                   type="button"
@@ -754,19 +1299,40 @@ export default function SiengeVendasModal({
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-100">Colunas da Tabela</h3>
-                    <p className="text-[11px] text-zinc-500">Adicione, remova ou renomeie as colunas deste empreendimento. Unidade, Valor da Unidade e Situação são fixas.</p>
+                    <p className="text-[11px] text-zinc-500">Adicione, remova, renomeie ou reordene as colunas deste empreendimento — inclui as colunas calculadas (regras). Unidade, Valor da Unidade e Situação são fixas. A fórmula de uma coluna calculada se edita em "Regras de Cálculo".</p>
                   </div>
                   <button type="button" onClick={() => setShowColunas(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
                     <X size={13} />
                   </button>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {projectColunas.map(c => (
-                    <ColunaRow key={c.id} coluna={c} onCommit={onSaveColuna} onDelete={onDeleteColuna} />
+                  {projectMerged.map((m, idx) => m.kind === 'coluna' ? (
+                    <ColunaRow
+                      key={`c-${m.item.id}`}
+                      coluna={m.item}
+                      onCommit={onSaveColuna}
+                      onDelete={onDeleteColuna}
+                      onMoveUp={() => moveEntry(projectMerged, idx, -1, onSaveColuna, onSaveRegra)}
+                      onMoveDown={() => moveEntry(projectMerged, idx, 1, onSaveColuna, onSaveRegra)}
+                      isFirst={idx === 0}
+                      isLast={idx === projectMerged.length - 1}
+                    />
+                  ) : (
+                    <RegraColunaRow
+                      key={`r-${m.item.id}`}
+                      regra={m.item}
+                      colunas={projectColunas}
+                      onCommit={onSaveRegra}
+                      onDelete={onDeleteRegra}
+                      onMoveUp={() => moveEntry(projectMerged, idx, -1, onSaveColuna, onSaveRegra)}
+                      onMoveDown={() => moveEntry(projectMerged, idx, 1, onSaveColuna, onSaveRegra)}
+                      isFirst={idx === 0}
+                      isLast={idx === projectMerged.length - 1}
+                    />
                   ))}
                   <NovaColunaForm
                     projectId={selectedProjectId}
-                    nextSortOrder={projectColunas.length > 0 ? Math.max(...projectColunas.map(c => c.sortOrder)) + 1 : 1}
+                    nextSortOrder={nextEntrySortOrder}
                     onAdd={onSaveColuna}
                   />
                 </div>
@@ -869,7 +1435,7 @@ export default function SiengeVendasModal({
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-100">Regras de Cálculo</h3>
-                    <p className="text-[11px] text-zinc-500">Cada regra vira uma coluna calculada: percentual da coluna de referência, dividido pela quantidade de parcelas.</p>
+                    <p className="text-[11px] text-zinc-500">Cada regra vira uma coluna calculada: percentual da coluna de referência, dividido ou multiplicado por um valor.</p>
                   </div>
                   <button type="button" onClick={() => setShowCalculo(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
                     <X size={13} />
@@ -889,9 +1455,11 @@ export default function SiengeVendasModal({
                       projectId: selectedProjectId,
                       titulo: 'Nova Regra',
                       quantidade: 1,
+                      quantidadeColunaKey: null,
+                      operacao: 'dividir',
                       percentual: 0,
                       colunaBaseKey: 'valor_tabela',
-                      sortOrder: projectRegras.length > 0 ? Math.max(...projectRegras.map(r => r.sortOrder)) + 1 : 1,
+                      sortOrder: nextEntrySortOrder,
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString(),
                     })}
@@ -939,9 +1507,13 @@ export default function SiengeVendasModal({
 
             {showValidar && (
               <ValidarPanel
+                projectId={selectedProjectId}
                 unidades={projectUnidades}
                 colunas={projectColunas}
                 regras={projectRegras}
+                validacoes={projectValidacoes}
+                onSaveValidacao={onSaveValidacao}
+                onDeleteValidacao={onDeleteValidacao}
                 onClose={() => setShowValidar(false)}
               />
             )}

@@ -272,6 +272,29 @@ export interface SiengeAlcadaConfig {
   alcada3UserId?: string;
 }
 
+/**
+ * Integração WhatsApp (WAHA). A API key não vive aqui — fica como secret da
+ * Edge Function `send-whatsapp`, fora do alcance do frontend.
+ */
+export interface WhatsAppConfig {
+  enabled: boolean;
+  baseUrl?: string;
+  session: string;
+}
+
+export interface WhatsAppOutboxItem {
+  id: string;
+  notificationId?: string;
+  userId?: string;
+  phone: string;
+  message: string;
+  status: 'pending' | 'sent' | 'failed';
+  attempts: number;
+  lastError?: string;
+  createdAt: string;
+  sentAt?: string;
+}
+
 export type SiengeLoteStatus = 'aberto' | 'encerrado';
 
 export interface SiengeLote {
@@ -417,11 +440,16 @@ export interface SiengeTabelaVendaUnidade {
   descricao: string | null;
   compradorAtual: string | null;
   frozenSince: string | null;
+  // Carimbo da confirmação explícita de venda. Só quando este campo muda no
+  // mesmo UPDATE que leva a situação para "vendida" é que o snapshot em
+  // sienge_vendas é gerado — importação de CSV e correção de planilha não
+  // criam venda. Também é a data usada como dataVenda do snapshot.
+  vendaConfirmadaEm: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type SiengeColunaTipo = 'numero' | 'moeda' | 'texto';
+export type SiengeColunaTipo = 'numero' | 'moeda' | 'texto' | 'area';
 
 export interface SiengeTabelaVendaColuna {
   id: string;
@@ -455,17 +483,48 @@ export interface SiengeOrcamentoConfig {
   controleInicio: string; // YYYY-MM-DD — data a partir da qual o gasto real passa a ser contado
 }
 
+export type SiengeCalculoOperacao = 'dividir' | 'multiplicar';
+
 // Regra de cálculo: vira uma coluna calculada na Tabela de Vendas — título +
-// (percentual da colunaBaseKey) dividido pela quantidade de parcelas. A coluna
-// base pode ser 'valor_tabela' ou qualquer key de SiengeTabelaVendaColuna do
-// mesmo empreendimento (ex.: Rivage usa 'custo_construcao').
+// (percentual da colunaBaseKey) dividido ou multiplicado pela quantidade. A
+// coluna base pode ser 'valor_tabela' ou qualquer key de SiengeTabelaVendaColuna
+// do mesmo empreendimento (ex.: Rivage usa 'custo_construcao'). Regras sem
+// 'operacao' (dados antigos) são tratadas como divisão, comportamento anterior.
 export interface SiengeCalculoRegra {
   id: string;
   projectId: string;
   titulo: string;
-  quantidade: number; // número de parcelas
-  percentual: number; // % da coluna base dividido entre as parcelas
+  quantidade: number; // número de parcelas (divisão) ou multiplicador (multiplicação) — usado quando quantidadeColunaKey é null
+  quantidadeColunaKey?: string | null; // se preenchido, a quantidade é lida dessa coluna (ou 'valor_tabela') em vez do número digitado
+  operacao?: SiengeCalculoOperacao;
+  percentual: number; // % da coluna base
   colunaBaseKey: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SiengeValidacaoTipo = 'parcelas' | 'valor_unidade';
+
+// Termo de uma fórmula de validação (ver SiengeValidacao): pra tipo 'parcelas',
+// (quantidade × coluna); pra tipo 'valor_unidade', (sinal coluna).
+export interface SiengeValidacaoTermo {
+  colunaKey: string;
+  quantidade?: number;
+  sinal?: '+' | '-';
+}
+
+// Validação livre e persistida por empreendimento, montada em "Validar Tabela":
+// 'parcelas' soma (quantidade × coluna) de cada termo e compara com referenciaKey;
+// 'valor_unidade' soma/subtrai os termos (pelo sinal) e compara com Valor da
+// Unidade (fixo, não configurável). Ambas esperam diferença = 0,00.
+export interface SiengeValidacao {
+  id: string;
+  projectId: string;
+  tipo: SiengeValidacaoTipo;
+  titulo: string;
+  termos: SiengeValidacaoTermo[];
+  referenciaKey: string | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

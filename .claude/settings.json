@@ -8,7 +8,17 @@
       "Bash(npx eslint *)",
       "Bash(grep -v \"^\\\\.\\\\/\\\\.git\")",
       "Bash(echo \"--- tsc exit: $? ---\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "PowerShell(npm run lint 2>&1)",
+      "PowerShell(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 \"echo '--- SWAP ---'; swapon --show; free -h | grep -i swap; echo '--- DOCKER ---'; which docker || echo 'nao instalado'; echo '--- UFW ---'; ufw status; echo '--- PORTA SSH ---'; grep -E '^#?Port' /etc/ssh/sshd_config\")",
+      "PowerShell(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 \"fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile && grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab; echo '--- RESULTADO ---'; free -h | grep -i swap\")",
+      "PowerShell(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 \"grep '/swapfile' /etc/fstab\")",
+      "PowerShell(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 \"curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && sh /tmp/get-docker.sh > /tmp/docker-install.log 2>&1; echo '--- VERSAO ---'; docker --version; docker compose version\")",
+      "Bash(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 'docker ps; echo \"--- TESTE API ---\"; . /root/.waha-secrets; curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" -H \"X-Api-Key: $CHAVE_WAHA\" http://127.0.0.1:3000/api/sessions')",
+      "Bash(ssh -p 22022 -o BatchMode=yes -o ConnectTimeout=15 root@143.95.223.48 'echo \"SSH OK apos firewall\"')",
+      "Bash(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 'getent hosts 143-95-223-48.sslip.io || echo \"NAO RESOLVEU\"')",
+      "Bash(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq > /dev/null 2>&1; apt-get install -y -qq nginx certbot python3-certbot-nginx > /tmp/apt.log 2>&1; echo \"--- VERSOES ---\"; nginx -v 2>&1; certbot --version 2>&1')",
+      "Bash(ssh -p *)"
     ]
   },
   "mcpServers": {

@@ -34,8 +34,6 @@ import { ViewType, Project, Task } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 
-import SettingsView from '../components/SettingsView';
-import ProfileModal from './ProfileModal';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -72,7 +70,6 @@ export default function Sidebar({
   const { notifications, addNotification, markAsViewed, postpone, markAsImportant } = useNotifications();
   
   const [showAllNotifications, setShowAllNotifications] = useState(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   
   // Filter my active notifications
   const myNotifications = notifications.filter(n => {
@@ -426,7 +423,7 @@ export default function Sidebar({
                   <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-blue-500/10 border border-blue-500/20 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
                 )}
                 <Receipt size={14} className={`relative z-10 ${activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'}`} />
-                {!collapsed && <span className="relative z-10">Títulos Sienge</span>}
+                {!collapsed && <span className="relative z-10">Finanças</span>}
               </button>
 
               {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
@@ -587,10 +584,16 @@ export default function Sidebar({
           </div>
           {!collapsed && (
             <div className="flex items-center gap-1 shrink-0">
-              <button 
-                onClick={() => setIsProfileModalOpen(true)}
-                className="p-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900/80 rounded-md transition-colors"
-                title="Editar Perfil"
+              {/* Leva às Configurações Gerais — a edição de perfil virou a
+                  primeira aba de lá, junto com usuários e integrações. */}
+              <button
+                onClick={() => setActiveView('settings')}
+                className={`p-1.5 rounded-md transition-colors ${
+                  activeView === 'settings'
+                    ? 'text-zinc-200 bg-zinc-900/80'
+                    : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900/80'
+                }`}
+                title="Configurações"
               >
                 <SettingsIcon size={14} />
               </button>
@@ -605,10 +608,6 @@ export default function Sidebar({
           )}
         </div>
       </div>
-      
-      {isProfileModalOpen && (
-        <ProfileModal onClose={() => setIsProfileModalOpen(false)} />
-      )}
     </aside>
   );
 }

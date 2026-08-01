@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Trash2, Plus, X } from 'lucide-react';
 import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeVendaSituacao } from '../types';
-import { SITUACAO_LABELS, calcRegraValor, formatBrNumber, parseBrNumber } from '../lib/siengeVendasTabela';
+import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, formatBrNumber, mergeColunasRegras, parseBrNumber } from '../lib/siengeVendasTabela';
 
 interface SiengeVendasTableProps {
   projectId: string;
@@ -98,6 +98,24 @@ function DynamicCell({ coluna, text, onChange, onCommit }: { coluna: SiengeTabel
       </td>
     );
   }
+  if (coluna.tipo === 'area') {
+    return (
+      <td className="px-3 py-2">
+        <div className="inline-flex items-baseline gap-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={text}
+            onChange={e => onChange(formatDecimalInput(e.target.value))}
+            onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
+            placeholder="0"
+            className="w-16 shrink-0 bg-transparent text-xs text-zinc-300 placeholder-zinc-600 outline-none"
+          />
+          <span className="text-zinc-600 text-[9px] font-medium shrink-0">m²</span>
+        </div>
+      </td>
+    );
+  }
   return (
     <td className="px-3 py-2">
       <input
@@ -113,11 +131,28 @@ function DynamicCell({ coluna, text, onChange, onCommit }: { coluna: SiengeTabel
   );
 }
 
+function todayInputValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+// Converte a data escolhida (YYYY-MM-DD) num instante local; se for hoje mantém
+// a hora atual, para preservar a ordem de registro de várias vendas no mesmo dia.
+function vendaTimestamp(dateValue: string): string {
+  const today = todayInputValue();
+  if (!dateValue || dateValue === today) return new Date().toISOString();
+  const [y, m, d] = dateValue.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0).toISOString();
+}
+
 // Balão de confirmação ao marcar uma unidade como vendida: pede o nome do
-// comprador antes de aplicar — o congelamento (sienge_vendas) só acontece
-// depois que o usuário confirma aqui.
-function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string; onConfirm: (comprador: string) => void; onCancel: () => void }) {
+// comprador e a data da venda antes de aplicar — o congelamento (sienge_vendas)
+// só acontece depois que o usuário confirma aqui. Importação de CSV e edição
+// em massa mudam a situação sem gerar venda.
+function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string; onConfirm: (comprador: string, dataVenda: string) => void; onCancel: () => void }) {
   const [comprador, setComprador] = useState('');
+  const [dataVenda, setDataVenda] = useState(todayInputValue());
+  const confirm = () => onConfirm(comprador.trim(), vendaTimestamp(dataVenda));
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onCancel} />
@@ -130,11 +165,25 @@ function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string
           placeholder="Nome do comprador"
           autoFocus
           onKeyDown={e => {
-            if (e.key === 'Enter') onConfirm(comprador.trim());
+            if (e.key === 'Enter') confirm();
             if (e.key === 'Escape') onCancel();
           }}
           className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500/50 transition-colors"
         />
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Data da venda</span>
+          <input
+            type="date"
+            value={dataVenda}
+            max={todayInputValue()}
+            onChange={e => setDataVenda(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') confirm();
+              if (e.key === 'Escape') onCancel();
+            }}
+            className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]"
+          />
+        </label>
         <div className="flex justify-end gap-1.5">
           <button
             type="button"
@@ -145,7 +194,7 @@ function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(comprador.trim())}
+            onClick={confirm}
             className="px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-md transition-colors"
           >
             Confirmar Venda
@@ -156,10 +205,10 @@ function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string
   );
 }
 
-function VendaRow({ item, colunas, regras, onSave, onDelete }: {
+function VendaRow({ item, colunas, merged, onSave, onDelete }: {
   item: SiengeTabelaVendaUnidade;
   colunas: SiengeTabelaVendaColuna[];
-  regras: SiengeCalculoRegra[];
+  merged: ColunaOuRegra[];
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
 }) {
@@ -204,7 +253,7 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
     setSituacao(value);
   };
 
-  const confirmVenda = (comprador: string) => {
+  const confirmVenda = (comprador: string, dataVenda: string) => {
     setShowVendaConfirm(false);
     setSituacao('vendida');
     if (!unidadeText.trim()) return;
@@ -213,6 +262,8 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
       unidade: unidadeText.trim(),
       situacao: 'vendida',
       compradorAtual: comprador || null,
+      // Carimbo que autoriza o trigger a gerar o snapshot em sienge_vendas.
+      vendaConfirmadaEm: dataVenda,
       descricao: descricaoText.trim() || null,
       updatedAt: new Date().toISOString(),
     });
@@ -243,23 +294,19 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
           />
         </div>
       </td>
-      {colunas.map(c => (
+      {merged.map(m => m.kind === 'coluna' ? (
         <DynamicCell
-          key={c.key}
-          coluna={c}
-          text={camposText[c.key] || ''}
-          onChange={v => setCamposText(prev => ({ ...prev, [c.key]: v }))}
+          key={`c-${m.item.id}`}
+          coluna={m.item}
+          text={camposText[m.item.key] || ''}
+          onChange={v => setCamposText(prev => ({ ...prev, [m.item.key]: v }))}
           onCommit={commit}
         />
+      ) : (
+        <td key={`r-${m.item.id}`} className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
+          {(() => { const valor = calcRegraValor(draftItem, m.item); return valor > 0 ? formatCurrency(valor) : '—'; })()}
+        </td>
       ))}
-      {regras.map(r => {
-        const valor = calcRegraValor(draftItem, r);
-        return (
-          <td key={r.id} className="px-3 py-2 text-xs text-zinc-500 whitespace-nowrap">
-            {valor > 0 ? formatCurrency(valor) : '—'}
-          </td>
-        );
-      })}
       <td className="px-3 py-2 relative">
         <select
           value={situacao}
@@ -314,10 +361,10 @@ function VendaRow({ item, colunas, regras, onSave, onDelete }: {
   );
 }
 
-function NewUnidadeRow({ projectId, colunas, regras, existingUnidades, onSave, onCancel }: {
+function NewUnidadeRow({ projectId, colunas, merged, existingUnidades, onSave, onCancel }: {
   projectId: string;
   colunas: SiengeTabelaVendaColuna[];
-  regras: SiengeCalculoRegra[];
+  merged: ColunaOuRegra[];
   existingUnidades: string[];
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onCancel: () => void;
@@ -346,6 +393,7 @@ function NewUnidadeRow({ projectId, colunas, regras, existingUnidades, onSave, o
       descricao: descricaoText.trim() || null,
       compradorAtual: null,
       frozenSince: null,
+      vendaConfirmadaEm: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -378,17 +426,16 @@ function NewUnidadeRow({ projectId, colunas, regras, existingUnidades, onSave, o
           />
         </div>
       </td>
-      {colunas.map(c => (
+      {merged.map(m => m.kind === 'coluna' ? (
         <DynamicCell
-          key={c.key}
-          coluna={c}
-          text={camposText[c.key] || ''}
-          onChange={v => setCamposText(prev => ({ ...prev, [c.key]: v }))}
+          key={`c-${m.item.id}`}
+          coluna={m.item}
+          text={camposText[m.item.key] || ''}
+          onChange={v => setCamposText(prev => ({ ...prev, [m.item.key]: v }))}
           onCommit={add}
         />
-      ))}
-      {regras.map(r => (
-        <td key={r.id} className="px-3 py-2 text-xs text-zinc-600">—</td>
+      ) : (
+        <td key={`r-${m.item.id}`} className="px-3 py-2 text-xs text-zinc-600">—</td>
       ))}
       <td className="px-3 py-2">
         <select
@@ -442,11 +489,10 @@ function sum(values: number[]): number {
 
 export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames, colunas, regras, onSave, onDelete }: SiengeVendasTableProps) {
   const [addingNew, setAddingNew] = useState(false);
-  const sortedColunas = [...colunas].sort((a, b) => a.sortOrder - b.sortOrder);
-  const sortedRegras = [...regras].sort((a, b) => a.sortOrder - b.sortOrder);
+  const merged = mergeColunasRegras(colunas, regras);
   const sorted = [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
 
-  const totalCols = 3 + sortedColunas.length + sortedRegras.length + 2; // unidade + valor + actions... usado no colSpan da linha "adicionar"
+  const totalCols = 3 + merged.length + 2; // unidade + valor + actions... usado no colSpan da linha "adicionar"
   const sumValor = sum(sorted.map(u => u.valorTabela));
 
   return (
@@ -456,11 +502,10 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
           <tr>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Unidade</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor da Unidade</th>
-            {sortedColunas.map(c => (
-              <th key={c.key} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{c.label}</th>
-            ))}
-            {sortedRegras.map(r => (
-              <th key={r.id} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{r.titulo}</th>
+            {merged.map(m => (
+              <th key={`${m.kind}-${m.item.id}`} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                {m.kind === 'coluna' ? m.item.label : m.item.titulo}
+              </th>
             ))}
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Situação</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Descrição</th>
@@ -469,10 +514,10 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
         </thead>
         <tbody>
           {sorted.map(item => (
-            <VendaRow key={item.id} item={item} colunas={sortedColunas} regras={sortedRegras} onSave={onSave} onDelete={onDelete} />
+            <VendaRow key={item.id} item={item} colunas={colunas} merged={merged} onSave={onSave} onDelete={onDelete} />
           ))}
           {addingNew ? (
-            <NewUnidadeRow projectId={projectId} colunas={sortedColunas} regras={sortedRegras} existingUnidades={allUnidadeNames} onSave={onSave} onCancel={() => setAddingNew(false)} />
+            <NewUnidadeRow projectId={projectId} colunas={colunas} merged={merged} existingUnidades={allUnidadeNames} onSave={onSave} onCancel={() => setAddingNew(false)} />
           ) : (
             <tr>
               <td colSpan={totalCols} className="px-3 py-1.5">
@@ -492,7 +537,7 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
             <tr className="[&>td]:bg-zinc-900/70 [&>td]:border-y [&>td]:border-zinc-800 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               <td className="px-3 py-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Soma</td>
               <td className="px-3 py-2 text-xs font-semibold text-zinc-100 whitespace-nowrap">{sumValor > 0 ? formatCurrency(sumValor) : '—'}</td>
-              <td className="px-3 py-2 text-xs text-zinc-600" colSpan={sortedColunas.length + sortedRegras.length + 3}>—</td>
+              <td className="px-3 py-2 text-xs text-zinc-600" colSpan={merged.length + 3}>—</td>
             </tr>
           </tfoot>
         )}

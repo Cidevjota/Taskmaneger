@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx';
 import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeVendaSituacao } from '../types';
 
 export const SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
@@ -30,6 +31,26 @@ export function slugifyKey(label: string): string {
   return normalize(label).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'coluna';
 }
 
+// ─── Ordem unificada: colunas reais e colunas calculadas (regras) dividem a
+// mesma sequência visual na tabela, mesmo tendo sortOrder em namespaces
+// separados — o merge só usa esse número pra intercalar, empate favorece a
+// coluna real. ──
+
+export type ColunaOuRegra =
+  | { kind: 'coluna'; item: SiengeTabelaVendaColuna }
+  | { kind: 'regra'; item: SiengeCalculoRegra };
+
+export function mergeColunasRegras(colunas: SiengeTabelaVendaColuna[], regras: SiengeCalculoRegra[]): ColunaOuRegra[] {
+  const merged: ColunaOuRegra[] = [
+    ...colunas.map(item => ({ kind: 'coluna' as const, item })),
+    ...regras.map(item => ({ kind: 'regra' as const, item })),
+  ];
+  return merged.sort((a, b) => {
+    if (a.item.sortOrder !== b.item.sortOrder) return a.item.sortOrder - b.item.sortOrder;
+    return a.kind === b.kind ? 0 : a.kind === 'coluna' ? -1 : 1;
+  });
+}
+
 // ─── Regras de cálculo (colunas calculadas: Mensal, Semestral, etc.) ──
 
 export function getColunaBaseValue(item: SiengeTabelaVendaUnidade, colunaBaseKey: string): number {
@@ -39,77 +60,34 @@ export function getColunaBaseValue(item: SiengeTabelaVendaUnidade, colunaBaseKey
   return parseBrNumber(String(v ?? '0'));
 }
 
+// Quantidade pode ser um número fixo digitado ou o valor de outra coluna da
+// mesma unidade (ex.: dividir pela metragem em vez de um número fixo de parcelas).
+export function getRegraQuantidade(item: SiengeTabelaVendaUnidade, regra: SiengeCalculoRegra): number {
+  if (regra.quantidadeColunaKey) return getColunaBaseValue(item, regra.quantidadeColunaKey);
+  return regra.quantidade;
+}
+
+// Arredonda pra 6 casas — dividir por uma quantidade "feia" (ex.: 48) gera
+// dízima; guardar full float acumula ruído que aparece como diferença > 0 no
+// painel Validar. A exibição continua com 2 casas (formatCurrency), só o
+// valor usado internamente (cálculo, validação, soma, export) ganha essa
+// precisão extra. Usado em toda a Tabela de Vendas, não só nas regras.
+export function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
+}
+
 export function calcRegraValor(item: SiengeTabelaVendaUnidade, regra: SiengeCalculoRegra): number {
-  if (!regra.quantidade) return 0;
+  const quantidade = getRegraQuantidade(item, regra);
+  if (!quantidade) return 0;
   const base = getColunaBaseValue(item, regra.colunaBaseKey);
-  return (base * (regra.percentual / 100)) / regra.quantidade;
+  const percentualValor = base * (regra.percentual / 100);
+  const valor = regra.operacao === 'multiplicar' ? percentualValor * quantidade : percentualValor / quantidade;
+  return round6(valor);
 }
 
 export function colunaBaseLabel(colunaBaseKey: string, colunas: SiengeTabelaVendaColuna[]): string {
   if (colunaBaseKey === 'valor_tabela') return 'Valor da Unidade';
   return colunas.find(c => c.key === colunaBaseKey)?.label || colunaBaseKey;
-}
-
-// ─── Validação: parcelas (quantidade x regra) devem somar a coluna base;
-// soma de todas as colunas monetárias deve fechar com o Valor da Unidade. ──
-
-export interface ValidacaoBaseGrupo {
-  colunaBaseKey: string;
-  label: string;
-  valorBase: number;
-  somaParcelas: number;
-  diferenca: number;
-  regras: { regra: SiengeCalculoRegra; valorParcela: number; subtotal: number }[];
-}
-
-export interface ValidacaoUnidadeResultado {
-  grupos: ValidacaoBaseGrupo[];
-  colunasMoeda: { coluna: SiengeTabelaVendaColuna; valor: number }[];
-  somaMoeda: number;
-  valorUnidade: number;
-  diferencaTotal: number;
-}
-
-export function validarUnidade(
-  item: SiengeTabelaVendaUnidade,
-  colunas: SiengeTabelaVendaColuna[],
-  regras: SiengeCalculoRegra[]
-): ValidacaoUnidadeResultado {
-  const baseKeys = Array.from(new Set(regras.map(r => r.colunaBaseKey)));
-  const grupos: ValidacaoBaseGrupo[] = baseKeys.map(colunaBaseKey => {
-    const regrasDoGrupo = regras.filter(r => r.colunaBaseKey === colunaBaseKey);
-    const valorBase = getColunaBaseValue(item, colunaBaseKey);
-    const detalhado = regrasDoGrupo.map(regra => {
-      const valorParcela = calcRegraValor(item, regra);
-      return { regra, valorParcela, subtotal: valorParcela * regra.quantidade };
-    });
-    const somaParcelas = sum(detalhado.map(d => d.subtotal));
-    return {
-      colunaBaseKey,
-      label: colunaBaseLabel(colunaBaseKey, colunas),
-      valorBase,
-      somaParcelas,
-      diferenca: valorBase - somaParcelas,
-      regras: detalhado,
-    };
-  });
-
-  const colunasMoeda = colunas
-    .filter(c => c.tipo === 'moeda')
-    .map(coluna => ({ coluna, valor: getColunaBaseValue(item, coluna.key) }));
-  const somaMoeda = sum(colunasMoeda.map(c => c.valor));
-
-  return {
-    grupos,
-    colunasMoeda,
-    somaMoeda,
-    valorUnidade: item.valorTabela,
-    diferencaTotal: item.valorTabela - somaMoeda,
-  };
-}
-
-function sum(values: number[]): number {
-  return values.reduce((s, v) => s + v, 0);
 }
 
 // ─── Números em formato BR (1.234,56) ──────────────────────────
@@ -170,13 +148,11 @@ export function exportSiengeVendasCsv(
   regras: SiengeCalculoRegra[]
 ): string {
   const delimiter = ';';
-  const sortedColunas = [...colunas].sort((a, b) => a.sortOrder - b.sortOrder);
-  const sortedRegras = [...regras].sort((a, b) => a.sortOrder - b.sortOrder);
+  const merged = mergeColunasRegras(colunas, regras);
   const header = [
     'Unidade',
     'Valor da Unidade',
-    ...sortedColunas.map(c => c.label),
-    ...sortedRegras.map(r => r.titulo),
+    ...merged.map(m => m.kind === 'coluna' ? m.item.label : m.item.titulo),
     'Situação',
     'Comprador',
     'Descrição',
@@ -187,12 +163,12 @@ export function exportSiengeVendasCsv(
     const row = [
       item.unidade,
       formatBrNumber(item.valorTabela),
-      ...sortedColunas.map(c => {
-        const v = item.camposExtra[c.key];
-        if (c.tipo === 'texto') return v != null ? String(v) : '';
+      ...merged.map(m => {
+        if (m.kind === 'regra') return formatBrNumber(calcRegraValor(item, m.item));
+        const v = item.camposExtra[m.item.key];
+        if (m.item.tipo === 'texto') return v != null ? String(v) : '';
         return formatBrNumber(typeof v === 'number' ? v : parseBrNumber(String(v ?? '0')));
       }),
-      ...sortedRegras.map(r => formatBrNumber(calcRegraValor(item, r))),
       SITUACAO_LABELS[item.situacao],
       item.compradorAtual || '',
       item.descricao || '',
@@ -221,6 +197,16 @@ export function parseSiengeVendasCsv(
   const firstLine = cleaned.split('\n')[0] || '';
   const delimiter = firstLine.includes(';') ? ';' : ',';
   const rows = parseCsvLines(cleaned, delimiter);
+  return parseSiengeVendasRows(rows, projectId, existingUnidades, existingColunas, existingRegraTitulos);
+}
+
+export function parseSiengeVendasRows(
+  rows: string[][],
+  projectId: string,
+  existingUnidades: SiengeTabelaVendaUnidade[],
+  existingColunas: SiengeTabelaVendaColuna[],
+  existingRegraTitulos: string[]
+): ImportSiengeVendasResult {
   if (rows.length < 2) return { unidades: [], novasColunas: [] };
 
   const header = rows[0].map(h => h.trim());
@@ -240,7 +226,7 @@ export function parseSiengeVendasCsv(
     const n = normalize(h);
     if (n === 'unidade') return { type: 'unidade' };
     if (n === 'valor da unidade' || n === 'valor' || n === 'valor de tabela' || n === 'valor tabela') return { type: 'valor' };
-    if (n === 'situacao') return { type: 'situacao' };
+    if (n === 'situacao' || n === 'disponibilidade' || n === 'status') return { type: 'situacao' };
     if (n === 'descricao') return { type: 'descricao' };
     if (n === 'comprador') return { type: 'comprador' };
     if (regraTitulosNorm.has(n)) return { type: 'regra' };
@@ -294,10 +280,42 @@ export function parseSiengeVendasCsv(
       descricao,
       compradorAtual: comprador ?? existing?.compradorAtual ?? null,
       frozenSince: existing?.frozenSince ?? null,
+      // Importação nunca confirma venda: repassa o carimbo já existente para
+      // não gerar snapshot em sienge_vendas ao reimportar a tabela.
+      vendaConfirmadaEm: existing?.vendaConfirmadaEm ?? null,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     });
   }
 
   return { unidades, novasColunas };
+}
+
+// ─── Excel (.xlsx / .xls) — mesma estrutura de colunas do CSV, primeira aba ──
+
+function xlsxCellToString(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'number') return String(v);
+  if (v instanceof Date) return v.toLocaleDateString('pt-BR');
+  return String(v).trim();
+}
+
+export async function parseSiengeVendasXlsx(
+  file: File,
+  projectId: string,
+  existingUnidades: SiengeTabelaVendaUnidade[],
+  existingColunas: SiengeTabelaVendaColuna[],
+  existingRegraTitulos: string[]
+): Promise<ImportSiengeVendasResult> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) return { unidades: [], novasColunas: [] };
+
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: '' });
+  const rows = raw
+    .map(r => r.map(xlsxCellToString))
+    .filter(r => r.some(f => f.trim().length > 0));
+
+  return parseSiengeVendasRows(rows, projectId, existingUnidades, existingColunas, existingRegraTitulos);
 }

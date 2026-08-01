@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra } from '../types';
+import React, { useMemo, useState } from 'react';
+import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao } from '../types';
 import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
 import SiengeFaturas from './SiengeFaturas';
 import SiengeMetasDashboard from './SiengeMetasDashboard';
+import SiengeVendasModal from './SiengeVendasModal';
 import { useAuth } from '../context/AuthContext';
 
 const METAS_DASHBOARD_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
@@ -50,6 +51,9 @@ interface SiengeViewProps {
   calculoRegras: SiengeCalculoRegra[];
   onSaveCalculoRegra: (regra: SiengeCalculoRegra) => void;
   onDeleteCalculoRegra: (id: string) => void;
+  validacoes: SiengeValidacao[];
+  onSaveValidacao: (validacao: SiengeValidacao) => void;
+  onDeleteValidacao: (id: string) => void;
   taxonomy: SiengeTaxonomy;
   onAddCentroCusto: (nome: string) => Promise<void> | void;
   onAddCategoria: (centroCusto: string, categoria: string) => Promise<void> | void;
@@ -67,13 +71,28 @@ export default function SiengeView({
   tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
   tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
+  validacoes, onSaveValidacao, onDeleteValidacao,
   taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria,
 }: SiengeViewProps) {
-  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas'>('titulos');
+  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas' | 'vendas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
   const openFaturas = faturas.filter(f => f.status === 'aberto');
   const { currentUser } = useAuth();
   const showMetasTab = currentUser?.email === METAS_DASHBOARD_EMAIL;
+
+  // Mesma regra de visibilidade/ordem usada no Dashboard Analítico — empreendimentos
+  // ocultados via "Ajustar Metas" também somem da Tabela de Vendas.
+  const visibleProjects = useMemo(() => {
+    const displayOf = (id: string) => projectDisplays.find(d => d.projectId === id);
+    return projects
+      .filter(p => !displayOf(p.id)?.hidden)
+      .sort((a, b) => {
+        const oa = displayOf(a.id)?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const ob = displayOf(b.id)?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        if (oa !== ob) return oa - ob;
+        return projects.indexOf(a) - projects.indexOf(b);
+      });
+  }, [projects, projectDisplays]);
 
   return (
     <div className="flex flex-col h-full bg-[#08080a]">
@@ -131,6 +150,18 @@ export default function SiengeView({
             Dashboard Analítico
           </button>
         )}
+        {showMetasTab && (
+          <button
+            onClick={() => setActiveTab('vendas')}
+            className={`pb-3 text-sm font-semibold transition-colors border-b-2 ${
+              activeTab === 'vendas'
+                ? 'text-zinc-100 border-blue-500'
+                : 'text-zinc-500 border-transparent hover:text-zinc-300'
+            }`}
+          >
+            Tabela de Vendas
+          </button>
+        )}
       </div>
 
       {/* Content Area */}
@@ -171,6 +202,25 @@ export default function SiengeView({
             onSaveFatura={onSaveFatura}
             onDeleteFatura={onDeleteFatura}
           />
+        ) : activeTab === 'vendas' ? (
+          <SiengeVendasModal
+            projects={visibleProjects}
+            unidades={tabelaVendas}
+            revisoes={tabelaVendaRevisoes}
+            vendas={vendas}
+            colunas={tabelaVendaColunas}
+            regras={calculoRegras}
+            onSaveUnidade={onSaveTabelaVenda}
+            onDeleteUnidade={onDeleteTabelaVenda}
+            onApplyReajuste={onApplyTabelaVendaReajuste}
+            onSaveColuna={onSaveTabelaVendaColuna}
+            onDeleteColuna={onDeleteTabelaVendaColuna}
+            onSaveRegra={onSaveCalculoRegra}
+            onDeleteRegra={onDeleteCalculoRegra}
+            validacoes={validacoes}
+            onSaveValidacao={onSaveValidacao}
+            onDeleteValidacao={onDeleteValidacao}
+          />
         ) : (
           <SiengeMetasDashboard
             titles={titles}
@@ -186,19 +236,9 @@ export default function SiengeView({
             onSaveProjectTotal={onSaveProjectTotal}
             onSaveProjectDisplay={onSaveProjectDisplay}
             tabelaVendas={tabelaVendas}
-            tabelaVendaRevisoes={tabelaVendaRevisoes}
-            onSaveTabelaVenda={onSaveTabelaVenda}
-            onDeleteTabelaVenda={onDeleteTabelaVenda}
-            onApplyTabelaVendaReajuste={onApplyTabelaVendaReajuste}
             vendas={vendas}
             orcamentoConfig={orcamentoConfig}
             onSaveOrcamentoConfig={onSaveOrcamentoConfig}
-            tabelaVendaColunas={tabelaVendaColunas}
-            onSaveTabelaVendaColuna={onSaveTabelaVendaColuna}
-            onDeleteTabelaVendaColuna={onDeleteTabelaVendaColuna}
-            calculoRegras={calculoRegras}
-            onSaveCalculoRegra={onSaveCalculoRegra}
-            onDeleteCalculoRegra={onDeleteCalculoRegra}
             taxonomy={taxonomy}
           />
         )}

@@ -112,9 +112,36 @@ async function processRoutines() {
   }
 }
 
+/**
+ * Rede de segurança da integração WhatsApp: reprocessa o que o trigger não
+ * conseguiu entregar (VPS fora do ar, sessão do WAHA caída, pg_net falhando).
+ * A própria `send-whatsapp` decide o que ainda vale a pena tentar.
+ */
+async function retryWhatsAppOutbox() {
+  // @ts-ignore
+  const dispatchToken = Deno.env.get('WHATSAPP_DISPATCH_TOKEN') || '';
+  if (!dispatchToken) return;
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-whatsapp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dispatchToken}`,
+      },
+      body: JSON.stringify({}),
+    });
+    const body = await res.json().catch(() => ({}));
+    console.log('[process-routines] retry whatsapp outbox:', res.status, JSON.stringify(body));
+  } catch (e) {
+    console.error('[process-routines] falha ao reprocessar a fila do WhatsApp:', e);
+  }
+}
+
 // @ts-ignore
-Deno.cron("Process Routines", "*/15 * * * *", () => {
-  processRoutines();
+Deno.cron("Process Routines", "*/15 * * * *", async () => {
+  await processRoutines();
+  await retryWhatsAppOutbox();
 });
 
 // Also expose as standard Edge Function for manual triggers or pg_cron
@@ -131,6 +158,7 @@ serve(async (req: Request) => {
     }
     
     await processRoutines();
+    await retryWhatsAppOutbox();
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 

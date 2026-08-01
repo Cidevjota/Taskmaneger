@@ -1,13 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Settings2, Eye, Building2, ChevronDown, Check, Table2, PieChart, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra } from '../types';
+import { BarChart3, Settings2, Eye, Building2, ChevronDown, Check, PieChart, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Project, SiengeTitle, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeVenda, SiengeOrcamentoConfig } from '../types';
 import { useAuth } from '../context/AuthContext';
 import MonthFilterDropdown, { MonthFilterValue } from './MonthFilterDropdown';
 import { MONTHS_FULL } from './MonthSelectDropdown';
 import SiengeMetasModal from './SiengeMetasModal';
 import SiengeAlocacaoModal from './SiengeAlocacaoModal';
-import SiengeVendasModal from './SiengeVendasModal';
 import SiengeSpendChart from './SiengeSpendChart';
 import { ALL_CATEGORIAS, analyzeProjectsForPeriod } from '../lib/siengeMetasAnalysis';
 import { CENTRO_CUSTO_LABELS, SiengeTaxonomy } from '../lib/siengeCategorias';
@@ -29,19 +28,9 @@ interface SiengeMetasDashboardProps {
   onSaveProjectTotal: (total: SiengeProjectTotal) => void;
   onSaveProjectDisplay: (display: SiengeProjectDisplay) => void;
   tabelaVendas: SiengeTabelaVendaUnidade[];
-  tabelaVendaRevisoes: SiengeTabelaVendaRevisao[];
-  onSaveTabelaVenda: (item: SiengeTabelaVendaUnidade) => void;
-  onDeleteTabelaVenda: (id: string) => void;
-  onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null }) => Promise<void> | void;
   vendas: SiengeVenda[];
   orcamentoConfig?: SiengeOrcamentoConfig;
   onSaveOrcamentoConfig: (config: SiengeOrcamentoConfig) => void;
-  tabelaVendaColunas: SiengeTabelaVendaColuna[];
-  onSaveTabelaVendaColuna: (coluna: SiengeTabelaVendaColuna) => void;
-  onDeleteTabelaVendaColuna: (id: string) => void;
-  calculoRegras: SiengeCalculoRegra[];
-  onSaveCalculoRegra: (regra: SiengeCalculoRegra) => void;
-  onDeleteCalculoRegra: (id: string) => void;
   taxonomy: SiengeTaxonomy;
 }
 
@@ -107,9 +96,8 @@ function ProjectFilterDropdown({ projects, value, onChange }: { projects: Projec
 export default function SiengeMetasDashboard({
   titles, projects, projectMetas, categoriaOrcamento, projectTotais, projectDisplays,
   onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
-  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
-  vendas, orcamentoConfig, onSaveOrcamentoConfig,
-  tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra, taxonomy,
+  tabelaVendas,
+  vendas, orcamentoConfig, onSaveOrcamentoConfig, taxonomy,
 }: SiengeMetasDashboardProps) {
   const { currentUser } = useAuth();
   const now = new Date();
@@ -117,7 +105,6 @@ export default function SiengeMetasDashboard({
   const [filterProjectId, setFilterProjectId] = useState<string>('all');
   const [showMetasPanel, setShowMetasPanel] = useState(false);
   const [showAlocacaoPanel, setShowAlocacaoPanel] = useState(false);
-  const [showVendasPanel, setShowVendasPanel] = useState(false);
 
   const allowed = currentUser?.email === RESTRICTED_EMAIL;
 
@@ -260,32 +247,6 @@ export default function SiengeMetasDashboard({
               onClose={() => setShowAlocacaoPanel(false)}
             />
           </motion.div>
-        ) : showVendasPanel ? (
-          <motion.div
-            key="vendas-panel"
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 24 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="flex-1 flex flex-col overflow-hidden min-h-0"
-          >
-            <SiengeVendasModal
-              projects={visibleProjects}
-              unidades={tabelaVendas}
-              revisoes={tabelaVendaRevisoes}
-              vendas={vendas}
-              colunas={tabelaVendaColunas}
-              regras={calculoRegras}
-              onSaveUnidade={onSaveTabelaVenda}
-              onDeleteUnidade={onDeleteTabelaVenda}
-              onApplyReajuste={onApplyTabelaVendaReajuste}
-              onSaveColuna={onSaveTabelaVendaColuna}
-              onDeleteColuna={onDeleteTabelaVendaColuna}
-              onSaveRegra={onSaveCalculoRegra}
-              onDeleteRegra={onDeleteCalculoRegra}
-              onClose={() => setShowVendasPanel(false)}
-            />
-          </motion.div>
         ) : (
           <motion.div
             key="dashboard"
@@ -317,13 +278,6 @@ export default function SiengeMetasDashboard({
                 >
                   {hasMetas ? <Settings2 size={13} /> : <Eye size={13} />}
                   {hasMetas ? 'Ajustar Metas' : 'Ver Metas'}
-                </button>
-                <button
-                  onClick={() => setShowVendasPanel(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-100 bg-[#1A1A1C] hover:bg-[#1F1F22] rounded-md transition-colors"
-                >
-                  <Table2 size={13} />
-                  Tabela de Vendas
                 </button>
                 <button
                   onClick={() => setShowAlocacaoPanel(true)}

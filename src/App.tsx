@@ -21,8 +21,8 @@ import { useAuth } from './context/AuthContext';
 import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
-import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
+import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeValidacao } from './types';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
 import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -186,6 +186,7 @@ export default function App() {
   const { data: siengeOrcamentoConfig } = useQuery({ queryKey: ['siengeOrcamentoConfig'], queryFn: fetchSiengeOrcamentoConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeTabelaVendaColunas = [] } = useQuery({ queryKey: ['siengeTabelaVendaColunas'], queryFn: fetchSiengeTabelaVendaColunas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeCalculoRegras = [] } = useQuery({ queryKey: ['siengeCalculoRegras'], queryFn: fetchSiengeCalculoRegras, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeValidacoes = [] } = useQuery({ queryKey: ['siengeValidacoes'], queryFn: fetchSiengeValidacoes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeCentrosCusto = [] } = useQuery({ queryKey: ['siengeCentrosCusto'], queryFn: fetchSiengeCentrosCusto, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeCategorias = [] } = useQuery({ queryKey: ['siengeCategorias'], queryFn: fetchSiengeCategorias, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeSubcategorias = [] } = useQuery({ queryKey: ['siengeSubcategorias'], queryFn: fetchSiengeSubcategorias, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
@@ -488,6 +489,7 @@ export default function App() {
         else if (table === 'sienge_vendas') invalidate('siengeVendas');
         else if (table === 'sienge_orcamento_config') invalidate('siengeOrcamentoConfig');
         else if (table === 'sienge_calculo_regras') invalidate('siengeCalculoRegras');
+        else if (table === 'sienge_validacoes') invalidate('siengeValidacoes');
         else if (table === 'sienge_centros_custo') invalidate('siengeCentrosCusto');
         else if (table === 'sienge_categorias') invalidate('siengeCategorias');
         else if (table === 'sienge_subcategorias') invalidate('siengeSubcategorias');
@@ -1382,7 +1384,6 @@ export default function App() {
             <SettingsView
               isDarkMode={isDarkMode}
               onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-              onResetMockData={handleResetDatabase}
             />
           )}
 
@@ -1551,6 +1552,20 @@ export default function App() {
               onDeleteCalculoRegra={async (id) => {
                 queryClient.setQueryData<SiengeCalculoRegra[]>(['siengeCalculoRegras'], prev => (prev || []).filter(r => r.id !== id));
                 deleteSiengeCalculoRegra(id).catch(console.error);
+              }}
+              validacoes={siengeValidacoes}
+              onSaveValidacao={async (validacao) => {
+                queryClient.setQueryData<SiengeValidacao[]>(['siengeValidacoes'], prev => {
+                  const exists = (prev || []).find(v => v.id === validacao.id);
+                  return exists
+                    ? (prev || []).map(v => v.id === validacao.id ? validacao : v)
+                    : [...(prev || []), validacao];
+                });
+                saveSiengeValidacao(validacao).catch(console.error);
+              }}
+              onDeleteValidacao={async (id) => {
+                queryClient.setQueryData<SiengeValidacao[]>(['siengeValidacoes'], prev => (prev || []).filter(v => v.id !== id));
+                deleteSiengeValidacao(id).catch(console.error);
               }}
               taxonomy={siengeTaxonomy}
               onAddCentroCusto={async (nome) => {

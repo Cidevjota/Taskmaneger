@@ -5,9 +5,13 @@ import { User } from '../lib/users';
 export interface UserProfile extends User {
   email: string;
   role: string;
+  /** E.164 sem símbolos (ex.: 5511999999999) — usado pela integração WhatsApp. */
+  phone?: string;
   preferences?: any;
   permissionLevel?: number;
 }
+
+const PROFILE_COLUMNS = 'id, name, email, role, phone, preferences, avatar_url';
 
 interface AuthContextType {
   currentUser: UserProfile | null;
@@ -15,6 +19,8 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>, newPassword?: string) => Promise<{ success: boolean; error?: string }>;
+  /** Recarrega `allUsers` — usado pela tela de administração após criar/remover contas. */
+  refreshUsers: () => Promise<void>;
   loading: boolean;
 }
 
@@ -26,6 +32,7 @@ function formatUser(u: any): UserProfile {
     name: u.name,
     email: u.email,
     role: u.role,
+    phone: u.phone || undefined,
     preferences: u.preferences || {},
     avatarUrl: u.avatar_url,
     permissionLevel: u.preferences?.permissionLevel
@@ -43,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loadProfile(userId: string): Promise<void> {
     const { data } = await supabase
       .from('users_profile')
-      .select('id, name, email, role, preferences, avatar_url')
+      .select(PROFILE_COLUMNS)
       .eq('id', userId)
       .single();
     if (data) setCurrentUser(formatUser(data));
@@ -52,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loadAllUsers(): Promise<void> {
     const { data } = await supabase
       .from('users_profile')
-      .select('id, name, email, role, preferences, avatar_url');
+      .select(PROFILE_COLUMNS);
     if (data) setAllUsers(data.map(formatUser));
   }
 
@@ -125,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (updates.name        !== undefined) payload.name       = updates.name;
     if (updates.email       !== undefined) payload.email      = updates.email;
     if (updates.role        !== undefined) payload.role       = updates.role;
+    if (updates.phone       !== undefined) payload.phone      = updates.phone || null;
     if (updates.preferences !== undefined) payload.preferences = updates.preferences;
     if (updates.avatarUrl   !== undefined) payload.avatar_url = updates.avatarUrl;
 
@@ -153,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, allUsers, login, logout, updateProfile, loading }}>
+    <AuthContext.Provider value={{ currentUser, allUsers, login, logout, updateProfile, refreshUsers: loadAllUsers, loading }}>
       {children}
     </AuthContext.Provider>
   );

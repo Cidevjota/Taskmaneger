@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -762,6 +762,7 @@ function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
     descricao: r.descricao,
     compradorAtual: r.comprador,
     frozenSince: r.frozen_since,
+    vendaConfirmadaEm: r.venda_confirmada_em ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -783,6 +784,7 @@ export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
     campos_extra: item.camposExtra || {},
     descricao: item.descricao,
     comprador: item.compradorAtual,
+    venda_confirmada_em: item.vendaConfirmadaEm,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'project_id,unidade' });
   if (error) throw error;
@@ -897,6 +899,8 @@ function mapSiengeCalculoRegra(r: any): SiengeCalculoRegra {
     projectId: r.project_id,
     titulo: r.titulo,
     quantidade: r.quantidade,
+    quantidadeColunaKey: r.quantidade_coluna_key ?? null,
+    operacao: r.operacao === 'multiplicar' ? 'multiplicar' : 'dividir',
     percentual: Number(r.percentual),
     colunaBaseKey: r.coluna_base_key,
     sortOrder: r.sort_order,
@@ -917,6 +921,8 @@ export async function saveSiengeCalculoRegra(regra: SiengeCalculoRegra) {
     project_id: regra.projectId,
     titulo: regra.titulo,
     quantidade: regra.quantidade,
+    quantidade_coluna_key: regra.quantidadeColunaKey ?? null,
+    operacao: regra.operacao === 'multiplicar' ? 'multiplicar' : 'dividir',
     percentual: regra.percentual,
     coluna_base_key: regra.colunaBaseKey,
     sort_order: regra.sortOrder,
@@ -927,6 +933,45 @@ export async function saveSiengeCalculoRegra(regra: SiengeCalculoRegra) {
 
 export async function deleteSiengeCalculoRegra(id: string) {
   const { error } = await supabase.from('sienge_calculo_regras').delete().eq('id', id);
+  if (error) throw error;
+}
+
+function mapSiengeValidacao(r: any): SiengeValidacao {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    tipo: r.tipo === 'valor_unidade' ? 'valor_unidade' : 'parcelas',
+    titulo: r.titulo || '',
+    termos: Array.isArray(r.termos) ? r.termos : [],
+    referenciaKey: r.referencia_key ?? null,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeValidacoes(): Promise<SiengeValidacao[]> {
+  const { data, error } = await supabase.from('sienge_validacoes').select('*');
+  if (error) throw error;
+  return (data || []).map(mapSiengeValidacao);
+}
+
+export async function saveSiengeValidacao(validacao: SiengeValidacao) {
+  const { error } = await supabase.from('sienge_validacoes').upsert({
+    id: validacao.id,
+    project_id: validacao.projectId,
+    tipo: validacao.tipo,
+    titulo: validacao.titulo,
+    termos: validacao.termos,
+    referencia_key: validacao.referenciaKey,
+    sort_order: validacao.sortOrder,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function deleteSiengeValidacao(id: string) {
+  const { error } = await supabase.from('sienge_validacoes').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -971,6 +1016,55 @@ export async function saveSiengeAlcadaConfig(config: SiengeAlcadaConfig) {
     updated_at: new Date().toISOString(),
   });
   if (error) throw error;
+}
+
+// ─── WhatsApp (WAHA) ───────────────────────────────────────────
+
+export async function fetchWhatsAppConfig(): Promise<WhatsAppConfig> {
+  const { data, error } = await supabase
+    .from('whatsapp_config')
+    .select('*')
+    .eq('id', 'default')
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    enabled: data?.enabled ?? false,
+    baseUrl: data?.base_url || undefined,
+    session: data?.session || 'default',
+  };
+}
+
+export async function saveWhatsAppConfig(config: WhatsAppConfig) {
+  const { error } = await supabase.from('whatsapp_config').upsert({
+    id: 'default',
+    enabled: config.enabled,
+    base_url: config.baseUrl || null,
+    session: config.session || 'default',
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+/** Últimos envios, para o painel de integrações diagnosticar falhas. */
+export async function fetchWhatsAppOutbox(limit = 20): Promise<WhatsAppOutboxItem[]> {
+  const { data, error } = await supabase
+    .from('whatsapp_outbox')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data || []).map((r: any): WhatsAppOutboxItem => ({
+    id: r.id,
+    notificationId: r.notification_id || undefined,
+    userId: r.user_id || undefined,
+    phone: r.phone,
+    message: r.message,
+    status: r.status,
+    attempts: r.attempts ?? 0,
+    lastError: r.last_error || undefined,
+    createdAt: r.created_at,
+    sentAt: r.sent_at || undefined,
+  }));
 }
 
 // ─── Sienge Lotes ──────────────────────────────────────────────
