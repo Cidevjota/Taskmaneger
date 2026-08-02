@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
-import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, SiengeCalculoRegra, SiengeTabelaVendaColuna } from '../types';
+import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna } from '../types';
 import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, saveLpCorretorConfig } from '../lib/api';
 import { REGRA_PREFIX, lpCorretorUrl, slugifyLpSlug } from '../lib/lpCorretor';
 import { mergeColunasRegras } from '../lib/siengeVendasTabela';
@@ -15,7 +15,15 @@ interface LpCorretorConfigPanelProps {
 }
 
 const INPUT_CLASS = 'w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500/50 transition-colors';
-const LABEL_CLASS = 'text-[10px] font-semibold text-zinc-500 uppercase tracking-wider';
+
+type UploadTipo = 'banner' | 'logo' | 'imagens' | 'plantas' | 'book';
+type DestinoColuna = 'oculta' | 'linha' | 'detalhe';
+
+const DESTINOS: { valor: DestinoColuna; label: string; ativo: string }[] = [
+  { valor: 'oculta', label: 'Oculta', ativo: 'bg-zinc-700/60 text-zinc-200 border-zinc-600' },
+  { valor: 'linha', label: 'Linha', ativo: 'bg-blue-500/15 text-blue-300 border-blue-500/40' },
+  { valor: 'detalhe', label: 'Detalhe', ativo: 'bg-violet-500/15 text-violet-300 border-violet-500/40' },
+];
 
 function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
   const now = new Date().toISOString();
@@ -25,13 +33,17 @@ function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
     publicada: false,
     titulo: projectName,
     subtitulo: null,
+    descricao: null,
+    logoEmpreendimentoUrl: null,
     bannerUrl: null,
     imagens: [],
+    plantas: [],
     fichaTecnica: [],
     bookUrl: null,
     observacoes: null,
     cvcrmUrlTemplate: null,
     colunasVisiveis: [],
+    colunasLinha: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -62,10 +74,12 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
-  const [enviando, setEnviando] = useState<'banner' | 'imagens' | 'book' | null>(null);
+  const [enviando, setEnviando] = useState<UploadTipo | null>(null);
 
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const imagensInputRef = useRef<HTMLInputElement>(null);
+  const plantasInputRef = useRef<HTMLInputElement>(null);
   const bookInputRef = useRef<HTMLInputElement>(null);
 
   // Config isolada do resto do app (não vive nas queries de App.tsx): carrega
@@ -97,26 +111,46 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
 
   const patch = (p: Partial<LpCorretorConfig>) => setConfig(c => (c ? { ...c, ...p } : c));
 
-  const toggleColuna = (key: string) => {
+  // Três estados por coluna: oculta (não sai do banco), linha (aparece na linha
+  // compacta) e detalhe (só ao expandir a unidade). colunasLinha é sempre um
+  // subconjunto de colunasVisiveis, então ocultar uma coluna a tira das duas.
+  const setDestinoColuna = (key: string, destino: DestinoColuna) => {
     if (!config) return;
-    const visiveis = config.colunasVisiveis.includes(key)
-      ? config.colunasVisiveis.filter(k => k !== key)
-      : [...config.colunasVisiveis, key];
-    patch({ colunasVisiveis: visiveis });
+    const semKey = (lista: string[]) => lista.filter(k => k !== key);
+    if (destino === 'oculta') {
+      patch({ colunasVisiveis: semKey(config.colunasVisiveis), colunasLinha: semKey(config.colunasLinha) });
+      return;
+    }
+    patch({
+      colunasVisiveis: [...semKey(config.colunasVisiveis), key],
+      colunasLinha: destino === 'linha' ? [...semKey(config.colunasLinha), key] : semKey(config.colunasLinha),
+    });
   };
 
-  const handleUpload = async (tipo: 'banner' | 'imagens' | 'book', files: FileList | null) => {
+  const destinoDe = (key: string): DestinoColuna => {
+    if (!config?.colunasVisiveis.includes(key)) return 'oculta';
+    return config.colunasLinha.includes(key) ? 'linha' : 'detalhe';
+  };
+
+  const handleUpload = async (tipo: UploadTipo, files: FileList | null) => {
     if (!files || files.length === 0 || !config) return;
     setEnviando(tipo);
     setErro(null);
     try {
-      if (tipo === 'imagens') {
+      if (tipo === 'imagens' || tipo === 'plantas') {
         const urls = await Promise.all(Array.from(files).map(f => uploadLpFile(projectId, f)));
-        const novas: LpCorretorImagem[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '' }));
-        patch({ imagens: [...config.imagens, ...novas] });
+        if (tipo === 'imagens') {
+          const novas: LpCorretorImagem[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '' }));
+          patch({ imagens: [...config.imagens, ...novas] });
+        } else {
+          const novas: LpCorretorPlanta[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '', unidades: [], terminacoes: [] }));
+          patch({ plantas: [...config.plantas, ...novas] });
+        }
       } else {
         const url = await uploadLpFile(projectId, files[0]);
-        patch(tipo === 'banner' ? { bannerUrl: url } : { bookUrl: url });
+        if (tipo === 'banner') patch({ bannerUrl: url });
+        else if (tipo === 'logo') patch({ logoEmpreendimentoUrl: url });
+        else patch({ bookUrl: url });
       }
     } catch (e: any) {
       setErro(e.message || 'Erro ao enviar o arquivo.');
@@ -136,6 +170,7 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
       slug,
       titulo: config.titulo?.trim() || null,
       subtitulo: config.subtitulo?.trim() || null,
+      descricao: config.descricao?.trim() || null,
       observacoes: config.observacoes?.trim() || null,
       cvcrmUrlTemplate: config.cvcrmUrlTemplate?.trim() || null,
       bookUrl: config.bookUrl?.trim() || null,
@@ -269,10 +304,56 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
             >
               {enviando === 'banner' ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Enviar banner
             </button>
-            <input type="text" value={config.titulo || ''} onChange={e => patch({ titulo: e.target.value })} placeholder="Título exibido no banner" className={INPUT_CLASS} />
+            <input type="text" value={config.titulo || ''} onChange={e => patch({ titulo: e.target.value })} placeholder="Nome do empreendimento (usado no título da aba)" className={INPUT_CLASS} />
             <input type="text" value={config.subtitulo || ''} onChange={e => patch({ subtitulo: e.target.value })} placeholder="Subtítulo (ex.: bairro, entrega prevista)" className={INPUT_CLASS} />
           </div>
         </div>
+      </Secao>
+
+      <Secao
+        titulo="Logo do empreendimento"
+        descricao="PNG (de preferência com fundo transparente) exibido no topo da LP no lugar do nome em texto. Sem logo, o nome volta a aparecer escrito."
+      >
+        <div className="flex items-center gap-3">
+          {config.logoEmpreendimentoUrl ? (
+            <div className="relative shrink-0">
+              <img src={config.logoEmpreendimentoUrl} alt="" className="w-28 h-16 object-contain rounded-lg border border-zinc-800 bg-zinc-950 p-1" />
+              <button
+                type="button"
+                onClick={() => patch({ logoEmpreendimentoUrl: null })}
+                title="Remover logo"
+                className="absolute -top-1.5 -right-1.5 p-1 bg-zinc-900 border border-zinc-700 rounded-full text-zinc-400 hover:text-red-400 transition-colors"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ) : (
+            <div className="w-28 h-16 rounded-lg border border-dashed border-zinc-800 flex items-center justify-center text-zinc-700 shrink-0">
+              <ImageIcon size={16} />
+            </div>
+          )}
+          <div className="flex flex-col gap-2 flex-1 min-w-0">
+            <input ref={logoInputRef} type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={e => { handleUpload('logo', e.target.files); e.target.value = ''; }} />
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              disabled={enviando === 'logo'}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {enviando === 'logo' ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Enviar logo PNG
+            </button>
+          </div>
+        </div>
+      </Secao>
+
+      <Secao titulo="Descrição" descricao="Parágrafo exibido no topo, logo abaixo do logo do empreendimento.">
+        <textarea
+          value={config.descricao || ''}
+          onChange={e => patch({ descricao: e.target.value })}
+          rows={3}
+          placeholder="Ex.: 32 apartamentos de 2 e 3 quartos, a duas quadras da orla, com entrega prevista para 2028."
+          className={`${INPUT_CLASS} resize-y leading-relaxed`}
+        />
       </Secao>
 
       <Secao titulo="Imagens do Produto" descricao="Galeria do menu de informações.">
@@ -308,6 +389,67 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
           className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 self-start"
         >
           {enviando === 'imagens' ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} strokeWidth={3} />} Adicionar imagens
+        </button>
+      </Secao>
+
+      <Secao
+        titulo="Plantas"
+        descricao="Exibidas ao expandir a linha de uma unidade. A ligação é por terminação: '01' vale para 101, 201, 1101 e assim por diante. Uma planta com unidades específicas preenchidas vale só para elas e ignora as terminações — é assim que a cobertura fica com a planta própria mesmo tendo a mesma terminação das demais. Com os dois campos em branco, a planta vale para o empreendimento inteiro (ex.: pavimento)."
+      >
+        <input ref={plantasInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => { handleUpload('plantas', e.target.files); e.target.value = ''; }} />
+        {config.plantas.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {config.plantas.map(planta => {
+              const atualizar = (mudanca: Partial<LpCorretorPlanta>) => patch({
+                plantas: config.plantas.map((p: LpCorretorPlanta) => p.id === planta.id ? { ...p, ...mudanca } : p),
+              });
+              const listaDe = (texto: string) => texto.split(',').map(s => s.trim()).filter(Boolean);
+              const propria = planta.unidades.length > 0;
+              return (
+                <div key={planta.id} className="flex items-center gap-2">
+                  <img src={planta.url} alt="" className="w-12 h-12 object-contain rounded-lg border border-zinc-800 bg-zinc-950 shrink-0" />
+                  <input
+                    type="text"
+                    value={planta.legenda}
+                    onChange={e => atualizar({ legenda: e.target.value })}
+                    placeholder="Legenda (ex.: Planta baixa — Tipo A)"
+                    className={INPUT_CLASS}
+                  />
+                  <input
+                    type="text"
+                    value={(planta.terminacoes || []).join(', ')}
+                    onChange={e => atualizar({ terminacoes: listaDe(e.target.value) })}
+                    disabled={propria}
+                    title={propria ? 'Ignorado: esta planta já está restrita a unidades específicas' : undefined}
+                    placeholder="Terminações (ex.: 01, 02)"
+                    className={`${INPUT_CLASS} disabled:opacity-40`}
+                  />
+                  <input
+                    type="text"
+                    value={planta.unidades.join(', ')}
+                    onChange={e => atualizar({ unidades: listaDe(e.target.value) })}
+                    placeholder="Unidades específicas (ex.: cobertura)"
+                    className={INPUT_CLASS}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => patch({ plantas: config.plantas.filter(p => p.id !== planta.id) })}
+                    className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => plantasInputRef.current?.click()}
+          disabled={enviando === 'plantas'}
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 self-start"
+        >
+          {enviando === 'plantas' ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} strokeWidth={3} />} Adicionar plantas
         </button>
       </Secao>
 
@@ -372,30 +514,39 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
       </Secao>
 
       <Secao
-        titulo="Colunas visíveis na tabela"
-        descricao="Unidade, valor e situação sempre aparecem. As demais colunas — inclusive as calculadas — só saem do banco se marcadas aqui."
+        titulo="Colunas da tabela"
+        descricao="Unidade, valor e situação sempre aparecem na linha. Para cada coluna restante escolha: Oculta (não sai do banco), Linha (aparece na linha compacta) ou Detalhe (aparece só ao expandir a unidade, ao lado da planta)."
       >
         {merged.length === 0 ? (
           <p className="text-[11px] text-zinc-600">Este empreendimento ainda não tem colunas cadastradas.</p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-col gap-1.5">
             {merged.map(m => {
               const key = m.kind === 'coluna' ? m.item.key : `${REGRA_PREFIX}${m.item.id}`;
               const label = m.kind === 'coluna' ? m.item.label : m.item.titulo;
-              const ativa = config.colunasVisiveis.includes(key);
+              const destino = destinoDe(key);
               return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => toggleColuna(key)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${
-                    ativa ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' : 'text-zinc-500 bg-zinc-900/60 border-zinc-800 hover:text-zinc-300'
-                  }`}
-                >
-                  {ativa && <Check size={10} strokeWidth={3} />}
-                  {label}
-                  {m.kind === 'regra' && <span className="text-[9px] opacity-60 uppercase">calc.</span>}
-                </button>
+                <div key={key} className="flex items-center gap-2">
+                  <span className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-zinc-300 truncate">
+                    {label}
+                    {m.kind === 'regra' && <span className="text-[9px] text-zinc-600 uppercase shrink-0">calc.</span>}
+                  </span>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {DESTINOS.map(d => (
+                      <button
+                        key={d.valor}
+                        type="button"
+                        onClick={() => setDestinoColuna(key, d.valor)}
+                        aria-pressed={destino === d.valor}
+                        className={`px-2 py-1 text-[10px] font-bold rounded-md border transition-colors ${
+                          destino === d.valor ? d.ativo : 'text-zinc-600 bg-zinc-900/60 border-zinc-800 hover:text-zinc-400'
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               );
             })}
           </div>

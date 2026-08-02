@@ -27,6 +27,12 @@ const lpSlug = (() => {
 if (lpSlug) {
   document.documentElement.classList.add('dark');
   document.documentElement.style.colorScheme = 'dark';
+  // viewport-fit=cover deixa o banner sangrar até as bordas do iPhone e habilita
+  // env(safe-area-inset-*), que a LP usa para desviar do notch e do indicador de
+  // gestos. Aplicado só aqui: o app interno não é desenhado para áreas seguras.
+  document
+    .querySelector('meta[name="viewport"]')
+    ?.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
 }
 
 createRoot(document.getElementById('root')!).render(

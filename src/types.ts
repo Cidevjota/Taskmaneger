@@ -568,6 +568,23 @@ export interface LpCorretorFichaItem {
   valor: string;
 }
 
+// Planta exibida na linha expandida da tabela. A ligação com as unidades segue
+// três regras, nesta ordem (ver plantasDaUnidade em lib/lpCorretor.ts):
+//   1. `unidades` preenchido → a planta vale só para essas unidades e ignora
+//      terminações. É o caso da cobertura, que tem planta própria mesmo tendo
+//      a mesma terminação das demais.
+//   2. `terminacoes` preenchido → vale para toda unidade cujo número termine
+//      assim (ex.: '01' pega 101, 201, 1101), exceto as que já têm planta
+//      própria pela regra 1.
+//   3. Ambos vazios → planta geral do empreendimento (ex.: pavimento).
+export interface LpCorretorPlanta {
+  id: string;
+  url: string;
+  legenda: string;
+  unidades: string[];
+  terminacoes: string[];
+}
+
 // Chave de coluna visível na LP: a key de uma coluna real ou 'regra:<id>'
 // para uma coluna calculada — mesmo espaço de nomes usado nas validações.
 export type LpCorretorColunaKey = string;
@@ -578,14 +595,22 @@ export interface LpCorretorConfig {
   publicada: boolean;
   titulo: string | null;
   subtitulo: string | null;
+  descricao: string | null;
+  // Logo do produto, exibido no topo no lugar do nome em texto.
+  logoEmpreendimentoUrl: string | null;
   bannerUrl: string | null;
   imagens: LpCorretorImagem[];
+  plantas: LpCorretorPlanta[];
   fichaTecnica: LpCorretorFichaItem[];
   bookUrl: string | null;
   observacoes: string | null;
   // {unidade} é trocado pelo nome da unidade ao montar o botão "Reservar".
   cvcrmUrlTemplate: string | null;
+  // Fronteira de segurança: só estas colunas saem do banco.
   colunasVisiveis: LpCorretorColunaKey[];
+  // Subconjunto de colunasVisiveis exibido na linha compacta da tabela; o
+  // restante aparece apenas ao expandir a unidade.
+  colunasLinha: LpCorretorColunaKey[];
   createdAt: string;
   updatedAt: string;
 }
@@ -623,12 +648,16 @@ export interface LpCorretorPublicData {
     slug: string;
     titulo: string | null;
     subtitulo: string | null;
+    descricao: string | null;
+    logoEmpreendimentoUrl: string | null;
     bannerUrl: string | null;
     imagens: LpCorretorImagem[];
+    plantas: LpCorretorPlanta[];
     fichaTecnica: LpCorretorFichaItem[];
     bookUrl: string | null;
     observacoes: string | null;
     cvcrmUrlTemplate: string | null;
+    colunasLinha: LpCorretorColunaKey[];
     atualizadoEm: string;
   };
   projeto: { id: string; nome: string; coverImage: string | null };
