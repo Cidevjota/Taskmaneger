@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronDown, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight } from 'lucide-react';
+import { BookOpen, ChevronDown, Images, LayoutGrid, Loader2, MapPin, ListChecks, Rows3, X, ArrowUpRight } from 'lucide-react';
 import { LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
 import { fetchLpCorretorPublic } from '../lib/api';
 import { LP_SITUACAO_LABELS, buildReservaUrl, formatLpValor, formatMoeda, mergeLpColunas, sortUnidades } from '../lib/lpCorretor';
@@ -16,6 +16,8 @@ const SITUACAO_BADGE: Record<SiengeVendaSituacao, string> = {
 };
 
 type SecaoAberta = 'imagens' | 'ficha' | 'book' | null;
+
+const VISAO_STORAGE_KEY = 'lp-corretor:visao';
 
 function Skeleton() {
   return (
@@ -150,12 +152,100 @@ function UnidadeCard({ unidade, entradas, cvcrmTemplate }: {
   );
 }
 
+const SITUACAO_DOT: Record<SiengeVendaSituacao, string> = {
+  disponivel: 'bg-emerald-400',
+  vendida: 'bg-zinc-600',
+  permuta: 'bg-violet-400',
+  bloqueada: 'bg-amber-400',
+};
+
+/**
+ * Visão compacta: uma linha por unidade, rolagem horizontal quando há muitas
+ * colunas. A coluna da unidade fica fixa à esquerda para não se perder de vista
+ * durante a rolagem — é a única referência de qual linha se está lendo.
+ */
+function UnidadesTabela({ unidades, entradas, cvcrmTemplate }: {
+  unidades: LpCorretorPublicUnidade[];
+  entradas: ReturnType<typeof mergeLpColunas>;
+  cvcrmTemplate: string | null;
+}) {
+  const temReserva = !!cvcrmTemplate?.trim();
+  const stickyBg = 'bg-[#08080a]';
+  return (
+    <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="[&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-zinc-800 [&>th]:text-[9px] [&>th]:font-bold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:whitespace-nowrap">
+            <th className={`sticky left-0 z-10 ${stickyBg} text-left pl-5`}>Un.</th>
+            <th className="text-right">Valor</th>
+            {entradas.map(e => <th key={e.id} className="text-right">{e.label}</th>)}
+            {temReserva && <th className="pr-5" />}
+          </tr>
+        </thead>
+        <tbody>
+          {unidades.map(u => {
+            const disponivel = u.situacao === 'disponivel';
+            const reservaUrl = disponivel ? buildReservaUrl(cvcrmTemplate, u.unidade) : null;
+            return (
+              // Esmaecer célula a célula, e não a linha inteira via opacity:
+              // opacity no <tr> tornaria translúcido também o fundo da coluna
+              // fixa, deixando as demais colunas rolarem visíveis por trás dela.
+              <tr key={u.id} className="[&>td]:py-2 [&>td]:px-2 [&>td]:border-b [&>td]:border-zinc-900">
+                <td className={`sticky left-0 z-10 ${stickyBg} pl-5`}>
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SITUACAO_DOT[u.situacao]}`} title={LP_SITUACAO_LABELS[u.situacao]} />
+                    <span className={`text-xs font-bold ${disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>{u.unidade}</span>
+                  </span>
+                </td>
+                <td className={`text-right text-xs font-semibold whitespace-nowrap ${disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>
+                  {u.valorTabela > 0 ? formatMoeda(u.valorTabela) : '—'}
+                </td>
+                {entradas.map(e => (
+                  <td key={e.id} className={`text-right text-[11px] whitespace-nowrap ${disponivel ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    {formatLpValor(e.tipo, e.read(u))}
+                  </td>
+                ))}
+                {temReserva && (
+                  <td className="pr-5 text-right">
+                    {reservaUrl ? (
+                      <a
+                        href={reservaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-bold text-white bg-blue-600 active:bg-blue-700 whitespace-nowrap transition-colors"
+                      >
+                        Reservar <ArrowUpRight size={11} strokeWidth={2.5} />
+                      </a>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-zinc-600 whitespace-nowrap">{LP_SITUACAO_LABELS[u.situacao]}</span>
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function LpCorretorPage({ slug }: { slug: string }) {
   const [data, setData] = useState<LpCorretorPublicData | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
   const [secao, setSecao] = useState<SecaoAberta>(null);
   const [filtro, setFiltro] = useState<SiengeVendaSituacao | 'todas'>('disponivel');
+  // Preferência de visualização preservada entre visitas: o corretor que
+  // prefere a tabela não precisa trocar toda vez que abre o link.
+  const [visao, setVisao] = useState<'cartoes' | 'tabela'>(
+    () => (localStorage.getItem(VISAO_STORAGE_KEY) === 'tabela' ? 'tabela' : 'cartoes')
+  );
+
+  const trocarVisao = (v: 'cartoes' | 'tabela') => {
+    setVisao(v);
+    try { localStorage.setItem(VISAO_STORAGE_KEY, v); } catch { /* modo privado */ }
+  };
 
   useEffect(() => {
     let ativo = true;
@@ -255,8 +345,8 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           </p>
         </section>
 
-        <div className="sticky top-0 z-20 bg-[#08080a]/95 backdrop-blur border-b border-zinc-900 px-5 py-3">
-          <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="sticky top-0 z-20 bg-[#08080a]/95 backdrop-blur border-b border-zinc-900 px-5 py-3 flex items-center gap-2">
+          <div className="flex gap-1.5 overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['disponivel', 'todas', 'vendida', 'permuta', 'bloqueada'] as const).map(f => {
               const total = f === 'todas' ? unidades.length : unidades.filter(u => u.situacao === f).length;
               if (total === 0 && f !== 'todas' && f !== 'disponivel') return null;
@@ -274,17 +364,37 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               );
             })}
           </div>
+
+          <div className="flex items-center gap-0.5 p-0.5 bg-zinc-900/60 border border-zinc-800 rounded-lg shrink-0">
+            {([['cartoes', LayoutGrid, 'Ver em cartões'], ['tabela', Rows3, 'Ver em tabela']] as const).map(([v, Icone, titulo]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => trocarVisao(v)}
+                title={titulo}
+                aria-label={titulo}
+                aria-pressed={visao === v}
+                className={`p-1.5 rounded-md transition-colors ${visao === v ? 'bg-blue-500/15 text-blue-300' : 'text-zinc-500'}`}
+              >
+                <Icone size={14} />
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="px-5 py-4 flex flex-col gap-3">
-          {visiveis.length === 0 ? (
-            <p className="text-sm text-zinc-500 text-center py-10">Nenhuma unidade nesta situação.</p>
-          ) : (
-            visiveis.map(u => (
+        {visiveis.length === 0 ? (
+          <p className="text-sm text-zinc-500 text-center py-10">Nenhuma unidade nesta situação.</p>
+        ) : visao === 'tabela' ? (
+          <div className="py-4">
+            <UnidadesTabela unidades={visiveis} entradas={entradas} cvcrmTemplate={config.cvcrmUrlTemplate} />
+          </div>
+        ) : (
+          <div className="px-5 py-4 flex flex-col gap-3">
+            {visiveis.map(u => (
               <UnidadeCard key={u.id} unidade={u} entradas={entradas} cvcrmTemplate={config.cvcrmUrlTemplate} />
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Rodapé com observações */}
         {config.observacoes && (

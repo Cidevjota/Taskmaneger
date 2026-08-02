@@ -2,8 +2,6 @@
  * Rodapé institucional da LP do Corretor — igual em todas as páginas, por isso
  * fica no código e não no painel de configuração. Único lugar a editar quando
  * um canal de contato mudar.
- *
- * TODO: preencher com os dados reais da empresa antes de publicar a primeira LP.
  */
 interface LpEmpresa {
   nome: string;
@@ -19,16 +17,16 @@ interface LpEmpresa {
 }
 
 export const LP_EMPRESA: LpEmpresa = {
-  nome: 'Uchoa',
-  descricao: 'Incorporação e construção.',
+  nome: 'Uchôa Empreendimentos',
+  descricao: 'Com mais de 40 anos no mercado da Construção Civil, em especial nos segmentos de obras públicas e imobiliários, temos como propósito transformar a vida das pessoas e as cidades em que atuamos.',
   logoUrl: '/Logo_Primaria.png',
-  creci: '',            // ex.: 'CRECI J-00000'
-  endereco: '',         // ex.: 'Av. Exemplo, 1000 — Centro, Cidade/UF'
-  telefone: '',         // ex.: '(00) 0000-0000'
-  whatsapp: '',         // só dígitos com DDI, ex.: '5500900000000'
-  email: '',            // ex.: 'contato@empresa.com.br'
-  site: '',             // ex.: 'https://www.empresa.com.br'
-  instagram: '',        // handle sem @, ex.: 'empresa'
+  creci: '',
+  endereco: 'Av. Dr. Antônio Gomes de Barros, 625 — Jatiúca, Maceió/AL, 57036-001',
+  telefone: '+55 82 99156-3575',
+  whatsapp: '558281096793', // só dígitos com DDI — é o que o wa.me aceita
+  email: 'rodrigues@uchoaempreendimentos.com.br',
+  site: 'https://www.uchoaempreendimentos.com.br',
+  instagram: 'uchoaempreendimentos',
 };
 
 /** Canais preenchidos, na ordem em que aparecem no rodapé. */

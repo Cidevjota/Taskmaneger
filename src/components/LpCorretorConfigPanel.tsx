@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
 import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, SiengeCalculoRegra, SiengeTabelaVendaColuna } from '../types';
 import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, saveLpCorretorConfig } from '../lib/api';
 import { REGRA_PREFIX, lpCorretorUrl, slugifyLpSlug } from '../lib/lpCorretor';
@@ -81,7 +81,14 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
         setSalvo(existente);
         setCarregando(false);
       })
-      .catch(e => { if (ativo) { setErro(e.message || 'Erro ao carregar a configuração.'); setCarregando(false); } });
+      .catch(e => {
+        if (!ativo) return;
+        // 42P01 = undefined_table: a migration da LP ainda não foi aplicada.
+        setErro(e?.code === '42P01'
+          ? 'A tabela sienge_lp_corretor ainda não existe no banco. Aplique a migration 20260802000000_lp_corretor.sql (supabase db push) para liberar a Tabela Corretor.'
+          : (e?.message || 'Erro ao carregar a configuração.'));
+        setCarregando(false);
+      });
     return () => { ativo = false; };
   }, [projectId, projectName]);
 
@@ -153,10 +160,26 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
     });
   };
 
-  if (carregando || !config) {
+  if (carregando) {
     return (
       <div className="flex items-center justify-center gap-2 p-8 bg-zinc-900/40 border border-zinc-800 rounded-xl text-xs text-zinc-500">
         <Loader2 size={14} className="animate-spin" /> Carregando configuração da LP...
+      </div>
+    );
+  }
+
+  // Sem config e sem loading = a carga falhou; sem este ramo o erro vira um
+  // spinner eterno.
+  if (!config) {
+    return (
+      <div className="flex items-start justify-between gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl">
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-zinc-400 leading-relaxed">{erro || 'Não foi possível carregar a configuração da LP.'}</p>
+        </div>
+        <button type="button" onClick={onClose} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors shrink-0">
+          <X size={14} />
+        </button>
       </div>
     );
   }
