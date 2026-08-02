@@ -1,32 +1,38 @@
-import {StrictMode} from 'react';
+import {StrictMode, Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import App from './App.tsx';
 import './index.css';
 
-import { AuthProvider } from './context/AuthContext';
-import { NotificationProvider } from './context/NotificationContext';
-import { SyncManagerProvider } from './lib/SyncManager';
+import { LP_CORRETOR_BASE_PATH } from './lib/lpCorretor';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      staleTime: 30_000, // 30 s — prevents redundant refetches between Realtime events
-    },
-  },
-});
+// Carregados sob demanda para que os dois lados não paguem o bundle do outro —
+// a LP é aberta no celular do corretor e não pode arrastar junto os providers,
+// o editor e as planilhas do app interno.
+const AppRoot = lazy(() => import('./AppRoot'));
+const LpCorretorPage = lazy(() => import('./components/LpCorretorPage'));
+
+// Rota pública da LP do Corretor (/tabela/<slug>): renderizada fora do
+// AuthProvider e de todo o resto do app, então quem abre o link não carrega —
+// nem alcança — nenhuma outra tela. O conteúdo vem da RPC get_lp_corretor,
+// a única coisa liberada para a chave anon.
+const lpSlug = (() => {
+  const prefix = `${LP_CORRETOR_BASE_PATH}/`;
+  const path = decodeURIComponent(window.location.pathname);
+  if (!path.startsWith(prefix)) return null;
+  return path.slice(prefix.length).replace(/\/+$/, '') || null;
+})();
+
+// A LP tem visual próprio e não segue a preferência de tema do usuário do
+// sistema; sem a classe `dark` os overrides de :root:not(.dark) do index.css
+// converteriam a paleta inteira para o tema claro.
+if (lpSlug) {
+  document.documentElement.classList.add('dark');
+  document.documentElement.style.colorScheme = 'dark';
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <NotificationProvider>
-          <SyncManagerProvider>
-            <App />
-          </SyncManagerProvider>
-        </NotificationProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <Suspense fallback={<div className="min-h-screen bg-[#08080a]" />}>
+      {lpSlug ? <LpCorretorPage slug={lpSlug} /> : <AppRoot />}
+    </Suspense>
   </StrictMode>,
 );

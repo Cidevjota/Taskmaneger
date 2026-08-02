@@ -31,19 +31,39 @@ const APP_URL = Deno.env.get('APP_URL') || '';
 const MAX_ATTEMPTS = 3;
 const BATCH_SIZE = 20;
 
-/**
- * Converte um telefone brasileiro em chatId do WhatsApp.
- * Aceita o que o usuário digitou (com máscara, com ou sem DDI) e devolve
- * `55DDDNNNNNNNNN@c.us`, ou null se não parecer um número válido.
- */
-function toChatId(raw: string): string | null {
+/** Normaliza para dígitos com DDI, ou null se não parecer telefone válido. */
+function toDigits(raw: string): string | null {
   let digits = (raw || '').replace(/\D/g, '');
   if (digits.length < 10) return null;
   // Sem DDI: assume Brasil.
   if (!digits.startsWith('55')) digits = `55${digits}`;
   // 55 + DDD(2) + 8 ou 9 dígitos.
   if (digits.length < 12 || digits.length > 13) return null;
-  return `${digits}@c.us`;
+  return digits;
+}
+
+/**
+ * Descobre o chatId real perguntando ao WhatsApp.
+ *
+ * Não dá para montar o chatId concatenando `@c.us` no número: no Brasil, linhas
+ * antigas foram registradas SEM o nono dígito, então `5582982296072` pode ter
+ * como ID verdadeiro `558282296072`. Enviar para o ID errado é pior que um erro
+ * — o WAHA aceita e responde 201, mas a mensagem nunca chega.
+ *
+ * Retorna null quando o número não tem WhatsApp.
+ */
+async function resolveChatId(digits: string): Promise<string | null> {
+  const url = `${WAHA_BASE_URL.replace(/\/$/, '')}/api/contacts/check-exists?phone=${digits}&session=${encodeURIComponent(WAHA_SESSION)}`;
+  const res = await fetch(url, { headers: { 'X-Api-Key': WAHA_API_KEY } });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`check-exists ${res.status}: ${body.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  if (!data?.numberExists) return null;
+  return data.chatId || `${digits}@c.us`;
 }
 
 function buildText(message: string): string {
@@ -112,9 +132,9 @@ serve(async (req: Request) => {
 
     for (const row of rows || []) {
       const attempts = (row.attempts || 0) + 1;
-      const chatId = toChatId(row.phone);
+      const digits = toDigits(row.phone);
 
-      if (!chatId) {
+      if (!digits) {
         // Telefone inválido não melhora com retentativa: encerra a linha.
         await supabase
           .from('whatsapp_outbox')
@@ -125,6 +145,17 @@ serve(async (req: Request) => {
       }
 
       try {
+        const chatId = await resolveChatId(digits);
+        if (!chatId) {
+          // Número não tem WhatsApp: retentar não adianta.
+          await supabase
+            .from('whatsapp_outbox')
+            .update({ status: 'failed', attempts: MAX_ATTEMPTS, last_error: 'Número sem WhatsApp' })
+            .eq('id', row.id);
+          failed++;
+          continue;
+        }
+
         await sendToWaha(chatId, buildText(row.message));
         await supabase
           .from('whatsapp_outbox')

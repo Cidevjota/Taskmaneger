@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Trash2, Plus, X } from 'lucide-react';
-import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeVendaSituacao } from '../types';
-import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, formatBrNumber, mergeColunasRegras, parseBrNumber } from '../lib/siengeVendasTabela';
+import { AlertTriangle, Check, ShieldCheck, GripVertical, Trash2, Plus, X } from 'lucide-react';
+import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
+import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, calcValidacaoParcelas, calcValidacaoValorUnidade, formatBrNumber, isDiferencaOk, mergeColunasRegras, parseBrNumber } from '../lib/siengeVendasTabela';
 
 interface SiengeVendasTableProps {
   projectId: string;
@@ -9,8 +9,30 @@ interface SiengeVendasTableProps {
   allUnidadeNames: string[];
   colunas: SiengeTabelaVendaColuna[];
   regras: SiengeCalculoRegra[];
+  validacoes: SiengeValidacao[];
+  mostrarValidacao: boolean;
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
+  onSaveColuna: (coluna: SiengeTabelaVendaColuna) => void;
+  onSaveRegra: (regra: SiengeCalculoRegra) => void;
+}
+
+// Reordena a lista mesclada (colunas + regras) movendo o item de `from` pra
+// `to` e recompacta o sortOrder em sequência — mesmo espaço de numeração das
+// duas entidades (ver mergeColunasRegras), então dá pra intercalar livremente
+// arrastando uma coluna calculada entre colunas reais e vice-versa.
+function reorderMerged(merged: ColunaOuRegra[], from: number, to: number, onSaveColuna: (c: SiengeTabelaVendaColuna) => void, onSaveRegra: (r: SiengeCalculoRegra) => void) {
+  if (from === to) return;
+  const copy = [...merged];
+  const [moved] = copy.splice(from, 1);
+  copy.splice(to, 0, moved);
+  const now = new Date().toISOString();
+  copy.forEach((m, idx) => {
+    const newSortOrder = idx + 1;
+    if (m.item.sortOrder === newSortOrder) return;
+    if (m.kind === 'coluna') onSaveColuna({ ...m.item, sortOrder: newSortOrder, updatedAt: now });
+    else onSaveRegra({ ...m.item, sortOrder: newSortOrder, updatedAt: now });
+  });
 }
 
 const SITUACAO_STYLES: Record<SiengeVendaSituacao, string> = {
@@ -44,6 +66,37 @@ function parseDecimalInput(value: string): number {
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+// Coluna espelho das validações configuradas em "Validar Tabela": aplica a
+// mesma fórmula (calc) para a unidade da linha, para cada validação do tipo,
+// e resume num badge — OK só se todas baterem, senão mostra quantas falharam
+// (tooltip lista a diferença de cada uma, já que pode haver mais de uma).
+function ValidacaoStatusCell<V extends { diferenca: number }>({
+  item, validacoesList, calc, regras,
+}: {
+  item: SiengeTabelaVendaUnidade;
+  validacoesList: SiengeValidacao[];
+  calc: (item: SiengeTabelaVendaUnidade, v: SiengeValidacao, regras: SiengeCalculoRegra[]) => V;
+  regras: SiengeCalculoRegra[];
+}) {
+  if (validacoesList.length === 0) {
+    return <td className="px-3 py-2 text-xs text-zinc-600">—</td>;
+  }
+  const resultados = validacoesList.map(v => ({ v, r: calc(item, v, regras) }));
+  const pendentes = resultados.filter(({ r }) => !isDiferencaOk(r.diferenca));
+  const ok = pendentes.length === 0;
+  const title = resultados
+    .map(({ v, r }) => `${v.titulo || 'Validação'}: ${r.diferenca >= 0 ? '+' : ''}${formatCurrency(r.diferenca)}`)
+    .join('\n');
+  return (
+    <td className="px-3 py-2" title={title}>
+      <span className={`inline-flex items-center gap-1 text-xs font-bold whitespace-nowrap ${ok ? 'text-emerald-400' : 'text-red-400'}`}>
+        {ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} />}
+        {ok ? 'OK' : `${pendentes.length} pendente${pendentes.length > 1 ? 's' : ''}`}
+      </span>
+    </td>
+  );
 }
 
 // Texto editável (dirty state comparado ao valor salvo) para uma coluna
@@ -205,10 +258,14 @@ function ConfirmVendaPopover({ unidade, onConfirm, onCancel }: { unidade: string
   );
 }
 
-function VendaRow({ item, colunas, merged, onSave, onDelete }: {
+function VendaRow({ item, colunas, merged, regras, validacoesParcelas, validacoesValorUnidade, mostrarValidacao, onSave, onDelete }: {
   item: SiengeTabelaVendaUnidade;
   colunas: SiengeTabelaVendaColuna[];
   merged: ColunaOuRegra[];
+  regras: SiengeCalculoRegra[];
+  validacoesParcelas: SiengeValidacao[];
+  validacoesValorUnidade: SiengeValidacao[];
+  mostrarValidacao: boolean;
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
 }) {
@@ -307,6 +364,12 @@ function VendaRow({ item, colunas, merged, onSave, onDelete }: {
           {(() => { const valor = calcRegraValor(draftItem, m.item); return valor > 0 ? formatCurrency(valor) : '—'; })()}
         </td>
       ))}
+      {mostrarValidacao && (
+        <>
+          <ValidacaoStatusCell item={draftItem} validacoesList={validacoesParcelas} calc={calcValidacaoParcelas} regras={regras} />
+          <ValidacaoStatusCell item={draftItem} validacoesList={validacoesValorUnidade} calc={calcValidacaoValorUnidade} regras={regras} />
+        </>
+      )}
       <td className="px-3 py-2 relative">
         <select
           value={situacao}
@@ -361,10 +424,11 @@ function VendaRow({ item, colunas, merged, onSave, onDelete }: {
   );
 }
 
-function NewUnidadeRow({ projectId, colunas, merged, existingUnidades, onSave, onCancel }: {
+function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingUnidades, onSave, onCancel }: {
   projectId: string;
   colunas: SiengeTabelaVendaColuna[];
   merged: ColunaOuRegra[];
+  mostrarValidacao: boolean;
   existingUnidades: string[];
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onCancel: () => void;
@@ -437,6 +501,12 @@ function NewUnidadeRow({ projectId, colunas, merged, existingUnidades, onSave, o
       ) : (
         <td key={`r-${m.item.id}`} className="px-3 py-2 text-xs text-zinc-600">—</td>
       ))}
+      {mostrarValidacao && (
+        <>
+          <td className="px-3 py-2 text-xs text-zinc-600">—</td>
+          <td className="px-3 py-2 text-xs text-zinc-600">—</td>
+        </>
+      )}
       <td className="px-3 py-2">
         <select
           value={situacao}
@@ -487,13 +557,29 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames, colunas, regras, onSave, onDelete }: SiengeVendasTableProps) {
+export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames, colunas, regras, validacoes, mostrarValidacao, onSave, onDelete, onSaveColuna, onSaveRegra }: SiengeVendasTableProps) {
   const [addingNew, setAddingNew] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [overSide, setOverSide] = useState<'before' | 'after'>('before');
   const merged = mergeColunasRegras(colunas, regras);
   const sorted = [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
+  const validacoesParcelas = validacoes.filter(v => v.tipo === 'parcelas');
+  const validacoesValorUnidade = validacoes.filter(v => v.tipo === 'valor_unidade');
+  const validacaoCols = mostrarValidacao ? 2 : 0;
 
-  const totalCols = 3 + merged.length + 2; // unidade + valor + actions... usado no colSpan da linha "adicionar"
+  const totalCols = 3 + merged.length + validacaoCols + 2; // unidade + valor + actions... usado no colSpan da linha "adicionar"
   const sumValor = sum(sorted.map(u => u.valorTabela));
+
+  const resetDrag = () => { setDragIndex(null); setOverIndex(null); };
+
+  const handleDrop = () => {
+    if (dragIndex === null || overIndex === null) { resetDrag(); return; }
+    let dropIndex = overSide === 'after' ? overIndex + 1 : overIndex;
+    if (dragIndex < dropIndex) dropIndex -= 1;
+    reorderMerged(merged, dragIndex, dropIndex, onSaveColuna, onSaveRegra);
+    resetDrag();
+  };
 
   return (
     <div className="overflow-x-auto custom-scrollbar">
@@ -502,11 +588,41 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
           <tr>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Unidade</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor da Unidade</th>
-            {merged.map(m => (
-              <th key={`${m.kind}-${m.item.id}`} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                {m.kind === 'coluna' ? m.item.label : m.item.titulo}
+            {merged.map((m, idx) => (
+              <th
+                key={`${m.kind}-${m.item.id}`}
+                draggable
+                onDragStart={e => { setDragIndex(idx); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); }}
+                onDragOver={e => {
+                  e.preventDefault();
+                  if (dragIndex === null) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const side = e.clientX - rect.left < rect.width / 2 ? 'before' : 'after';
+                  setOverIndex(idx);
+                  setOverSide(side);
+                }}
+                onDrop={e => { e.preventDefault(); handleDrop(); }}
+                onDragEnd={resetDrag}
+                title="Arraste para reordenar a coluna"
+                className={`group relative text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider cursor-grab active:cursor-grabbing select-none transition-opacity ${dragIndex === idx ? 'opacity-30' : ''}`}
+              >
+                {dragIndex !== null && overIndex === idx && dragIndex !== idx && (
+                  <span
+                    className={`absolute top-0 bottom-0 w-0.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.8)] transition-all duration-150 ${overSide === 'before' ? 'left-0' : 'right-0'}`}
+                  />
+                )}
+                <span className="inline-flex items-center gap-1">
+                  <GripVertical size={12} className="text-zinc-500 group-hover:text-zinc-300 transition-colors shrink-0" />
+                  {m.kind === 'coluna' ? m.item.label : m.item.titulo}
+                </span>
               </th>
             ))}
+            {mostrarValidacao && (
+              <>
+                <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Validar Parcelas</th>
+                <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Validar Valor da Unidade</th>
+              </>
+            )}
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Situação</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Descrição</th>
             <th className="px-3 py-1" />
@@ -514,10 +630,29 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
         </thead>
         <tbody>
           {sorted.map(item => (
-            <VendaRow key={item.id} item={item} colunas={colunas} merged={merged} onSave={onSave} onDelete={onDelete} />
+            <VendaRow
+              key={item.id}
+              item={item}
+              colunas={colunas}
+              merged={merged}
+              regras={regras}
+              validacoesParcelas={validacoesParcelas}
+              validacoesValorUnidade={validacoesValorUnidade}
+              mostrarValidacao={mostrarValidacao}
+              onSave={onSave}
+              onDelete={onDelete}
+            />
           ))}
           {addingNew ? (
-            <NewUnidadeRow projectId={projectId} colunas={colunas} merged={merged} existingUnidades={allUnidadeNames} onSave={onSave} onCancel={() => setAddingNew(false)} />
+            <NewUnidadeRow
+              projectId={projectId}
+              colunas={colunas}
+              merged={merged}
+              mostrarValidacao={mostrarValidacao}
+              existingUnidades={allUnidadeNames}
+              onSave={onSave}
+              onCancel={() => setAddingNew(false)}
+            />
           ) : (
             <tr>
               <td colSpan={totalCols} className="px-3 py-1.5">
@@ -537,7 +672,7 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
             <tr className="[&>td]:bg-zinc-900/70 [&>td]:border-y [&>td]:border-zinc-800 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               <td className="px-3 py-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Soma</td>
               <td className="px-3 py-2 text-xs font-semibold text-zinc-100 whitespace-nowrap">{sumValor > 0 ? formatCurrency(sumValor) : '—'}</td>
-              <td className="px-3 py-2 text-xs text-zinc-600" colSpan={merged.length + 3}>—</td>
+              <td className="px-3 py-2 text-xs text-zinc-600" colSpan={merged.length + validacaoCols + 3}>—</td>
             </tr>
           </tfoot>
         )}

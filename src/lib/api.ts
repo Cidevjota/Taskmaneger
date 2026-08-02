@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -63,7 +63,7 @@ const TASKS_LIST_COLS = [
   'id', 'task_code', 'title', 'description', 'status', 'priority',
   'project_id', 'created_at', 'due_date', 'reminder_date', 'reminder_type',
   'planned_date', 'assignee_id', 'parent_task_id', 'updated_by',
-  'chat_messages', 'attachments', 'proposals', 'social_media_approval', 'time_tracking',
+  'chat_messages', 'attachments', 'proposals', 'budget_approvals', 'social_media_approval', 'time_tracking',
   'updated_at', 'status_history', 'rework_count'
 ].join(', ');
 
@@ -103,6 +103,7 @@ export async function fetchTasks(): Promise<Task[]> {
       chatMessages: t.chat_messages || [],
       attachments: t.attachments || [],
       proposals: t.proposals || [],
+      budgetApprovals: t.budget_approvals || [],
       socialMediaApproval: t.social_media_approval,
       timeTracking: t.time_tracking,
       updatedAt: t.updated_at,
@@ -190,6 +191,7 @@ export async function saveTask(task: Task) {
     planning_briefing: task.planningBriefing,
     attachments: task.attachments || [],
     proposals: task.proposals || [],
+    budget_approvals: task.budgetApprovals || [],
     social_media_approval: task.socialMediaApproval,
     time_tracking: task.timeTracking,
     updated_at: task.updatedAt || null,
@@ -297,6 +299,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
     if (updates.planningBriefing !== undefined) dbUpdates.planning_briefing = updates.planningBriefing;
     if (updates.attachments !== undefined) dbUpdates.attachments = updates.attachments;
     if (updates.proposals !== undefined) dbUpdates.proposals = updates.proposals;
+    if (updates.budgetApprovals !== undefined) dbUpdates.budget_approvals = updates.budgetApprovals;
     if (updates.socialMediaApproval !== undefined) dbUpdates.social_media_approval = updates.socialMediaApproval;
     if (updates.timeTracking !== undefined) dbUpdates.time_tracking = updates.timeTracking;
     if (updates.updatedAt !== undefined) dbUpdates.updated_at = updates.updatedAt;
@@ -1193,3 +1196,70 @@ export async function deleteSiengeSubcategoria(id: string): Promise<void> {
   const { error } = await supabase.from('sienge_subcategorias').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── LP do Corretor ────────────────────────────────────────────
+
+function mapLpCorretorConfig(r: any): LpCorretorConfig {
+  return {
+    projectId: r.project_id,
+    slug: r.slug,
+    publicada: r.publicada ?? false,
+    titulo: r.titulo ?? null,
+    subtitulo: r.subtitulo ?? null,
+    bannerUrl: r.banner_url ?? null,
+    imagens: Array.isArray(r.imagens) ? r.imagens : [],
+    fichaTecnica: Array.isArray(r.ficha_tecnica) ? r.ficha_tecnica : [],
+    bookUrl: r.book_url ?? null,
+    observacoes: r.observacoes ?? null,
+    cvcrmUrlTemplate: r.cvcrm_url_template ?? null,
+    colunasVisiveis: Array.isArray(r.colunas_visiveis) ? r.colunas_visiveis : [],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchLpCorretorConfigs(): Promise<LpCorretorConfig[]> {
+  const { data, error } = await supabase.from('sienge_lp_corretor').select('*');
+  if (error) throw error;
+  return (data || []).map(mapLpCorretorConfig);
+}
+
+export class LpCorretorSlugConflictError extends Error {
+  constructor() {
+    super('Já existe outra LP publicada com esse endereço. Escolha outro.');
+    this.name = 'LpCorretorSlugConflictError';
+  }
+}
+
+export async function saveLpCorretorConfig(config: LpCorretorConfig) {
+  const { error } = await supabase.from('sienge_lp_corretor').upsert({
+    project_id: config.projectId,
+    slug: config.slug,
+    publicada: config.publicada,
+    titulo: config.titulo,
+    subtitulo: config.subtitulo,
+    banner_url: config.bannerUrl,
+    imagens: config.imagens,
+    ficha_tecnica: config.fichaTecnica,
+    book_url: config.bookUrl,
+    observacoes: config.observacoes,
+    cvcrm_url_template: config.cvcrmUrlTemplate,
+    colunas_visiveis: config.colunasVisiveis,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id' });
+  // 23505 = unique_violation; o único índice único além da PK é o do slug.
+  if (error?.code === '23505') throw new LpCorretorSlugConflictError();
+  if (error) throw error;
+}
+
+/**
+ * Leitura pública da LP — roda com a chave anon, sem sessão. Toda a filtragem
+ * (colunas visíveis, colunas calculadas já resolvidas, comprador removido)
+ * acontece dentro da função get_lp_corretor, no banco.
+ */
+export async function fetchLpCorretorPublic(slug: string): Promise<LpCorretorPublicData | null> {
+  const { data, error } = await supabase.rpc('get_lp_corretor', { p_slug: slug });
+  if (error) throw error;
+  return (data as LpCorretorPublicData | null) ?? null;
+}
+

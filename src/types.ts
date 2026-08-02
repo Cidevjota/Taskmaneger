@@ -168,6 +168,27 @@ export interface Proposal {
   comments?: ProposalComment[];
 }
 
+export type BudgetDecisionStatus = 'pending' | 'approved' | 'rejected' | 'rework';
+
+export interface BudgetProposalDecision {
+  proposalId: string;
+  status: BudgetDecisionStatus;
+  // Justificativa exigida em 'rejected' e 'rework'.
+  note?: string;
+  decidedAt?: string;
+  decidedBy?: string;
+}
+
+export interface BudgetApprovalRound {
+  id: string;
+  proposalIds: string[];
+  approverId: string;
+  requesterId?: string;
+  decisions: BudgetProposalDecision[];
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface PlanningBriefing {
   text: string;
   attachments: Attachment[];
@@ -225,6 +246,7 @@ export interface Task {
   planningBriefing?: PlanningBriefing;
   socialMediaApproval?: SocialMediaApprovalData;
   proposals?: Proposal[];
+  budgetApprovals?: BudgetApprovalRound[];
   chatMessages?: ChatMessage[];
   dueDate?: string; // ISO date format like '2026-06-20'
   plannedDate?: string; // Weekly Planner allocation date (YYYY-MM-DD)
@@ -528,6 +550,91 @@ export interface SiengeValidacao {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── LP do Corretor ──────────────────────────────────────────────
+// Página pública (uma por empreendimento) com a tabela de preços espelhada,
+// pensada para o corretor abrir no celular. Ver migration 20260802000000.
+
+export interface LpCorretorImagem {
+  id: string;
+  url: string;
+  legenda: string;
+}
+
+export interface LpCorretorFichaItem {
+  id: string;
+  label: string;
+  valor: string;
+}
+
+// Chave de coluna visível na LP: a key de uma coluna real ou 'regra:<id>'
+// para uma coluna calculada — mesmo espaço de nomes usado nas validações.
+export type LpCorretorColunaKey = string;
+
+export interface LpCorretorConfig {
+  projectId: string;
+  slug: string;
+  publicada: boolean;
+  titulo: string | null;
+  subtitulo: string | null;
+  bannerUrl: string | null;
+  imagens: LpCorretorImagem[];
+  fichaTecnica: LpCorretorFichaItem[];
+  bookUrl: string | null;
+  observacoes: string | null;
+  // {unidade} é trocado pelo nome da unidade ao montar o botão "Reservar".
+  cvcrmUrlTemplate: string | null;
+  colunasVisiveis: LpCorretorColunaKey[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Payload público (RPC get_lp_corretor) ───────────────────────
+// Só o que a LP mostra: colunas ocultas e o comprador nunca saem do banco, e
+// as colunas calculadas já vêm resolvidas para que a coluna base fique oculta.
+
+export interface LpCorretorPublicColuna {
+  key: string;
+  label: string;
+  tipo: SiengeColunaTipo;
+  sortOrder: number;
+}
+
+export interface LpCorretorPublicRegra {
+  id: string;
+  titulo: string;
+  sortOrder: number;
+}
+
+export interface LpCorretorPublicUnidade {
+  id: string;
+  unidade: string;
+  valorTabela: number;
+  situacao: SiengeVendaSituacao;
+  descricao: string | null;
+  camposExtra: Record<string, number | string>;
+  calculados: Record<string, number>;
+}
+
+export interface LpCorretorPublicData {
+  config: {
+    projectId: string;
+    slug: string;
+    titulo: string | null;
+    subtitulo: string | null;
+    bannerUrl: string | null;
+    imagens: LpCorretorImagem[];
+    fichaTecnica: LpCorretorFichaItem[];
+    bookUrl: string | null;
+    observacoes: string | null;
+    cvcrmUrlTemplate: string | null;
+    atualizadoEm: string;
+  };
+  projeto: { id: string; nome: string; coverImage: string | null };
+  colunas: LpCorretorPublicColuna[];
+  regras: LpCorretorPublicRegra[];
+  unidades: LpCorretorPublicUnidade[];
 }
 
 export interface SiengeTabelaVendaRevisao {

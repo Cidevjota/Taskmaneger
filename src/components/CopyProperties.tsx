@@ -226,6 +226,14 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
   const saveDeliveryChange = async (
     recipe: (base: CopyBriefing) => { partial: Partial<CopyBriefing>; taskUpdates?: Partial<Task>; notify?: () => void }
   ): Promise<boolean> => {
+    // Set before the refetch below (not after) so the "salvando" button state
+    // disables the button immediately on click — otherwise a double-click during
+    // the fetchTaskBriefings round trip fired this whole function twice, creating
+    // duplicate deliveries and duplicate approval notifications.
+    if (isSavingDelivery) return false;
+    setIsSavingDelivery(true);
+    setDeliverySaveError(null);
+
     let base: CopyBriefing = briefingForm;
     try {
       const fresh = await fetchTaskBriefings(task.id);
@@ -239,8 +247,6 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
     const { partial, taskUpdates, notify } = recipe(base);
     const merged = { ...base, ...partial };
 
-    setIsSavingDelivery(true);
-    setDeliverySaveError(null);
     try {
       await saveImmediately(task.id, { copyBriefing: merged, ...(taskUpdates || {}) });
       setBriefingForm(merged);

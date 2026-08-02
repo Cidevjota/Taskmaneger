@@ -2315,7 +2315,7 @@ export default function TaskSheet({
                 {openSections.budgetProps ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 Painel de Orçamento
               </button>
-              <div className={`animate-fade-in ${openSections.budgetProps ? 'block' : 'hidden'}`}>
+              <div id="section-budgetProps" className={`animate-fade-in scroll-mt-20 ${openSections.budgetProps ? 'block' : 'hidden'}`}>
                 <BudgetProperties task={task} saveChange={saveChange} themeColor={themeTextColor} />
               </div>
             </div>

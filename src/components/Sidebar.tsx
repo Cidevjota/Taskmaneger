@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Columns3, 
   List, 
@@ -70,7 +70,23 @@ export default function Sidebar({
   const { notifications, addNotification, markAsViewed, postpone, markAsImportant } = useNotifications();
   
   const [showAllNotifications, setShowAllNotifications] = useState(false);
-  
+  const [busyNotificationIds, setBusyNotificationIds] = useState<Set<string>>(new Set());
+
+  // Guards against double-clicks/misclicks firing the same action twice while the
+  // item is still animating out (list reflow made it easy to accidentally hit twice).
+  const runNotificationAction = (id: string, action: (id: string) => void) => {
+    if (busyNotificationIds.has(id)) return;
+    setBusyNotificationIds(prev => new Set(prev).add(id));
+    action(id);
+    setTimeout(() => {
+      setBusyNotificationIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 400);
+  };
+
   // Filter my active notifications
   const myNotifications = notifications.filter(n => {
     if (n.userId !== currentUser?.id) return false;
@@ -200,6 +216,7 @@ export default function Sidebar({
           <div className={`space-y-1 mt-1.5 ${showAllNotifications ? "flex-1 overflow-y-auto no-scrollbar min-h-0" : ""}`}>
             {!collapsed && myNotifications.length > 0 && (
               <div className="flex flex-col gap-1.5 px-2 mt-2 mb-2">
+                <AnimatePresence initial={false} mode="popLayout">
                 {(showAllNotifications ? myNotifications : myNotifications.slice(0, 3)).map(n => {
                   let titlePart = n.message;
                   if (n.message.includes(':')) {
@@ -208,11 +225,17 @@ export default function Sidebar({
                   }
 
                   const task = tasks.find(t => t.id === n.taskId);
+                  const isBusy = busyNotificationIds.has(n.id);
 
                   return (
-                    <div
+                    <motion.div
                       key={n.id}
-                      className="group relative flex flex-col cursor-pointer rounded-lg px-2 py-1.5 hover:bg-zinc-900/60 hover:shadow-md transition-all"
+                      layout
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15, ease: 'easeIn' } }}
+                      transition={{ layout: { duration: 0.25, ease: 'easeInOut' }, opacity: { duration: 0.2 }, y: { duration: 0.2 } }}
+                      className={`group relative flex flex-col cursor-pointer rounded-lg px-2 py-1.5 hover:bg-zinc-900/60 hover:shadow-md transition-all ${isBusy ? 'pointer-events-none opacity-60' : ''}`}
                       onClick={() => {
                         // Special handling for Sienge Titles
                         if (n.message === 'Lembrete de Título' || n.details?.includes('título')) {
@@ -291,16 +314,18 @@ export default function Sidebar({
                             {new Date(n.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                           </span>
                           <div className="hidden group-hover:flex items-center gap-2 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-                            <button 
-                              onClick={() => markAsViewed(n.id)}
-                              className="p-1 text-zinc-400 hover:text-emerald-400 rounded hover:bg-zinc-800/80 transition-colors"
+                            <button
+                              onClick={() => runNotificationAction(n.id, markAsViewed)}
+                              disabled={isBusy}
+                              className="p-1 text-zinc-400 hover:text-emerald-400 rounded hover:bg-zinc-800/80 transition-colors disabled:opacity-50"
                               title="Marcar como Visto"
                             >
                               <CheckCircle size={14} />
                             </button>
-                            <button 
-                              onClick={() => postpone(n.id)}
-                              className="p-1 text-zinc-400 hover:text-blue-400 rounded hover:bg-zinc-800/80 transition-colors"
+                            <button
+                              onClick={() => runNotificationAction(n.id, postpone)}
+                              disabled={isBusy}
+                              className="p-1 text-zinc-400 hover:text-blue-400 rounded hover:bg-zinc-800/80 transition-colors disabled:opacity-50"
                               title="Adiar Notificação"
                             >
                               <Clock size={14} />
@@ -308,9 +333,10 @@ export default function Sidebar({
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
+                </AnimatePresence>
               </div>
             )}
             

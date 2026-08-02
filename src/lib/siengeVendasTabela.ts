@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeVendaSituacao } from '../types';
+import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
 
 export const SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -88,6 +88,45 @@ export function calcRegraValor(item: SiengeTabelaVendaUnidade, regra: SiengeCalc
 export function colunaBaseLabel(colunaBaseKey: string, colunas: SiengeTabelaVendaColuna[]): string {
   if (colunaBaseKey === 'valor_tabela') return 'Valor da Unidade';
   return colunas.find(c => c.key === colunaBaseKey)?.label || colunaBaseKey;
+}
+
+// ─── Validações (Validar Tabela) — calculadas aqui pra serem reaproveitadas
+// tanto no painel de configuração (ValidarPanel) quanto nas colunas da tabela
+// principal, que espelham o mesmo cálculo pra todas as unidades. ──
+
+export const REGRA_KEY_PREFIX = 'regra:';
+
+// Chaves de coluna real resolvem via getColunaBaseValue; chaves prefixadas com
+// "regra:" apontam pra uma coluna calculada (regra de cálculo), que não fica em
+// camposExtra — precisa recalcular na hora via calcRegraValor.
+export function resolveOperando(item: SiengeTabelaVendaUnidade, key: string, regras: SiengeCalculoRegra[]): number {
+  if (key.startsWith(REGRA_KEY_PREFIX)) {
+    const regra = regras.find(r => r.id === key.slice(REGRA_KEY_PREFIX.length));
+    return regra ? calcRegraValor(item, regra) : 0;
+  }
+  return getColunaBaseValue(item, key);
+}
+
+// Tolerância de 1 centavo — cobre tanto ruído de ponto flutuante binário
+// (ex.: 0.010000000000047748) quanto pequenos arredondamentos legítimos da
+// tabela; acima de R$0,01 de diferença já conta como divergência real.
+export function isDiferencaOk(diferenca: number): boolean {
+  return Math.abs(Math.round(diferenca * 100)) <= 1;
+}
+
+// (quantidade₁ × coluna₁) + (quantidade₂ × coluna₂) + ... deve ser igual à
+// coluna de referência — ex.: (48 × Mensal) + (7 × Semestral) = Custo de Construção.
+export function calcValidacaoParcelas(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
+  const soma = round6(validacao.termos.reduce((s, t) => s + (t.quantidade ?? 0) * resolveOperando(item, t.colunaKey, regras), 0));
+  const referencia = validacao.referenciaKey ? resolveOperando(item, validacao.referenciaKey, regras) : 0;
+  return { soma, referencia, diferenca: round6(soma - referencia) };
+}
+
+// (±coluna₁) + (±coluna₂) + ... deve ser igual ao Valor da Unidade — ex.:
+// Custo de Construção + Adesão Total = Valor da Unidade.
+export function calcValidacaoValorUnidade(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
+  const soma = round6(validacao.termos.reduce((s, t) => s + (t.sinal === '-' ? -1 : 1) * resolveOperando(item, t.colunaKey, regras), 0));
+  return { soma, valorUnidade: item.valorTabela, diferenca: round6(soma - item.valorTabela) };
 }
 
 // ─── Números em formato BR (1.234,56) ──────────────────────────

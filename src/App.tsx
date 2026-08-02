@@ -569,6 +569,7 @@ export default function App() {
             ...(sm.isFieldDirty(id, 'attachments')         ? {} : { attachments:         raw.attachments || [] }),
             ...(sm.isFieldDirty(id, 'chatMessages')        ? {} : { chatMessages:        raw.chat_messages || [] }),
             ...(sm.isFieldDirty(id, 'proposals')           ? {} : { proposals:           raw.proposals || [] }),
+            ...(sm.isFieldDirty(id, 'budgetApprovals')     ? {} : { budgetApprovals:     raw.budget_approvals || [] }),
             ...(sm.isFieldDirty(id, 'socialMediaApproval') ? {} : { socialMediaApproval: raw.social_media_approval }),
             ...(sm.isFieldDirty(id, 'timeTracking')        ? {} : { timeTracking:        raw.time_tracking }),
             updatedBy: raw.updated_by,
