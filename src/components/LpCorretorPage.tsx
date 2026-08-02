@@ -577,8 +577,12 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   return (
     // As áreas seguras cobrem o notch/ilha dinâmica em paisagem no iPhone; sem
     // isso o conteúdo passa por baixo do recorte quando o aparelho é girado.
+    // overflow-x-hidden é rede de proteção: a rolagem horizontal legítima é a
+    // da tabela, que tem o próprio container. Qualquer elemento que estoure a
+    // largura aqui faria o celular exibir a página encolhida, com rolagem
+    // lateral no corpo inteiro.
     <div
-      className="min-h-[100svh] bg-[#08080a] text-zinc-100 antialiased"
+      className="min-h-[100svh] w-full overflow-x-hidden bg-[#08080a] text-zinc-100 antialiased"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
       <div className="mx-auto w-full max-w-lg lg:max-w-6xl">
