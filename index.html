@@ -4,7 +4,12 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/favicon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- viewport-fit=cover habilita env(safe-area-inset-*), usado pela LP do
+       Corretor para sangrar o banner até as bordas em aparelhos com recorte.
+       Precisa ser estático: alterar esta meta por JavaScript depois do
+       carregamento faz o Samsung Internet descartá-la e montar a página com o
+       viewport padrão de ~980px. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Orbit</title>
 </head>
 

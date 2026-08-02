@@ -27,13 +27,16 @@ const lpSlug = (() => {
 if (lpSlug) {
   document.documentElement.classList.add('dark');
   document.documentElement.style.colorScheme = 'dark';
-  // viewport-fit=cover deixa o banner sangrar até as bordas do iPhone e habilita
-  // env(safe-area-inset-*), que a LP usa para desviar do notch e do indicador de
-  // gestos. Aplicado só aqui: o app interno não é desenhado para áreas seguras.
-  document
-    .querySelector('meta[name="viewport"]')
-    ?.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
 }
+
+// A meta viewport NÃO é alterada aqui de propósito. Acrescentar
+// `viewport-fit=cover` por JavaScript depois do carregamento fazia o Samsung
+// Internet descartar a meta inteira e montar a página com o viewport padrão de
+// ~980px — a página aparecia encolhida, numa coluna estreita no meio da tela.
+// Chrome e Safari reprocessavam normalmente, o que escondia o problema.
+// O custo de não usar viewport-fit=cover é o banner não sangrar por baixo do
+// notch no iPhone; os env(safe-area-inset-*) da LP passam a valer 0 e o próprio
+// navegador reserva a área do recorte.
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight } from 'lucide-react';
 import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
 import { fetchLpCorretorPublic } from '../lib/api';
@@ -318,19 +318,28 @@ function FaixaSlider({ min, max, step, valor, onChange, formatar }: {
  * cabem os dados que a linha compacta não mostra — no celular a tabela rola na
  * horizontal e boa parte das colunas fica fora da tela.
  */
-function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl }: {
+function DetalheUnidade({ unidade, entradas, chavesLinha, plantas, colspan, reservaUrl, larguraVisivel }: {
   unidade: LpCorretorPublicUnidade;
-  /** Colunas marcadas como "Detalhe" no painel — as que não cabem na linha. */
+  /** Todas as colunas visíveis, na ordem da tabela. */
   entradas: ReturnType<typeof mergeLpColunas>;
+  /** Quais dessas já aparecem na linha compacta. */
+  chavesLinha: Set<string>;
   plantas: LpCorretorPlanta[];
   colspan: number;
   reservaUrl: string | null;
+  /** Largura visível do container que rola — define a largura do card. */
+  larguraVisivel: number;
 }) {
   const [indice, setIndice] = useState(0);
   const planta = plantas[indice];
   return (
     <tr className="animate-fade-in">
-      <td colSpan={colspan} className={`${GUTTER} py-5 bg-zinc-900/30 border-b border-zinc-900`}>
+      {/* O card é sticky à esquerda e tem a largura da área visível, não a da
+          tabela: rolar a tabela na horizontal move as outras linhas por baixo
+          dele, enquanto ele permanece parado e inteiro na tela. */}
+      <td colSpan={colspan} className="p-0 bg-zinc-900/30 border-b border-zinc-900">
+        <div className="sticky left-0" style={{ width: larguraVisivel || undefined }}>
+          <div className={`${GUTTER} py-5`}>
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Plantas */}
           <div className="flex flex-col gap-2 min-w-0">
@@ -378,7 +387,10 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl }: {
                 <dd className="text-xs font-medium text-zinc-300">{unidade.valorTabela > 0 ? formatMoeda(unidade.valorTabela) : '—'}</dd>
               </div>
               {entradas.map(e => (
-                <div key={e.id} className="min-w-0">
+                // As colunas que já estão na linha compacta se repetem aqui
+                // apenas no celular, onde elas saem da tela ao rolar. No
+                // desktop a linha inteira está visível e repetir seria ruído.
+                <div key={e.id} className={`min-w-0 ${chavesLinha.has(e.id) ? 'lg:hidden' : ''}`}>
                   <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider truncate">{e.label}</dt>
                   <dd className="text-xs font-medium text-zinc-300">{formatLpValor(e.tipo, e.read(unidade))}</dd>
                 </div>
@@ -396,6 +408,8 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl }: {
               </a>
             )}
           </div>
+            </div>
+          </div>
         </div>
       </td>
     </tr>
@@ -407,20 +421,37 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl }: {
  * celular rola na horizontal com a coluna da unidade fixa à esquerda — é a
  * única referência de qual linha se está lendo. No desktop cabe inteira.
  */
-function UnidadesTabela({ unidades, entradasLinha, entradasDetalhe, plantas, cvcrmTemplate }: {
+function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplate }: {
   unidades: LpCorretorPublicUnidade[];
-  entradasLinha: ReturnType<typeof mergeLpColunas>;
-  entradasDetalhe: ReturnType<typeof mergeLpColunas>;
+  /** Todas as colunas visíveis, na ordem configurada. */
+  entradas: ReturnType<typeof mergeLpColunas>;
+  /** Quais delas vão na linha compacta; o resto só no card expandido. */
+  chavesLinha: Set<string>;
   plantas: LpCorretorPlanta[];
   cvcrmTemplate: string | null;
 }) {
   const [expandida, setExpandida] = useState<string | null>(null);
   const temReserva = !!cvcrmTemplate?.trim();
   const stickyBg = 'bg-[#08080a]';
+  const entradasLinha = useMemo(() => entradas.filter(e => chavesLinha.has(e.id)), [entradas, chavesLinha]);
   const colspan = 2 + entradasLinha.length + (temReserva ? 1 : 0) + 1;
 
+  // O card expandido precisa ter a largura da área visível, não a da tabela —
+  // é o que permite mantê-lo inteiro na tela enquanto as linhas rolam por baixo.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [larguraVisivel, setLarguraVisivel] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const medir = () => setLarguraVisivel(el.clientWidth);
+    medir();
+    const observer = new ResizeObserver(medir);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div ref={scrollRef} className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <table className="w-full border-collapse">
         <thead>
           <tr className="[&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-zinc-800 [&>th]:text-[9px] lg:[&>th]:text-[10px] [&>th]:font-bold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:whitespace-nowrap">
@@ -444,14 +475,19 @@ function UnidadesTabela({ unidades, entradasLinha, entradasDetalhe, plantas, cvc
                 <tr
                   onClick={() => setExpandida(aberta ? null : u.id)}
                   aria-expanded={aberta}
-                  className={`cursor-pointer [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:border-zinc-900 [&>td]:transition-colors ${
-                    aberta ? '[&>td]:bg-zinc-900/40' : 'lg:hover:[&>td]:bg-zinc-900/30'
+                  className={`cursor-pointer [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
+                    aberta
+                      ? '[&>td]:bg-blue-500/10 [&>td]:border-blue-500/30'
+                      : '[&>td]:border-zinc-900 lg:hover:[&>td]:bg-zinc-900/30'
                   }`}
                 >
-                  <td className={`sticky left-0 z-10 ${aberta ? 'bg-[#111114]' : stickyBg} lg:static lg:bg-transparent pl-5 sm:pl-6 lg:pl-8`}>
+                  {/* A célula fixa precisa de fundo opaco próprio: o realce
+                      translúcido da linha deixaria as outras colunas passarem
+                      por trás dela durante a rolagem horizontal. */}
+                  <td className={`sticky left-0 z-10 lg:static lg:bg-transparent pl-5 sm:pl-6 lg:pl-8 ${aberta ? 'bg-[#101623]' : stickyBg}`}>
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
                       <span className={`w-1.5 h-1.5 rounded-[2px] shrink-0 ${SITUACAO_DOT[u.situacao]}`} title={LP_SITUACAO_LABELS[u.situacao]} />
-                      <span className={`text-xs font-bold ${disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>{u.unidade}</span>
+                      <span className={`text-xs font-bold ${aberta ? 'text-blue-300' : disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>{u.unidade}</span>
                     </span>
                   </td>
                   <td className={`text-right text-xs font-semibold whitespace-nowrap ${disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>
@@ -486,10 +522,12 @@ function UnidadesTabela({ unidades, entradasLinha, entradasDetalhe, plantas, cvc
                 {aberta && (
                   <DetalheUnidade
                     unidade={u}
-                    entradas={entradasDetalhe}
+                    entradas={entradas}
+                    chavesLinha={chavesLinha}
                     plantas={plantasDaUnidade(plantas, u.unidade)}
                     colspan={colspan}
                     reservaUrl={reservaUrl}
+                    larguraVisivel={larguraVisivel}
                   />
                 )}
               </React.Fragment>
@@ -523,15 +561,12 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   }, [data]);
 
   const entradas = useMemo(() => (data ? mergeLpColunas(data.colunas, data.regras) : []), [data]);
-  // Partição configurada no painel: o que vai na linha compacta e o que fica
-  // reservado para a expansão, ao lado da planta.
-  const entradasLinha = useMemo(
-    () => entradas.filter(e => data?.config.colunasLinha?.includes(e.id)),
-    [entradas, data]
-  );
-  const entradasDetalhe = useMemo(
-    () => entradas.filter(e => !data?.config.colunasLinha?.includes(e.id)),
-    [entradas, data]
+  // Partição configurada no painel: quais colunas vão na linha compacta. O
+  // restante aparece só no card expandido — e no celular o card repete também
+  // as da linha, que saem da tela quando a tabela rola.
+  const chavesLinha = useMemo(
+    () => new Set(data?.config.colunasLinha || []),
+    [data]
   );
   const unidades = useMemo(() => (data ? sortUnidades(data.unidades) : []), [data]);
   const colArea = useMemo(() => (data ? colunaMetragem(data.colunas) : null), [data]);
@@ -585,7 +620,11 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
       className="min-h-[100svh] w-full overflow-x-hidden bg-[#08080a] text-zinc-100 antialiased"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
-      <div className="mx-auto w-full max-w-lg lg:max-w-6xl">
+      {/* A largura cresce por etapas em vez de saltar de 512px para o desktop:
+          navegador interno de WhatsApp/Instagram e o modo "site para
+          computador" montam a página com viewport largo, e uma coluna estreita
+          travada no meio de 980px fica ilegível. */}
+      <div className="mx-auto w-full max-w-lg sm:max-w-2xl md:max-w-4xl lg:max-w-6xl">
         {/* Banner principal */}
         <header className="relative">
           {banner ? (
@@ -728,8 +767,8 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           <div className="py-4">
             <UnidadesTabela
               unidades={visiveis}
-              entradasLinha={entradasLinha}
-              entradasDetalhe={entradasDetalhe}
+              entradas={entradas}
+              chavesLinha={chavesLinha}
               plantas={config.plantas}
               cvcrmTemplate={config.cvcrmUrlTemplate}
             />

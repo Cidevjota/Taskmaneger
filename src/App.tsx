@@ -1227,7 +1227,19 @@ export default function App() {
   }
 
   return (
-    <div className={`h-screen flex overflow-hidden bg-[#08080a] text-zinc-100 ${isDarkMode ? 'dark' : ''}`}>
+    // O index.html usa viewport-fit=cover por causa da LP do Corretor, que
+    // sangra o banner até as bordas. O app não é desenhado para áreas seguras,
+    // então recolhe os insets aqui para não passar por baixo do recorte nem do
+    // indicador de gestos. Em telas sem recorte os env() valem 0.
+    <div
+      className={`h-screen flex overflow-hidden bg-[#08080a] text-zinc-100 ${isDarkMode ? 'dark' : ''}`}
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+      }}
+    >
       
       {/* Collapsible Sidebar block */}
       <Sidebar
