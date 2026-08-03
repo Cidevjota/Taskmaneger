@@ -447,7 +447,7 @@ export interface SiengeCategoriaOrcamento {
   updatedAt: string;
 }
 
-export type SiengeVendaSituacao = 'vendida' | 'disponivel' | 'permuta' | 'bloqueada';
+export type SiengeVendaSituacao = 'vendida' | 'disponivel' | 'reservado' | 'permuta' | 'bloqueada';
 
 // Unidade, valor de tabela e situação são fixos (sustentam o congelamento de
 // venda e o reajuste de INCC no banco). Todas as demais colunas variam por
@@ -461,6 +461,8 @@ export interface SiengeTabelaVendaUnidade {
   camposExtra: Record<string, number | string>;
   descricao: string | null;
   compradorAtual: string | null;
+  // Motivo da última mudança de situação; copiado para o snapshot de venda.
+  situacaoMotivo: string | null;
   frozenSince: string | null;
   // Carimbo da confirmação explícita de venda. Só quando este campo muda no
   // mesmo UPDATE que leva a situação para "vendida" é que o snapshot em
@@ -499,6 +501,11 @@ export interface SiengeVenda {
   comprador: string | null;
   dataVenda: string;
   dataDistrato: string | null;
+  // Motivo informado ao alterar a situação que gerou este congelamento.
+  motivo: string | null;
+  // 'vendida' ou 'permuta' — permuta também alimenta o orçamento real.
+  situacaoOrigem: SiengeVendaSituacao | null;
+  motivoDistrato: string | null;
 }
 
 export interface SiengeOrcamentoConfig {
@@ -611,6 +618,9 @@ export interface LpCorretorConfig {
   // Subconjunto de colunasVisiveis exibido na linha compacta da tabela; o
   // restante aparece apenas ao expandir a unidade.
   colunasLinha: LpCorretorColunaKey[];
+  // Quando a versão atual dos valores foi aprovada para a LP. null = nunca
+  // publicada, e a LP serve a tabela ao vivo.
+  tabelaPublicadaEm: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -675,5 +685,14 @@ export interface SiengeTabelaVendaRevisao {
   unidadesAfetadas: number;
   unidades: string[] | null;
   descricao: string | null;
+  // Obrigatório desde 02/08/2026; revisões antigas caem para `descricao`.
+  motivo: string | null;
+  // Backup dos valores da tabela inteira imediatamente antes do reajuste.
+  // Só o indicador vem para o client — o conteúdo fica no banco.
+  temBackup: boolean;
+  revertidaEm: string | null;
   createdAt: string;
+  // Keys reajustadas: 'valor_tabela' e/ou keys de SiengeTabelaVendaColuna.
+  // Null em revisões anteriores a 02/08/2026, que sempre reajustavam só o valor de tabela.
+  colunas: string[] | null;
 }

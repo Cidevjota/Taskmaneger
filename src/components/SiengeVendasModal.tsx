@@ -1,16 +1,70 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone } from 'lucide-react';
+import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen } from 'lucide-react';
 import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeCalculoOperacao, SiengeColunaTipo, SiengeVenda, SiengeValidacao, SiengeValidacaoTermo } from '../types';
+
 import SiengeVendasTable from './SiengeVendasTable';
 import LpCorretorConfigPanel from './LpCorretorConfigPanel';
-import { ColunaOuRegra, calcValidacaoParcelas, calcValidacaoValorUnidade, colunaBaseLabel, exportSiengeVendasCsv, isDiferencaOk, mergeColunasRegras, parseSiengeVendasCsv, parseSiengeVendasXlsx, REGRA_KEY_PREFIX } from '../lib/siengeVendasTabela';
+import { ColunaOuRegra, calcValidacaoParcelas, calcValidacaoValorUnidade, colunaBaseLabel, exportSiengeVendasCsv, isDiferencaOk, mergeColunasRegras, parseSiengeVendasCsv, parseSiengeVendasXlsx, REGRA_KEY_PREFIX, unidadeValidacaoPendente } from '../lib/siengeVendasTabela';
 
 const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
+  reservado: 'Reservado',
   vendida: 'Vendida',
   permuta: 'Permuta',
   bloqueada: 'Bloqueada',
 };
+
+// Venda e permuta congelam o valor no orçamento real, então exigem comprador.
+const SITUACOES_COM_COMPRADOR: SiengeVendaSituacao[] = ['vendida', 'permuta'];
+
+// Pílula da situação escolhida em "Alterar Situação": assume a cor da própria
+// situação, a mesma que tinge a linha na tabela. Assim a escolha já mostra o
+// resultado antes de confirmar, em vez de um azul genérico de "selecionado".
+const SITUACAO_PILL: Record<SiengeVendaSituacao, string> = {
+  disponivel: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  reservado: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  vendida: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  permuta: 'bg-violet-500/15 text-violet-400 border-violet-500/30',
+  bloqueada: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+};
+
+const SITUACAO_DOT: Record<SiengeVendaSituacao, string> = {
+  disponivel: 'bg-blue-400',
+  reservado: 'bg-amber-400',
+  vendida: 'bg-emerald-400',
+  permuta: 'bg-violet-400',
+  bloqueada: 'bg-zinc-500',
+};
+
+// Painéis expansíveis da tela — no máximo um aberto por vez.
+type PainelId = 'colunas' | 'calculo' | 'reajuste' | 'validarConfig' | 'historico' | 'historicoVendas' | 'situacao' | 'lpCorretor' | null;
+
+// ── Vocabulário visual da barra de ferramentas ──────────────────────────────
+// Altura única para todo controle da faixa de contexto (dropdown, busca,
+// segmentado, ações): sem isso cada um herdava a altura do próprio conteúdo e
+// a linha ficava com as bases desalinhadas.
+const CTL_H = 'h-9';
+
+// Todo controle clicável responde ao clique com um recuo mínimo — é o retorno
+// que confirma que o toque foi registrado, antes mesmo de a tela reagir.
+const PRESS = 'transition-all duration-150 active:scale-[0.97]';
+
+// Segmentado do filtro de situação — pílulas dentro de um trilho só.
+// border-transparent no estado inativo para a pílula ativa (que tem borda
+// colorida) não empurrar as vizinhas ao ser selecionada.
+const SEG_BTN = `px-2.5 py-1 text-[11px] font-semibold rounded-md border border-transparent ${PRESS}`;
+const SEG_ON = 'bg-blue-500/15 text-blue-400 border-blue-500/30';
+const SEG_OFF = 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60';
+// Contador dentro da pílula: herda a cor do estado, então não precisa de
+// variante própria por situação.
+const SEG_COUNT = 'text-[10px] font-bold tabular-nums opacity-60';
+
+// Faixa de ferramentas — botões fantasma dentro de um contêiner compartilhado.
+const TOOL_BTN = `flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap ${PRESS}`;
+const TOOL_ON = 'bg-blue-500/15 text-blue-400';
+const TOOL_OFF = 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/70';
+const TOOL_SEP = 'w-px h-5 bg-zinc-800 mx-1 shrink-0';
+const TOOL_BADGE = 'bg-zinc-800 text-zinc-400 text-[10px] leading-none px-1.5 py-0.5 rounded-full font-bold tabular-nums';
 
 const TIPO_LABELS: Record<SiengeColunaTipo, string> = {
   numero: 'Número',
@@ -28,7 +82,16 @@ interface SiengeVendasModalProps {
   regras: SiengeCalculoRegra[];
   onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteUnidade: (id: string) => void;
-  onApplyReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null }) => Promise<void> | void;
+  onApplyReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
+  onReverterRevisao: (revisaoId: string) => Promise<void> | void;
+  onAlterarSituacao: (params: {
+    projectId: string;
+    unidadeIds: string[];
+    situacao: SiengeVendaSituacao;
+    motivo: string;
+    comprador: string | null;
+    data: string | null;
+  }) => Promise<void> | void;
   onSaveColuna: (coluna: SiengeTabelaVendaColuna) => void;
   onDeleteColuna: (id: string) => void;
   onSaveRegra: (regra: SiengeCalculoRegra) => void;
@@ -371,18 +434,31 @@ function RegraRow({ regra, colunas, onCommit, onDelete }: {
   );
 }
 
+// Percentual de reajuste aceita até 5 casas decimais — índices como INCC e IGPM
+// são divulgados com essa precisão, e arredondar antes de aplicar propaga o erro
+// para o valor de todas as unidades.
+// Palavra exigida na segunda etapa da confirmação de reversão.
+const PALAVRA_REVERTER = 'reverter';
+
+const PERCENT_DECIMAIS = 5;
+const PERCENT_FATOR = 10 ** PERCENT_DECIMAIS;
+
+function roundPercent(v: number): number {
+  return Math.round(v * PERCENT_FATOR) / PERCENT_FATOR;
+}
+
 function PercentStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const format = (v: number) => (v ? v.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '');
+  const format = (v: number) => (v ? v.toLocaleString('pt-BR', { maximumFractionDigits: PERCENT_DECIMAIS }) : '');
   const [text, setText] = useState(format(value));
 
   useEffect(() => { setText(format(value)); }, [value]);
 
   const commit = (raw: string) => {
     const parsed = parseFloat(raw.replace(',', '.'));
-    onChange(isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100);
+    onChange(isNaN(parsed) ? 0 : roundPercent(parsed));
   };
 
-  const step = (delta: number) => onChange(Math.round((value + delta) * 100) / 100);
+  const step = (delta: number) => onChange(roundPercent(value + delta));
 
   return (
     <div className="flex items-center bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden focus-within:border-blue-500/50 transition-colors">
@@ -397,7 +473,7 @@ function PercentStepper({ value, onChange }: { value: number; onChange: (v: numb
         onBlur={e => commit(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         placeholder="0,0"
-        className="w-14 bg-transparent text-center text-xs text-zinc-100 placeholder-zinc-600 outline-none py-1.5"
+        className="w-24 bg-transparent text-center text-xs text-zinc-100 placeholder-zinc-600 outline-none py-1.5"
       />
       <button type="button" onClick={() => step(0.1)} className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 active:bg-zinc-700 transition-colors">
         <Plus size={11} />
@@ -672,7 +748,7 @@ function ValidarPanel({ projectId, unidades, colunas, regras, validacoes, onSave
   };
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+    <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400 shrink-0">
@@ -910,12 +986,14 @@ function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colu
         <thead>
           <tr>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Unidade</th>
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Origem</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Comprador</th>
-            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Data da Venda</th>
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Data</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor Congelado</th>
             {sortedColunas.map(c => (
               <th key={c.key} className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{c.label}</th>
             ))}
+            <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Observações</th>
             <th className="text-left px-3 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
           </tr>
         </thead>
@@ -923,6 +1001,15 @@ function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colu
           {filtradas.map(v => (
             <tr key={v.id} className="[&>td]:bg-zinc-900/40 [&>td]:border-y [&>td]:border-zinc-800/50 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               <td className="px-3 py-2 text-xs font-medium text-zinc-100">{v.unidade}</td>
+              <td className="px-3 py-2 whitespace-nowrap">
+                {/* Congelamentos anteriores a 02/08/2026 não registravam a
+                    origem; todos eles vinham de venda. */}
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                  v.situacaoOrigem === 'permuta' ? 'bg-violet-500/10 text-violet-400' : 'bg-emerald-500/10 text-emerald-400'
+                }`}>
+                  {v.situacaoOrigem === 'permuta' ? 'Permuta' : 'Venda'}
+                </span>
+              </td>
               <td className="px-3 py-2 text-xs text-zinc-300">{v.comprador || '—'}</td>
               <td className="px-3 py-2 text-xs text-zinc-400 whitespace-nowrap">{formatDateTime(v.dataVenda)}</td>
               <td className="px-3 py-2 text-xs font-semibold text-zinc-100 whitespace-nowrap">{formatCurrency(v.valorCongelado)}</td>
@@ -940,9 +1027,13 @@ function HistoricoVendasTable({ vendas, colunas }: { vendas: SiengeVenda[]; colu
                   </td>
                 );
               })}
+              <td className="px-3 py-2 text-xs text-zinc-400 min-w-[180px]">{v.motivo || '—'}</td>
               <td className="px-3 py-2 text-xs whitespace-nowrap">
                 {v.dataDistrato ? (
-                  <span className="text-zinc-500">Distratada em {formatDateTime(v.dataDistrato)}</span>
+                  <span className="text-zinc-500" title={v.motivoDistrato || undefined}>
+                    Distratada em {formatDateTime(v.dataDistrato)}
+                    {v.motivoDistrato && <span className="block text-[10px] text-zinc-600 max-w-[200px] truncate">{v.motivoDistrato}</span>}
+                  </span>
                 ) : (
                   <span className="text-emerald-400 font-semibold">Ativa</span>
                 )}
@@ -977,24 +1068,64 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
 
 export default function SiengeVendasModal({
   projects, unidades, revisoes, vendas, colunas, regras,
-  onSaveUnidade, onDeleteUnidade, onApplyReajuste, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
+  onSaveUnidade, onDeleteUnidade, onApplyReajuste, onReverterRevisao, onAlterarSituacao, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
   validacoes, onSaveValidacao, onDeleteValidacao, onClose,
 }: SiengeVendasModalProps) {
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [situacaoFilter, setSituacaoFilter] = useState<SiengeVendaSituacao | 'todas'>('todas');
   const [searchText, setSearchText] = useState('');
-  const [showReajuste, setShowReajuste] = useState(false);
-  const [showHistorico, setShowHistorico] = useState(false);
-  const [showCalculo, setShowCalculo] = useState(false);
-  const [showColunas, setShowColunas] = useState(false);
+  // Só faz sentido com "Validar" ligado — a comparação depende das colunas de
+  // validação estarem sendo calculadas. Sem isso, o toggle ficaria "ativo" na
+  // memória enquanto invisível, e reaparecer ligado ao religar Validar
+  // surpreenderia o usuário com uma lista já filtrada que ele não pediu agora.
+  const [somentePendentes, setSomentePendentes] = useState(false);
+  // Painéis são mutuamente exclusivos: um estado só, em vez de oito booleanos
+  // que cada botão precisava lembrar de desligar — o que já deixava "Alterar
+  // Situação" empilhado junto com qualquer outro painel aberto depois dele.
+  const [painel, setPainel] = useState<PainelId>(null);
+  const togglePainel = (id: Exclude<PainelId, null>) => setPainel(p => (p === id ? null : id));
+  const showReajuste = painel === 'reajuste';
+  const showHistorico = painel === 'historico';
+  const showCalculo = painel === 'calculo';
+  const showColunas = painel === 'colunas';
+  const showValidarConfig = painel === 'validarConfig';
+  const showHistoricoVendas = painel === 'historicoVendas';
+  const showLpCorretor = painel === 'lpCorretor';
+  const showSituacao = painel === 'situacao';
+  // "Validar" não é painel: liga as duas colunas de validação na tabela e
+  // continua valendo com qualquer painel aberto.
   const [showValidar, setShowValidar] = useState(false);
-  const [showValidarConfig, setShowValidarConfig] = useState(false);
-  const [showHistoricoVendas, setShowHistoricoVendas] = useState(false);
-  const [showLpCorretor, setShowLpCorretor] = useState(false);
+  // Edição livre desligada por padrão: a tabela alimenta o orçamento real e a
+  // LP publicada, então digitar numa célula por engano tem custo.
+  const [edicaoLivre, setEdicaoLivre] = useState(false);
+  const [situacaoAlvo, setSituacaoAlvo] = useState<SiengeVendaSituacao>('reservado');
+  const [situacaoMotivo, setSituacaoMotivo] = useState('');
+  const [situacaoComprador, setSituacaoComprador] = useState('');
+  const [situacaoData, setSituacaoData] = useState('');
+  const [situacaoUnitIds, setSituacaoUnitIds] = useState<Set<string>>(new Set());
+  // Filtro e busca do seletor de unidades do painel. Com 124 unidades, listar
+  // todas de uma vez torna o painel inutilizável — na prática se altera a
+  // situação de um recorte ("as disponíveis", "as reservadas"), não da lista toda.
+  const [situacaoOrigemFiltro, setSituacaoOrigemFiltro] = useState<SiengeVendaSituacao | 'todas'>('todas');
+  const [situacaoBusca, setSituacaoBusca] = useState('');
+  const [situacaoDropdownOpen, setSituacaoDropdownOpen] = useState(false);
+  const [alterandoSituacao, setAlterandoSituacao] = useState(false);
+  const [erroSituacao, setErroSituacao] = useState<string | null>(null);
   const [reajusteTipo, setReajusteTipo] = useState<'geral' | 'seletiva'>('geral');
   const [reajustePercentual, setReajustePercentual] = useState(0);
   const [reajusteDescricao, setReajusteDescricao] = useState('');
+  const [reajusteMotivo, setReajusteMotivo] = useState('');
+  // Colunas que recebem o percentual — valor de tabela sempre entra por padrão;
+  // colunas extras em moeda/número podem ser somadas ou trocadas por ele.
+  const [reajusteColunas, setReajusteColunas] = useState<Set<string>>(new Set(['valor_tabela']));
+  // Reverter reescreve os valores de todas as unidades e é irreversível na
+  // prática — daí a confirmação em duas etapas, a segunda exigindo digitar a
+  // palavra. Não há como sair no piloto automático clicando "ok, ok".
+  const [revisaoParaReverter, setRevisaoParaReverter] = useState<SiengeTabelaVendaRevisao | null>(null);
+  const [revertEtapa, setRevertEtapa] = useState<1 | 2>(1);
+  const [revertTexto, setRevertTexto] = useState('');
+  const [revertendo, setRevertendo] = useState(false);
   const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
   const [applying, setApplying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1027,16 +1158,40 @@ export default function SiengeVendasModal({
     [validacoes, selectedProjectId]
   );
 
+  // Quantas unidades do empreendimento estão com alguma validação fora da
+  // tolerância — vira o contador do botão "Pendentes" e existe fora de
+  // filteredUnidades porque o contador precisa contar sobre a base completa,
+  // não sobre o que sobrou depois do filtro de situação/busca.
+  const pendentesCount = useMemo(() => {
+    if (!showValidar || projectValidacoes.length === 0) return 0;
+    return projectUnidades.filter(u => unidadeValidacaoPendente(u, projectValidacoes, projectRegras)).length;
+  }, [projectUnidades, projectValidacoes, projectRegras, showValidar]);
+
+  // Se a última pendência foi corrigida com o filtro ativo, a lista some
+  // silenciosamente sem explicar por quê — desliga o filtro e volta a mostrar
+  // a tabela normal, já que "0 pendentes" deixou de ser um recorte útil.
+  useEffect(() => {
+    if (somentePendentes && pendentesCount === 0) setSomentePendentes(false);
+  }, [somentePendentes, pendentesCount]);
+
   const filteredUnidades = useMemo(() => {
     const bySituacao = situacaoFilter === 'todas' ? projectUnidades : projectUnidades.filter(u => u.situacao === situacaoFilter);
-    return searchUnidades(bySituacao, searchText);
-  }, [projectUnidades, situacaoFilter, searchText]);
+    const buscadas = searchUnidades(bySituacao, searchText);
+    if (!showValidar || !somentePendentes) return buscadas;
+    return buscadas.filter(u => unidadeValidacaoPendente(u, projectValidacoes, projectRegras));
+  }, [projectUnidades, situacaoFilter, searchText, showValidar, somentePendentes, projectValidacoes, projectRegras]);
 
-  // Unidades vendidas/permutadas têm o preço congelado — nem aparecem como
-  // opção no reajuste seletivo, coerente com a trava aplicada no banco.
-  const reajustaveisUnidades = useMemo(
-    () => projectUnidades.filter(u => u.situacao === 'disponivel' || u.situacao === 'bloqueada'),
-    [projectUnidades]
+  // O reajuste afeta a tabela inteira — inclusive vendidas e em permuta, para
+  // o cliente ver quanto a unidade valorizou desde a compra. O que fica
+  // congelado é só a CÓPIA em sienge_vendas (Histórico de Vendas), não o valor
+  // vivo aqui na tabela.
+  const reajustaveisUnidades = projectUnidades;
+
+  // Só colunas extras numéricas fazem sentido receber um percentual — texto e
+  // área não são valores monetários/quantidades que acompanham reajuste.
+  const reajustaveisColunas = useMemo(
+    () => projectColunas.filter(c => c.tipo === 'moeda' || c.tipo === 'numero'),
+    [projectColunas]
   );
 
   const projectRevisoes = useMemo(
@@ -1057,15 +1212,30 @@ export default function SiengeVendasModal({
     });
   };
 
+  const toggleReajusteColuna = (key: string) => {
+    setReajusteColunas(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   const resetReajuste = () => {
-    setShowReajuste(false);
+    setPainel(null);
     setReajusteTipo('geral');
     setReajustePercentual(0);
     setReajusteDescricao('');
+    setReajusteMotivo('');
     setSelectedUnitIds(new Set());
+    setReajusteColunas(new Set(['valor_tabela']));
   };
 
-  const canApply = reajustePercentual !== 0 && (reajusteTipo === 'geral' || selectedUnitIds.size > 0);
+  // O motivo é obrigatório: fica registrado na revisão e é o que explica o
+  // reajuste meses depois, quando ninguém lembra por que a tabela mudou.
+  const canApply = reajustePercentual !== 0
+    && reajusteMotivo.trim().length > 0
+    && reajusteColunas.size > 0
+    && (reajusteTipo === 'geral' || selectedUnitIds.size > 0);
 
   const handleApply = async () => {
     if (!selectedProjectId || !canApply || applying) return;
@@ -1076,10 +1246,125 @@ export default function SiengeVendasModal({
         unidadeIds: reajusteTipo === 'geral' ? null : Array.from(selectedUnitIds),
         percentual: reajustePercentual,
         descricao: reajusteDescricao.trim() || null,
+        motivo: reajusteMotivo.trim(),
+        colunas: Array.from(reajusteColunas),
       });
       resetReajuste();
     } finally {
       setApplying(false);
+    }
+  };
+
+  const exigeComprador = SITUACOES_COM_COMPRADOR.includes(situacaoAlvo);
+
+  const resetSituacao = () => {
+    setPainel(null);
+    setSituacaoAlvo('reservado');
+    setSituacaoMotivo('');
+    setSituacaoComprador('');
+    setSituacaoData('');
+    setSituacaoUnitIds(new Set());
+    setErroSituacao(null);
+    setSituacaoOrigemFiltro('todas');
+    setSituacaoBusca('');
+    setSituacaoDropdownOpen(false);
+  };
+
+  // Quantas unidades há em cada situação — vira o contador de cada aba do
+  // filtro, para escolher o recorte sem precisar abri-lo para descobrir.
+  const situacaoContagem = useMemo(() => {
+    const acc = { disponivel: 0, reservado: 0, vendida: 0, permuta: 0, bloqueada: 0 } as Record<SiengeVendaSituacao, number>;
+    projectUnidades.forEach(u => { acc[u.situacao] += 1; });
+    return acc;
+  }, [projectUnidades]);
+
+  const situacaoUnidadesVisiveis = useMemo(() => {
+    const base = situacaoOrigemFiltro === 'todas'
+      ? projectUnidades
+      : projectUnidades.filter(u => u.situacao === situacaoOrigemFiltro);
+    return [...searchUnidades(base, situacaoBusca)]
+      .sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
+  }, [projectUnidades, situacaoOrigemFiltro, situacaoBusca]);
+
+  // Selecionadas que o filtro atual esconde. Sem expor isso, aplicar a mudança
+  // atingiria unidades que não estão na tela — a pior surpresa possível numa
+  // ação que congela valor e alimenta o orçamento.
+  const situacaoSelecionadasOcultas = useMemo(() => {
+    const visiveis = new Set(situacaoUnidadesVisiveis.map(u => u.id));
+    return Array.from(situacaoUnitIds).filter(id => !visiveis.has(id)).length;
+  }, [situacaoUnitIds, situacaoUnidadesVisiveis]);
+
+  const todasVisiveisSelecionadas = situacaoUnidadesVisiveis.length > 0
+    && situacaoUnidadesVisiveis.every(u => situacaoUnitIds.has(u.id));
+
+  // Alterna o bloco visível inteiro: com o filtro em "Disponível", vira
+  // "selecionar todas as disponíveis" num clique.
+  const toggleVisiveis = () => {
+    setSituacaoUnitIds(prev => {
+      const next = new Set(prev);
+      if (todasVisiveisSelecionadas) situacaoUnidadesVisiveis.forEach(u => next.delete(u.id));
+      else situacaoUnidadesVisiveis.forEach(u => next.add(u.id));
+      return next;
+    });
+  };
+
+  const toggleSituacaoUnit = (id: string) => {
+    setSituacaoUnitIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const canAlterarSituacao = situacaoUnitIds.size > 0
+    && situacaoMotivo.trim().length > 0
+    && (!exigeComprador || situacaoComprador.trim().length > 0);
+
+  const handleAlterarSituacao = async () => {
+    if (!selectedProjectId || !canAlterarSituacao || alterandoSituacao) return;
+    setAlterandoSituacao(true);
+    setErroSituacao(null);
+    try {
+      await onAlterarSituacao({
+        projectId: selectedProjectId,
+        unidadeIds: Array.from(situacaoUnitIds),
+        situacao: situacaoAlvo,
+        motivo: situacaoMotivo.trim(),
+        comprador: exigeComprador ? situacaoComprador.trim() : null,
+        // Data local escolhida vira meio-dia para preservar a ordem de vários
+        // registros no mesmo dia sem escorregar de fuso.
+        data: situacaoData ? new Date(`${situacaoData}T12:00:00`).toISOString() : null,
+      });
+      resetSituacao();
+    } catch (e: any) {
+      setErroSituacao(e?.message || 'Erro ao alterar a situação.');
+    } finally {
+      setAlterandoSituacao(false);
+    }
+  };
+
+  const abrirReverter = (revisao: SiengeTabelaVendaRevisao) => {
+    setRevisaoParaReverter(revisao);
+    setRevertEtapa(1);
+    setRevertTexto('');
+  };
+
+  const fecharReverter = () => {
+    setRevisaoParaReverter(null);
+    setRevertEtapa(1);
+    setRevertTexto('');
+  };
+
+  const revertConfirmado = revertTexto.trim().toLowerCase() === PALAVRA_REVERTER;
+
+  const handleReverter = async () => {
+    if (!revisaoParaReverter || revertendo || !revertConfirmado) return;
+    setRevertendo(true);
+    try {
+      await onReverterRevisao(revisaoParaReverter.id);
+      fecharReverter();
+    } finally {
+      setRevertendo(false);
     }
   };
 
@@ -1145,13 +1430,16 @@ export default function SiengeVendasModal({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
-        {/* Empreendimento + filtros + ações — tudo na mesma linha, mesma altura */}
+        {/* Faixa 1 — contexto e filtros (o que estou vendo) + ações de rotina.
+            Faixa 2 (abaixo) — ferramentas de configuração, agrupadas por assunto.
+            A separação existe porque 11 botões de mesmo peso na mesma linha não
+            deixavam claro o que é uso diário e o que é ajuste estrutural. */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <button
               type="button"
               onClick={() => setIsProjectDropdownOpen(p => !p)}
-              className="flex items-center gap-1.5 min-w-[200px] bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs outline-none transition-all hover:bg-zinc-800/60"
+              className={`flex items-center gap-1.5 min-w-[200px] ${CTL_H} bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 text-xs outline-none transition-all hover:bg-zinc-800/60`}
             >
               <Building2 size={13} className="text-zinc-500 shrink-0" />
               <span className={`truncate flex-1 text-left font-semibold ${selectedProject ? 'text-zinc-100' : 'text-zinc-500'}`}>
@@ -1162,18 +1450,20 @@ export default function SiengeVendasModal({
             {isProjectDropdownOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsProjectDropdownOpen(false)} />
-                <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-fade-in py-1">
+                <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-dropdown-in origin-top py-1">
                   <div className="max-h-48 overflow-y-auto custom-scrollbar">
                     {projects.map(p => (
                       <button
                         key={p.id}
                         type="button"
                         onClick={() => { setSelectedProjectId(p.id); setIsProjectDropdownOpen(false); setSituacaoFilter('todas'); setSearchText(''); resetReajuste(); }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-sm transition-colors ${
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium transition-colors ${
                           p.id === selectedProjectId ? 'bg-blue-500/10 text-blue-400' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'
                         }`}
                       >
-                        <span className="font-medium text-[13px]">{p.name}</span>
+                        <span className="truncate">{p.name}</span>
+                        {/* Cor sozinha não é indicador de seleção suficiente. */}
+                        {p.id === selectedProjectId && <Check size={13} strokeWidth={3} className="shrink-0 animate-scale-in" />}
                       </button>
                     ))}
                   </div>
@@ -1184,33 +1474,29 @@ export default function SiengeVendasModal({
 
           {selectedProjectId && (
             <>
-              <div className="h-6 w-px bg-zinc-800 shrink-0" />
-
               {/* Busca por unidade */}
-              <div className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2 focus-within:border-blue-500/50 transition-colors">
-                <Search size={12} className="text-zinc-500 shrink-0" />
+              <div className={`flex items-center gap-1.5 ${CTL_H} bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 focus-within:border-blue-500/50 transition-colors`}>
+                <Search size={13} className="text-zinc-500 shrink-0" />
                 <input
                   type="text"
                   value={searchText}
                   onChange={e => setSearchText(e.target.value)}
                   placeholder="Buscar unidade..."
-                  className="w-24 bg-transparent text-[11px] text-zinc-100 placeholder-zinc-600 outline-none"
+                  className="w-28 bg-transparent text-xs text-zinc-100 placeholder-zinc-600 outline-none"
                 />
                 {searchText && (
                   <button type="button" onClick={() => setSearchText('')} className="text-zinc-600 hover:text-zinc-300 transition-colors">
-                    <X size={11} />
+                    <X size={12} />
                   </button>
                 )}
               </div>
 
               {/* Filtro por situação */}
-              <div className="flex items-center gap-1 p-1 bg-zinc-900/60 border border-zinc-800 rounded-lg">
+              <div className={`flex items-center gap-0.5 ${CTL_H} px-1 bg-zinc-900/60 border border-zinc-800 rounded-lg`}>
                 <button
                   type="button"
                   onClick={() => setSituacaoFilter('todas')}
-                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                    situacaoFilter === 'todas' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
-                  }`}
+                  className={`${SEG_BTN} ${situacaoFilter === 'todas' ? SEG_ON : SEG_OFF}`}
                 >
                   Todas
                 </button>
@@ -1219,129 +1505,414 @@ export default function SiengeVendasModal({
                     key={s}
                     type="button"
                     onClick={() => setSituacaoFilter(s)}
-                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                      situacaoFilter === s ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
-                    }`}
+                    className={`${SEG_BTN} flex items-center gap-1.5 ${situacaoFilter === s ? SITUACAO_PILL[s] : SEG_OFF}`}
                   >
+                    <span className={`w-1.5 h-1.5 rounded-full transition-opacity ${SITUACAO_DOT[s]} ${situacaoFilter === s ? 'opacity-100' : 'opacity-40'}`} />
                     {SITUACAO_FILTER_LABELS[s]}
                   </button>
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ''; }}
-                />
+              {/* Só existe com "Validar" ligado — filtrar por pendência sem as
+                  colunas de validação visíveis não teria como o usuário conferir
+                  o motivo de cada uma estar na lista. */}
+              {showValidar && (
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800"
-                >
-                  <Upload size={13} /> Importar CSV/Excel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportCsv}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800"
-                >
-                  <Download size={13} /> Exportar CSV
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowColunas(v => !v); setShowReajuste(false); setShowHistorico(false); setShowCalculo(false); setShowValidarConfig(false); setShowHistoricoVendas(false); setShowLpCorretor(false); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showColunas ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  onClick={() => setSomentePendentes(v => !v)}
+                  title="Mostrar só as unidades com validação fora da tolerância"
+                  aria-pressed={somentePendentes}
+                  disabled={pendentesCount === 0}
+                  className={`flex items-center gap-1.5 ${CTL_H} px-3 text-[11px] font-semibold rounded-lg border ${PRESS} animate-scale-in disabled:opacity-40 disabled:cursor-not-allowed ${
+                    somentePendentes ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'text-zinc-400 bg-zinc-900/60 hover:text-zinc-100 hover:bg-zinc-800 border-zinc-800'
                   }`}
                 >
-                  <Columns3 size={13} /> Colunas
+                  <AlertTriangle size={13} /> Pendentes
+                  {pendentesCount > 0 && <span className={TOOL_BADGE}>{pendentesCount}</span>}
                 </button>
+              )}
+
+              {/* Ações de rotina — alinhadas à direita, com a primária em destaque */}
+              <div className="flex items-center gap-2 ml-auto">
                 <button
                   type="button"
-                  onClick={() => { setShowReajuste(v => !v); setShowHistorico(false); setShowCalculo(false); setShowColunas(false); setShowValidarConfig(false); setShowHistoricoVendas(false); setShowLpCorretor(false); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showReajuste ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  onClick={() => setEdicaoLivre(v => !v)}
+                  title={edicaoLivre
+                    ? 'Edição livre ativa: qualquer campo da tabela pode ser alterado'
+                    : 'Tabela protegida: ative para editar os campos livremente'}
+                  aria-pressed={edicaoLivre}
+                  className={`flex items-center gap-2 ${CTL_H} px-3 text-xs font-semibold rounded-lg border ${PRESS} ${
+                    edicaoLivre ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'text-zinc-400 bg-zinc-900/60 hover:text-zinc-100 hover:bg-zinc-800 border-zinc-800'
                   }`}
                 >
-                  <TrendingUp size={13} /> Atualizar Valor da Tabela
+                  {/* key faz o cadeado remontar na troca, então o ícone novo
+                      entra com escala em vez de trocar de forma seca. */}
+                  <span key={edicaoLivre ? 'aberto' : 'fechado'} className="animate-scale-in">
+                    {edicaoLivre ? <LockOpen size={13} /> : <Lock size={13} />}
+                  </span>
+                  Edição livre
+                  <span className={`relative w-7 h-3.5 rounded-full transition-colors duration-200 ${edicaoLivre ? 'bg-amber-500' : 'bg-zinc-700'}`}>
+                    <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${edicaoLivre ? 'left-[16px]' : 'left-0.5'}`} />
+                  </span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowCalculo(v => !v); setShowReajuste(false); setShowHistorico(false); setShowColunas(false); setShowValidarConfig(false); setShowHistoricoVendas(false); setShowLpCorretor(false); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showCalculo ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
-                  }`}
-                >
-                  <Calculator size={13} /> Regras de Cálculo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowHistorico(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowValidarConfig(false); setShowHistoricoVendas(false); setShowLpCorretor(false); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showHistorico ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
-                  }`}
-                >
-                  <History size={13} /> Histórico de Revisões
-                  {projectRevisoes.length > 0 && (
-                    <span className="bg-zinc-800 text-zinc-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{projectRevisoes.length}</span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowValidar(v => { const next = !v; if (!next) setShowValidarConfig(false); return next; })}
-                  title="Mostra nas colunas Validar Parcelas e Validar Valor da Unidade, calculadas para todas as unidades"
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showValidar ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
-                  }`}
-                >
-                  <ShieldCheck size={13} /> Validar
-                </button>
-                {showValidar && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowValidarConfig(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowHistorico(false); setShowHistoricoVendas(false); setShowLpCorretor(false); }}
-                    title="Editar fórmulas de validação"
-                    className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
-                      showValidarConfig ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
-                    }`}
-                  >
-                    <Settings size={13} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { setShowHistoricoVendas(v => !v); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowHistorico(false); setShowValidarConfig(false); setShowLpCorretor(false); }}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showHistoricoVendas ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
-                  }`}
-                >
-                  <ReceiptText size={13} /> Histórico de Vendas
-                  {projectVendas.length > 0 && (
-                    <span className="bg-zinc-800 text-zinc-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{projectVendas.length}</span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowLpCorretor(v => !v); setShowHistoricoVendas(false); setShowReajuste(false); setShowCalculo(false); setShowColunas(false); setShowHistorico(false); setShowValidarConfig(false); }}
+                  onClick={() => togglePainel('lpCorretor')}
                   title="Página pública com a tabela de preços, para os corretores"
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                    showLpCorretor ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800'
+                  className={`flex items-center gap-1.5 ${CTL_H} px-3 text-xs font-semibold rounded-lg border ${PRESS} ${
+                    showLpCorretor ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-400 bg-zinc-900/60 hover:text-zinc-100 hover:bg-zinc-800 border-zinc-800'
                   }`}
                 >
                   <Smartphone size={13} /> Tabela Corretor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => togglePainel('situacao')}
+                  title="Vender, reservar, bloquear ou liberar unidades"
+                  className={`flex items-center gap-1.5 ${CTL_H} px-3 text-xs font-semibold rounded-lg border ${PRESS} ${
+                    showSituacao
+                      ? 'bg-blue-500 text-white border-blue-400 shadow-sm shadow-blue-500/25'
+                      : 'bg-blue-500/15 text-blue-300 border-blue-500/30 hover:bg-blue-500/25 hover:text-blue-200'
+                  }`}
+                >
+                  <Tags size={13} /> Alterar Situação
                 </button>
               </div>
             </>
           )}
         </div>
 
+        {/* Faixa 2 — ferramentas, agrupadas por assunto dentro de um único
+            contêiner: Dados · Estrutura da tabela · Histórico. Botões fantasma
+            (sem borda própria) para não competirem com a faixa de cima. */}
+        {selectedProjectId && (
+          <div className="flex items-center gap-1 flex-wrap p-1 bg-zinc-900/40 border border-zinc-800/70 rounded-xl">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ''; }}
+            />
+            <button type="button" onClick={() => fileInputRef.current?.click()} className={`${TOOL_BTN} ${TOOL_OFF}`}>
+              <Upload size={13} /> Importar
+            </button>
+            <button type="button" onClick={handleExportCsv} className={`${TOOL_BTN} ${TOOL_OFF}`}>
+              <Download size={13} /> Exportar
+            </button>
+
+            <span className={TOOL_SEP} />
+
+            <button
+              type="button"
+              onClick={() => togglePainel('colunas')}
+              className={`${TOOL_BTN} ${showColunas ? TOOL_ON : TOOL_OFF}`}
+            >
+              <Columns3 size={13} /> Colunas
+            </button>
+            <button
+              type="button"
+              onClick={() => togglePainel('calculo')}
+              className={`${TOOL_BTN} ${showCalculo ? TOOL_ON : TOOL_OFF}`}
+            >
+              <Calculator size={13} /> Regras de Cálculo
+            </button>
+            <button
+              type="button"
+              onClick={() => togglePainel('reajuste')}
+              className={`${TOOL_BTN} ${showReajuste ? TOOL_ON : TOOL_OFF}`}
+            >
+              <TrendingUp size={13} /> Atualizar Valor
+            </button>
+
+            {/* Validar + engrenagem viram um par visual: a config é modificador
+                do toggle, não uma ação independente. */}
+            <span className={`flex items-center rounded-md ${showValidar ? 'bg-blue-500/15' : ''}`}>
+              <button
+                type="button"
+                onClick={() => setShowValidar(v => {
+                  const next = !v;
+                  if (!next) { setPainel(cur => (cur === 'validarConfig' ? null : cur)); setSomentePendentes(false); }
+                  return next;
+                })}
+                title="Mostra as colunas Validar Parcelas e Validar Valor da Unidade, calculadas para todas as unidades"
+                className={`${TOOL_BTN} ${showValidar ? 'text-blue-400' : TOOL_OFF}`}
+              >
+                <ShieldCheck size={13} /> Validar
+              </button>
+              {showValidar && (
+                <button
+                  type="button"
+                  onClick={() => togglePainel('validarConfig')}
+                  title="Editar fórmulas de validação"
+                  className={`flex items-center justify-center px-2 py-1.5 rounded-md animate-scale-in ${PRESS} ${
+                    showValidarConfig ? 'text-blue-300 bg-blue-500/20' : 'text-blue-400/70 hover:text-blue-300'
+                  }`}
+                >
+                  <Settings size={13} className={`transition-transform duration-300 ${showValidarConfig ? 'rotate-90' : ''}`} />
+                </button>
+              )}
+            </span>
+
+            <span className={TOOL_SEP} />
+
+            <button
+              type="button"
+              onClick={() => togglePainel('historico')}
+              className={`${TOOL_BTN} ${showHistorico ? TOOL_ON : TOOL_OFF}`}
+            >
+              <History size={13} /> Revisões
+              {projectRevisoes.length > 0 && <span className={TOOL_BADGE}>{projectRevisoes.length}</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => togglePainel('historicoVendas')}
+              className={`${TOOL_BTN} ${showHistoricoVendas ? TOOL_ON : TOOL_OFF}`}
+            >
+              <ReceiptText size={13} /> Histórico de Vendas
+              {projectVendas.length > 0 && <span className={TOOL_BADGE}>{projectVendas.length}</span>}
+            </button>
+          </div>
+        )}
+
         {!selectedProjectId ? (
           <p className="text-xs text-zinc-600 text-center py-10">Nenhum empreendimento cadastrado.</p>
         ) : (
           <>
+            {showSituacao && (
+              <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold text-zinc-200">Alterar Situação</h3>
+                    <p className="text-[11px] text-zinc-500">
+                      Caminho único para mudar situação. Venda e permuta congelam o valor e as colunas da unidade no
+                      Histórico de Vendas — é esse congelamento que alimenta o orçamento real.
+                    </p>
+                  </div>
+                  <button type="button" onClick={resetSituacao} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {/* Recorte da lista: filtro por situação atual + busca. */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className={`flex items-center gap-0.5 ${CTL_H} px-1 bg-zinc-900/60 border border-zinc-800 rounded-lg`}>
+                      <button
+                        type="button"
+                        onClick={() => setSituacaoOrigemFiltro('todas')}
+                        className={`${SEG_BTN} flex items-center gap-1.5 ${situacaoOrigemFiltro === 'todas' ? SEG_ON : SEG_OFF}`}
+                      >
+                        Todas
+                        <span className={SEG_COUNT}>{projectUnidades.length}</span>
+                      </button>
+                      {(Object.keys(SITUACAO_FILTER_LABELS) as SiengeVendaSituacao[]).map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setSituacaoOrigemFiltro(s)}
+                          disabled={situacaoContagem[s] === 0}
+                          className={`${SEG_BTN} flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed ${
+                            situacaoOrigemFiltro === s ? SITUACAO_PILL[s] : SEG_OFF
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${SITUACAO_DOT[s]} ${situacaoOrigemFiltro === s ? 'opacity-100' : 'opacity-40'}`} />
+                          {SITUACAO_FILTER_LABELS[s]}
+                          <span className={SEG_COUNT}>{situacaoContagem[s]}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className={`flex items-center gap-1.5 ${CTL_H} bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 focus-within:border-blue-500/50 transition-colors`}>
+                      <Search size={13} className="text-zinc-500 shrink-0" />
+                      <input
+                        type="text"
+                        value={situacaoBusca}
+                        onChange={e => setSituacaoBusca(e.target.value)}
+                        placeholder="Buscar unidade..."
+                        className="w-28 bg-transparent text-xs text-zinc-100 placeholder-zinc-600 outline-none"
+                      />
+                      {situacaoBusca && (
+                        <button type="button" onClick={() => setSituacaoBusca('')} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={toggleVisiveis}
+                      disabled={situacaoUnidadesVisiveis.length === 0}
+                      className={`flex items-center gap-1.5 ${CTL_H} px-3 text-[11px] font-semibold rounded-lg border ${PRESS} text-zinc-400 bg-zinc-900/60 hover:text-zinc-100 hover:bg-zinc-800 border-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                      {todasVisiveisSelecionadas ? 'Limpar visíveis' : `Selecionar ${situacaoUnidadesVisiveis.length}`}
+                    </button>
+
+                    {situacaoUnitIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSituacaoUnitIds(new Set())}
+                        className={`flex items-center gap-1.5 ${CTL_H} px-3 text-[11px] font-semibold rounded-lg ${PRESS} text-zinc-500 hover:text-zinc-200 animate-fade-in`}
+                      >
+                        <X size={12} /> Limpar seleção
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                    <span className={situacaoUnitIds.size > 0 ? 'text-zinc-300 font-semibold' : 'text-zinc-500'}>
+                      {situacaoUnitIds.size} de {projectUnidades.length} unidade(s) selecionada(s)
+                    </span>
+                    {/* Aviso de seleção fora do recorte: a ação vale para todas
+                        as selecionadas, inclusive as que o filtro escondeu. */}
+                    {situacaoSelecionadasOcultas > 0 && (
+                      <span className="flex items-center gap-1 text-amber-400/90 animate-fade-in">
+                        <AlertTriangle size={11} />
+                        {situacaoSelecionadasOcultas} fora do filtro atual — continua(m) incluída(s)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto custom-scrollbar p-2 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
+                    {situacaoUnidadesVisiveis.length === 0 && (
+                      <span className="text-[11px] text-zinc-600 py-1">Nenhuma unidade neste recorte.</span>
+                    )}
+                    {situacaoUnidadesVisiveis.map(u => {
+                      const checked = situacaoUnitIds.has(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleSituacaoUnit(u.id)}
+                          title={`Situação atual: ${SITUACAO_FILTER_LABELS[u.situacao]}`}
+                          aria-pressed={checked}
+                          className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium tabular-nums rounded-md border ${PRESS} ${
+                            checked ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200'
+                          }`}
+                        >
+                          {/* Espaço do check sempre reservado: aparecendo e
+                              sumindo ele mudava a largura do chip e a grade
+                              inteira se reorganizava a cada clique. */}
+                          <Check
+                            size={10}
+                            strokeWidth={3}
+                            className={`shrink-0 transition-opacity duration-150 ${checked ? 'opacity-100' : 'opacity-0'}`}
+                          />
+                          {u.unidade}
+                          <span className={`w-1.5 h-1.5 rounded-full ${SITUACAO_DOT[u.situacao]}`} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-end gap-3 flex-wrap">
+                  {/* Nova situação como dropdown: são 5 opções mutuamente
+                      exclusivas e a escolhida é a que importa — o segmentado
+                      gastava uma faixa inteira para mostrar as 4 descartadas. */}
+                  <div className="flex flex-col gap-1.5 w-[190px] shrink-0">
+                    <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Nova situação</label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setSituacaoDropdownOpen(o => !o)}
+                        aria-haspopup="listbox"
+                        aria-expanded={situacaoDropdownOpen}
+                        className={`w-full flex items-center gap-2 ${CTL_H} px-3 text-xs font-semibold rounded-lg border ${PRESS} ${SITUACAO_PILL[situacaoAlvo]}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${SITUACAO_DOT[situacaoAlvo]}`} />
+                        <span className="flex-1 text-left">{SITUACAO_FILTER_LABELS[situacaoAlvo]}</span>
+                        <ChevronDown size={13} className={`shrink-0 transition-transform ${situacaoDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {situacaoDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setSituacaoDropdownOpen(false)} />
+                          <div
+                            role="listbox"
+                            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#141417] border border-zinc-800/80 rounded-xl shadow-xl shadow-black/60 overflow-hidden animate-dropdown-in origin-top py-1"
+                          >
+                            {(Object.keys(SITUACAO_FILTER_LABELS) as SiengeVendaSituacao[]).map(s => (
+                              <button
+                                key={s}
+                                type="button"
+                                role="option"
+                                aria-selected={situacaoAlvo === s}
+                                onClick={() => { setSituacaoAlvo(s); setSituacaoDropdownOpen(false); }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                                  situacaoAlvo === s ? 'bg-zinc-800/60 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'
+                                }`}
+                              >
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${SITUACAO_DOT[s]}`} />
+                                <span className="flex-1 text-left">{SITUACAO_FILTER_LABELS[s]}</span>
+                                {situacaoAlvo === s && <Check size={13} strokeWidth={3} className="shrink-0 animate-scale-in" />}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-[220px]">
+                    <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                      Motivo <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={situacaoMotivo}
+                      onChange={e => setSituacaoMotivo(e.target.value)}
+                      placeholder="Ex.: Proposta assinada em 02/08/2026"
+                      className={`w-full ${CTL_H} bg-zinc-900/60 border rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none transition-colors ${
+                        situacaoMotivo.trim() ? 'border-zinc-800 focus:border-blue-500/50' : 'border-red-500/40 focus:border-red-500/60'
+                      }`}
+                    />
+                  </div>
+                  {exigeComprador && (
+                    <>
+                      <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
+                        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                          Comprador <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={situacaoComprador}
+                          onChange={e => setSituacaoComprador(e.target.value)}
+                          placeholder="Nome do comprador"
+                          className={`w-full ${CTL_H} bg-zinc-900/60 border rounded-lg px-3 text-xs text-zinc-100 placeholder-zinc-600 outline-none transition-colors ${
+                            situacaoComprador.trim() ? 'border-zinc-800 focus:border-blue-500/50' : 'border-red-500/40 focus:border-red-500/60'
+                          }`}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Data</label>
+                        <input
+                          type="date"
+                          value={situacaoData}
+                          onChange={e => setSituacaoData(e.target.value)}
+                          className={`${CTL_H} bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors [color-scheme:dark]`}
+                        />
+                      </div>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAlterarSituacao}
+                    disabled={!canAlterarSituacao || alterandoSituacao}
+                    className={`flex items-center gap-1.5 ${CTL_H} px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed rounded-lg shrink-0 ${PRESS}`}
+                  >
+                    {alterandoSituacao ? 'Aplicando...' : 'Aplicar situação'}
+                  </button>
+                </div>
+
+                {erroSituacao && <p className="text-[11px] text-red-400">{erroSituacao}</p>}
+                <p className="text-[10px] text-zinc-600">
+                  Unidades que já estão na situação escolhida são ignoradas. Sair de vendida ou permuta encerra o
+                  registro ativo no Histórico de Vendas (distrato) — o valor de tabela continua o mesmo, já que nunca
+                  parou de ser reajustado. A LP do Corretor exibe Bloqueada e Permuta como "Vendida".
+                </p>
+              </div>
+            )}
+
             {showLpCorretor && (
               <LpCorretorConfigPanel
                 key={selectedProjectId}
@@ -1349,18 +1920,19 @@ export default function SiengeVendasModal({
                 projectName={selectedProject?.name || ''}
                 colunas={projectColunas}
                 regras={projectRegras}
-                onClose={() => setShowLpCorretor(false)}
+                unidades={projectUnidades}
+                onClose={() => setPainel(null)}
               />
             )}
 
             {showColunas && (
-              <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+              <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-100">Colunas da Tabela</h3>
                     <p className="text-[11px] text-zinc-500">Adicione, remova, renomeie ou reordene as colunas deste empreendimento — inclui as colunas calculadas (regras). Unidade, Valor da Unidade e Situação são fixas. A fórmula de uma coluna calculada se edita em "Regras de Cálculo".</p>
                   </div>
-                  <button type="button" onClick={() => setShowColunas(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                  <button type="button" onClick={() => setPainel(null)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
                     <X size={13} />
                   </button>
                 </div>
@@ -1399,7 +1971,7 @@ export default function SiengeVendasModal({
             )}
 
             {showReajuste && (
-              <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+              <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-zinc-200">Reajuste de Valor da Tabela</h3>
                   <button type="button" onClick={resetReajuste} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
@@ -1415,7 +1987,7 @@ export default function SiengeVendasModal({
                       reajusteTipo === 'geral' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
                     }`}
                   >
-                    Todas as unidades
+                    Todas as unidades ({reajustaveisUnidades.length})
                   </button>
                   <button
                     type="button"
@@ -1428,13 +2000,44 @@ export default function SiengeVendasModal({
                   </button>
                 </div>
 
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Colunas a reajustar</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleReajusteColuna('valor_tabela')}
+                      className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                        reajusteColunas.has('valor_tabela') ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                      }`}
+                    >
+                      {reajusteColunas.has('valor_tabela') && <Check size={10} strokeWidth={3} />}
+                      Valor de Tabela
+                    </button>
+                    {reajustaveisColunas.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleReajusteColuna(c.key)}
+                        className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                          reajusteColunas.has(c.key) ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        {reajusteColunas.has(c.key) && <Check size={10} strokeWidth={3} />}
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                  {reajusteColunas.size === 0 && (
+                    <span className="text-[10px] text-red-400">Selecione ao menos uma coluna.</span>
+                  )}
+                </div>
+
                 {reajusteTipo === 'seletiva' && (
                   <div className="flex flex-col gap-1.5">
                     <span className="text-[11px] text-zinc-500">{selectedUnitIds.size} de {reajustaveisUnidades.length} unidade(s) selecionada(s)</span>
-                    <p className="text-[10px] text-zinc-600">Unidades Vendidas ou em Permuta têm o valor congelado e não aparecem aqui.</p>
                     <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto custom-scrollbar p-2 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
                       {reajustaveisUnidades.length === 0 ? (
-                        <span className="text-xs text-zinc-600 py-1">Nenhuma unidade disponível/bloqueada para reajustar.</span>
+                        <span className="text-xs text-zinc-600 py-1">Nenhuma unidade cadastrada.</span>
                       ) : (
                         [...reajustaveisUnidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true })).map(u => {
                           const checked = selectedUnitIds.has(u.id);
@@ -1463,40 +2066,50 @@ export default function SiengeVendasModal({
                     <PercentStepper value={reajustePercentual} onChange={setReajustePercentual} />
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Descrição (opcional)</label>
+                    <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                      Motivo da alteração <span className="text-red-400">*</span>
+                    </label>
                     <input
                       type="text"
-                      value={reajusteDescricao}
-                      onChange={e => setReajusteDescricao(e.target.value)}
-                      placeholder="Ex.: Reajuste INCC julho/2026"
-                      className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500/50 transition-colors"
+                      value={reajusteMotivo}
+                      onChange={e => setReajusteMotivo(e.target.value)}
+                      placeholder="Ex.: Reajuste INCC de julho/2026 aprovado em diretoria"
+                      className={`w-full bg-zinc-900/60 border rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none transition-colors ${
+                        reajusteMotivo.trim() ? 'border-zinc-800 focus:border-blue-500/50' : 'border-red-500/40 focus:border-red-500/60'
+                      }`}
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleApply}
                     disabled={!canApply || applying}
-                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 rounded-lg transition-colors shrink-0"
+                    title={!reajusteMotivo.trim() ? 'Informe o motivo da alteração' : undefined}
+                    className={`flex items-center gap-1.5 ${CTL_H} px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed rounded-lg shrink-0 ${PRESS}`}
                   >
                     {applying ? 'Aplicando...' : 'Aplicar'}
                   </button>
                 </div>
                 <p className="text-[10px] text-zinc-600">
                   {reajusteTipo === 'geral'
-                    ? 'O percentual será aplicado a todas as unidades deste empreendimento.'
+                    ? `O percentual será aplicado às ${reajustaveisUnidades.length} unidade(s) deste empreendimento, inclusive Vendidas e em Permuta — é bom para o cliente ver quanto a unidade valorizou desde a compra.`
                     : 'O percentual será aplicado apenas às unidades selecionadas acima.'}
+                  {' '}Apenas as colunas marcadas acima recebem o percentual; as demais permanecem como estão.
+                  {' '}Isso não altera o valor já registrado no Histórico de Vendas: aquela cópia é feita no instante da
+                  venda/permuta e é ela — não o valor vivo aqui na tabela — que alimenta o VGV e o orçamento real.
+                  {' '}Um backup da tabela é gravado antes da alteração e fica disponível no Histórico de Revisões.
+                  A LP do Corretor só passa a exibir os novos valores depois de aprovada em "Tabela Corretor".
                 </p>
               </div>
             )}
 
             {showCalculo && (
-              <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+              <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-100">Regras de Cálculo</h3>
                     <p className="text-[11px] text-zinc-500">Cada regra vira uma coluna calculada: percentual da coluna de referência, dividido ou multiplicado por um valor.</p>
                   </div>
-                  <button type="button" onClick={() => setShowCalculo(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                  <button type="button" onClick={() => setPainel(null)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
                     <X size={13} />
                   </button>
                 </div>
@@ -1531,31 +2144,59 @@ export default function SiengeVendasModal({
             )}
 
             {showHistorico && (
-              <div className="flex flex-col gap-2 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+              <div className="flex flex-col gap-2 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
                 <h3 className="text-xs font-semibold text-zinc-200">Histórico de Revisões</h3>
                 {projectRevisoes.length === 0 ? (
                   <p className="text-xs text-zinc-600 py-2">Nenhuma revisão registrada ainda para este empreendimento.</p>
                 ) : (
                   <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto custom-scrollbar">
                     {projectRevisoes.map(r => (
-                      <div key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
+                      <div key={r.id} className="flex items-start justify-between gap-3 px-3 py-2 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
                         <div className="flex flex-col gap-0.5 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-semibold text-zinc-200">Revisão #{r.numero}</span>
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${r.tipo === 'geral' ? 'bg-blue-500/10 text-blue-400' : 'bg-violet-500/10 text-violet-400'}`}>
                               {r.tipo === 'geral' ? 'Geral' : 'Seletiva'}
                             </span>
+                            {r.revertidaEm && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">
+                                Revertida em {formatDateTime(r.revertidaEm)}
+                              </span>
+                            )}
                           </div>
-                          {r.descricao && <span className="text-[11px] text-zinc-500 truncate">{r.descricao}</span>}
+                          {/* Revisões anteriores a 02/08/2026 não têm motivo; a
+                              descrição livre daquela época faz esse papel. */}
+                          {(r.motivo || r.descricao) && (
+                            <span className="text-[11px] text-zinc-400">{r.motivo || r.descricao}</span>
+                          )}
+                          {r.colunas && r.colunas.length > 0 && (
+                            <span className="text-[10px] text-zinc-600">
+                              Colunas: {r.colunas.map(key => key === 'valor_tabela'
+                                ? 'Valor de Tabela'
+                                : (projectColunas.find(c => c.key === key)?.label || key)
+                              ).join(', ')}
+                            </span>
+                          )}
                           {r.unidades && r.unidades.length > 0 && (
-                            <span className="text-[10px] text-zinc-600 truncate">{r.unidades.join(', ')}</span>
+                            <span className="text-[10px] text-zinc-600 break-words">{r.unidades.join(', ')}</span>
                           )}
                         </div>
-                        <div className="flex flex-col items-end gap-0.5 shrink-0">
+                        <div className="flex flex-col items-end gap-1 shrink-0">
                           <span className={`text-xs font-bold ${r.percentual >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {r.percentual >= 0 ? '+' : ''}{r.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%
+                            {r.percentual >= 0 ? '+' : ''}{r.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 5 })}%
                           </span>
-                          <span className="text-[10px] text-zinc-600">{r.unidadesAfetadas} unid. · {formatDateTime(r.createdAt)}</span>
+                          <span className="text-[10px] text-zinc-600 whitespace-nowrap">{r.unidadesAfetadas} unid. · {formatDateTime(r.createdAt)}</span>
+                          {r.temBackup ? (
+                            <button
+                              type="button"
+                              onClick={() => abrirReverter(r)}
+                              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-md transition-colors whitespace-nowrap"
+                            >
+                              <Undo2 size={10} /> Reverter
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-zinc-700 whitespace-nowrap">Sem backup</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1573,18 +2214,18 @@ export default function SiengeVendasModal({
                 validacoes={projectValidacoes}
                 onSaveValidacao={onSaveValidacao}
                 onDeleteValidacao={onDeleteValidacao}
-                onClose={() => setShowValidarConfig(false)}
+                onClose={() => setPainel(null)}
               />
             )}
 
             {showHistoricoVendas && (
-              <div className="flex flex-col gap-2 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
+              <div className="flex flex-col gap-2 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-100">Histórico de Vendas</h3>
                     <p className="text-[11px] text-zinc-500">Valores congelados no instante de cada venda — não mudam com reajustes ou edições posteriores na tabela principal.</p>
                   </div>
-                  <button type="button" onClick={() => setShowHistoricoVendas(false)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+                  <button type="button" onClick={() => setPainel(null)} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
                     <X size={13} />
                   </button>
                 </div>
@@ -1600,6 +2241,7 @@ export default function SiengeVendasModal({
               regras={projectRegras}
               validacoes={projectValidacoes}
               mostrarValidacao={showValidar}
+              editavel={edicaoLivre}
               onSave={onSaveUnidade}
               onDelete={onDeleteUnidade}
               onSaveColuna={onSaveColuna}
@@ -1608,6 +2250,78 @@ export default function SiengeVendasModal({
           </>
         )}
       </div>
+
+      {revisaoParaReverter && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-[#141417] border border-zinc-800 rounded-xl shadow-xl shadow-black/60 p-5 flex flex-col gap-3 animate-scale-in">
+            <div className="flex items-center gap-2">
+              <Undo2 size={15} className="text-amber-400" />
+              <h3 className="text-sm font-bold text-zinc-100">Reverter a Revisão #{revisaoParaReverter.numero}?</h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Os valores de todas as unidades voltam ao backup gravado em {formatDateTime(revisaoParaReverter.createdAt)},
+              imediatamente antes deste reajuste de {revisaoParaReverter.percentual >= 0 ? '+' : ''}
+              {revisaoParaReverter.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 5 })}%.
+            </p>
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
+              Isso restaura apenas valores — valor da unidade e colunas dinâmicas. Situação, comprador e data de venda
+              não são alterados, e reajustes feitos depois deste serão desfeitos junto.
+              A LP do Corretor só reflete a reversão depois de aprovada em "Tabela Corretor".
+            </p>
+
+            {revertEtapa === 2 && (
+              <div className="flex flex-col gap-1.5 p-3 bg-amber-500/5 border border-amber-500/30 rounded-lg animate-fade-in">
+                <label className="text-[11px] text-zinc-300">
+                  Digite <span className="font-bold text-amber-300">{PALAVRA_REVERTER}</span> para confirmar:
+                </label>
+                <input
+                  type="text"
+                  value={revertTexto}
+                  onChange={e => setRevertTexto(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && revertConfirmado) handleReverter();
+                    if (e.key === 'Escape') fecharReverter();
+                  }}
+                  autoFocus
+                  autoComplete="off"
+                  placeholder={PALAVRA_REVERTER}
+                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-700 outline-none focus:border-amber-500/50 transition-colors"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={fecharReverter}
+                disabled={revertendo}
+                className="px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              {revertEtapa === 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setRevertEtapa(2)}
+                  className="px-3 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition-colors"
+                >
+                  Sim, tenho certeza
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleReverter}
+                  disabled={revertendo || !revertConfirmado}
+                  title={revertConfirmado ? undefined : `Digite "${PALAVRA_REVERTER}" para liberar`}
+                  className="px-3 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-600 rounded-lg transition-colors"
+                >
+                  {revertendo ? 'Revertendo...' : 'Reverter tabela'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

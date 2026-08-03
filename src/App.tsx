@@ -22,7 +22,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeValidacao } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, reverterSiengeTabelaVendasRevisao, alterarSituacaoUnidades, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
 import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1531,6 +1531,17 @@ export default function App() {
                 await applySiengeTabelaVendasReajuste(params);
                 queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendas'] });
                 queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendaRevisoes'] });
+              }}
+              onReverterTabelaVendaRevisao={async (revisaoId) => {
+                await reverterSiengeTabelaVendasRevisao(revisaoId);
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendas'] });
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendaRevisoes'] });
+              }}
+              onAlterarSituacaoUnidades={async (params) => {
+                await alterarSituacaoUnidades(params);
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendas'] });
+                // A trigger cria ou encerra o snapshot de venda no mesmo UPDATE.
+                queryClient.invalidateQueries({ queryKey: ['siengeVendas'] });
               }}
               vendas={siengeVendas}
               orcamentoConfig={siengeOrcamentoConfig}

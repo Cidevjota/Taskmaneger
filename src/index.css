@@ -156,6 +156,26 @@
   --animate-pulse-slow: pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-pulse-subtle: pulseSubtle 2s ease-in-out;
   --animate-highlight-glow: highlightGlow 2.2s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Painel expansível: desce e cresce a partir da borda de cima, como se
+     estivesse sendo empurrado pela barra de ferramentas que o abriu. */
+  --animate-panel-in: panelIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Menu suspenso: mesma origem, curso menor. */
+  --animate-dropdown-in: dropdownIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Linha de tabela entrando (usada com delay escalonado). */
+  --animate-row-in: rowIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateY(-6px) scaleY(0.98); }
+    to { opacity: 1; transform: translateY(0) scaleY(1); }
+  }
+  @keyframes dropdownIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
   @keyframes pulseSubtle {
     0%, 100% { opacity: 1; transform: scale(1); }
@@ -213,6 +233,17 @@
   @keyframes pulseSlow {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
+  }
+}
+
+/* Movimento é decoração: quem pediu menos movimento no sistema recebe a
+   interface inteira sem animação, mas com todos os estados finais visíveis. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

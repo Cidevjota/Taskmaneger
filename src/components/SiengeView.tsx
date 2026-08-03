@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao } from '../types';
+import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeVendaSituacao } from '../types';
 import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
@@ -41,7 +41,16 @@ interface SiengeViewProps {
   tabelaVendaRevisoes: SiengeTabelaVendaRevisao[];
   onSaveTabelaVenda: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteTabelaVenda: (id: string) => void;
-  onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null }) => Promise<void> | void;
+  onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
+  onReverterTabelaVendaRevisao: (revisaoId: string) => Promise<void> | void;
+  onAlterarSituacaoUnidades: (params: {
+    projectId: string;
+    unidadeIds: string[];
+    situacao: SiengeVendaSituacao;
+    motivo: string;
+    comprador: string | null;
+    data: string | null;
+  }) => Promise<void> | void;
   vendas: SiengeVenda[];
   orcamentoConfig?: SiengeOrcamentoConfig;
   onSaveOrcamentoConfig: (config: SiengeOrcamentoConfig) => void;
@@ -68,7 +77,7 @@ export default function SiengeView({
   onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig,
   editingMap, onTitlePresence,
   projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
-  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste,
+  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
   tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
   validacoes, onSaveValidacao, onDeleteValidacao,
@@ -213,6 +222,8 @@ export default function SiengeView({
             onSaveUnidade={onSaveTabelaVenda}
             onDeleteUnidade={onDeleteTabelaVenda}
             onApplyReajuste={onApplyTabelaVendaReajuste}
+            onReverterRevisao={onReverterTabelaVendaRevisao}
+            onAlterarSituacao={onAlterarSituacaoUnidades}
             onSaveColuna={onSaveTabelaVendaColuna}
             onDeleteColuna={onDeleteTabelaVendaColuna}
             onSaveRegra={onSaveCalculoRegra}

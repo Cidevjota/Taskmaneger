@@ -75,8 +75,11 @@ export function formatLpValor(tipo: LpColunaEntry['tipo'], value: number | strin
   return formatMoeda(n);
 }
 
+// A RPC já entrega bloqueada e permuta como "vendida"; os rótulos permanecem
+// completos porque o tipo é compartilhado com o app interno.
 export const LP_SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
+  reservado: 'Reservado',
   vendida: 'Vendida',
   permuta: 'Permuta',
   bloqueada: 'Bloqueada',

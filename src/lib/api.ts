@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -764,6 +764,7 @@ function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
     camposExtra: r.campos_extra || {},
     descricao: r.descricao,
     compradorAtual: r.comprador,
+    situacaoMotivo: r.situacao_motivo ?? null,
     frozenSince: r.frozen_since,
     vendaConfirmadaEm: r.venda_confirmada_em ?? null,
     createdAt: r.created_at,
@@ -845,14 +846,61 @@ function mapSiengeTabelaVendaRevisao(r: any): SiengeTabelaVendaRevisao {
     unidadesAfetadas: r.unidades_afetadas,
     unidades: r.unidades,
     descricao: r.descricao,
+    motivo: r.motivo ?? null,
+    temBackup: !!r.tem_backup,
+    revertidaEm: r.revertida_em ?? null,
     createdAt: r.created_at,
+    colunas: r.colunas ?? null,
   };
 }
 
 export async function fetchSiengeTabelaVendaRevisoes(): Promise<SiengeTabelaVendaRevisao[]> {
-  const { data, error } = await supabase.from('sienge_tabela_vendas_revisoes').select('*');
+  // Colunas explícitas para não arrastar o `snapshot` (o backup completo da
+  // tabela) em toda revisão; `tem_backup` já resume o que a tela precisa.
+  const { data, error } = await supabase
+    .from('sienge_tabela_vendas_revisoes')
+    .select('id,project_id,numero,tipo,percentual,unidades_afetadas,unidades,descricao,motivo,tem_backup,revertida_em,created_at,colunas');
   if (error) throw error;
   return (data || []).map(mapSiengeTabelaVendaRevisao);
+}
+
+/**
+ * Caminho único para mudar a situação de unidades. A função no banco exige
+ * motivo sempre, e comprador quando o destino é venda ou permuta — é ela que
+ * autoriza o congelamento do snapshot que alimenta o orçamento real.
+ */
+export async function alterarSituacaoUnidades(params: {
+  projectId: string;
+  unidadeIds: string[];
+  situacao: SiengeVendaSituacao;
+  motivo: string;
+  comprador?: string | null;
+  data?: string | null;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc('alterar_situacao_unidades', {
+    p_project_id: params.projectId,
+    p_unidade_ids: params.unidadeIds,
+    p_situacao: params.situacao,
+    p_motivo: params.motivo,
+    p_comprador: params.comprador ?? null,
+    p_data: params.data ?? null,
+  });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+/** Restaura os valores da tabela a partir do backup de uma revisão. */
+export async function reverterSiengeTabelaVendasRevisao(revisaoId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('reverter_sienge_tabela_vendas_revisao', { p_revisao_id: revisaoId });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+/** Aprova os valores atuais como a versão que a LP do Corretor passa a servir. */
+export async function publicarTabelaLpCorretor(projectId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('publicar_tabela_lp_corretor', { p_project_id: projectId });
+  if (error) throw error;
+  return String(data);
 }
 
 function mapSiengeVenda(r: any): SiengeVenda {
@@ -866,6 +914,9 @@ function mapSiengeVenda(r: any): SiengeVenda {
     comprador: r.comprador,
     dataVenda: r.data_venda,
     dataDistrato: r.data_distrato,
+    motivo: r.motivo ?? null,
+    situacaoOrigem: r.situacao_origem ?? null,
+    motivoDistrato: r.motivo_distrato ?? null,
   };
 }
 
@@ -983,12 +1034,18 @@ export async function applySiengeTabelaVendasReajuste(params: {
   unidadeIds: string[] | null;
   percentual: number;
   descricao?: string | null;
+  /** Obrigatório — a função no banco recusa a chamada sem ele. */
+  motivo: string;
+  /** Keys a reajustar ('valor_tabela' e/ou keys de coluna extra). Vazio/omitido cai em ['valor_tabela']. */
+  colunas?: string[];
 }): Promise<string> {
   const { data, error } = await supabase.rpc('apply_sienge_tabela_vendas_reajuste', {
     p_project_id: params.projectId,
     p_unidade_ids: params.unidadeIds,
     p_percentual: params.percentual,
     p_descricao: params.descricao ?? null,
+    p_motivo: params.motivo,
+    p_colunas: params.colunas && params.colunas.length > 0 ? params.colunas : null,
   });
   if (error) throw error;
   return data as string;
@@ -1217,13 +1274,18 @@ function mapLpCorretorConfig(r: any): LpCorretorConfig {
     cvcrmUrlTemplate: r.cvcrm_url_template ?? null,
     colunasVisiveis: Array.isArray(r.colunas_visiveis) ? r.colunas_visiveis : [],
     colunasLinha: Array.isArray(r.colunas_linha) ? r.colunas_linha : [],
+    tabelaPublicadaEm: r.tabela_publicada_em ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
 
 export async function fetchLpCorretorConfigs(): Promise<LpCorretorConfig[]> {
-  const { data, error } = await supabase.from('sienge_lp_corretor').select('*');
+  // Colunas explícitas: `tabela_publicada` guarda o snapshot inteiro da tabela
+  // e não tem uso no painel — só a data da publicação importa aqui.
+  const { data, error } = await supabase
+    .from('sienge_lp_corretor')
+    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,colunas_visiveis,colunas_linha,tabela_publicada_em,created_at,updated_at');
   if (error) throw error;
   return (data || []).map(mapLpCorretorConfig);
 }

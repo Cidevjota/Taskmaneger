@@ -12,11 +12,14 @@ import { LP_EMPRESA, canaisDeContato } from '../lib/lpCorretorEmpresa';
 // partir de sm e desktop a partir de lg (hero alto, seções de informação lado a
 // lado e tabela em largura total).
 
+// Permuta e bloqueada nunca chegam aqui: a RPC as entrega como "vendida", para
+// o corretor não ver o motivo interno da indisponibilidade.
 const SITUACAO_DOT: Record<SiengeVendaSituacao, string> = {
   disponivel: 'bg-emerald-400',
+  reservado: 'bg-amber-400',
   vendida: 'bg-zinc-600',
-  permuta: 'bg-violet-400',
-  bloqueada: 'bg-amber-400',
+  permuta: 'bg-zinc-600',
+  bloqueada: 'bg-zinc-600',
 };
 
 type SecaoAberta = 'ficha' | null;

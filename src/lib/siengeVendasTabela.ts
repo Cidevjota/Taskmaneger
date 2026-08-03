@@ -3,6 +3,7 @@ import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, 
 
 export const SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
+  reservado: 'Reservado',
   vendida: 'Vendida',
   permuta: 'Permuta',
   bloqueada: 'Bloqueada',
@@ -10,6 +11,8 @@ export const SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
 
 const SITUACAO_BY_LABEL: Record<string, SiengeVendaSituacao> = {
   disponivel: 'disponivel',
+  reservado: 'reservado',
+  reservada: 'reservado',
   vendida: 'vendida',
   vendido: 'vendida',
   permuta: 'permuta',
@@ -127,6 +130,17 @@ export function calcValidacaoParcelas(item: SiengeTabelaVendaUnidade, validacao:
 export function calcValidacaoValorUnidade(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
   const soma = round6(validacao.termos.reduce((s, t) => s + (t.sinal === '-' ? -1 : 1) * resolveOperando(item, t.colunaKey, regras), 0));
   return { soma, valorUnidade: item.valorTabela, diferenca: round6(soma - item.valorTabela) };
+}
+
+// Uma unidade "tem pendência" se qualquer validação configurada (de qualquer
+// um dos dois tipos) bater fora da tolerância — usada tanto pelo badge da
+// tabela quanto pelo filtro "Pendentes" da barra superior, que precisam
+// concordar em qual unidade conta como pendente.
+export function unidadeValidacaoPendente(item: SiengeTabelaVendaUnidade, validacoes: SiengeValidacao[], regras: SiengeCalculoRegra[]): boolean {
+  return validacoes.some(v => {
+    const r = v.tipo === 'parcelas' ? calcValidacaoParcelas(item, v, regras) : calcValidacaoValorUnidade(item, v, regras);
+    return !isDiferencaOk(r.diferenca);
+  });
 }
 
 // ─── Números em formato BR (1.234,56) ──────────────────────────
@@ -318,6 +332,7 @@ export function parseSiengeVendasRows(
       camposExtra,
       descricao,
       compradorAtual: comprador ?? existing?.compradorAtual ?? null,
+      situacaoMotivo: existing?.situacaoMotivo ?? null,
       frozenSince: existing?.frozenSince ?? null,
       // Importação nunca confirma venda: repassa o carimbo já existente para
       // não gerar snapshot em sienge_vendas ao reimportar a tabela.

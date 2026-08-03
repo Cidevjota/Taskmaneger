@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, Trash2, Upload, X } from 'lucide-react';
-import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna } from '../types';
-import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, saveLpCorretorConfig } from '../lib/api';
+import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
+import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade } from '../types';
+import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, publicarTabelaLpCorretor, saveLpCorretorConfig } from '../lib/api';
 import { REGRA_PREFIX, lpCorretorUrl, slugifyLpSlug } from '../lib/lpCorretor';
 import { mergeColunasRegras } from '../lib/siengeVendasTabela';
 import { UPLOAD_LIMITS, sanitizeFileName, uploadToStorage } from '../lib/storage';
@@ -11,6 +11,8 @@ interface LpCorretorConfigPanelProps {
   projectName: string;
   colunas: SiengeTabelaVendaColuna[];
   regras: SiengeCalculoRegra[];
+  /** Unidades do empreendimento — usadas para detectar alterações não publicadas. */
+  unidades: SiengeTabelaVendaUnidade[];
   onClose: () => void;
 }
 
@@ -44,6 +46,7 @@ function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
     cvcrmUrlTemplate: null,
     colunasVisiveis: [],
     colunasLinha: [],
+    tabelaPublicadaEm: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -67,7 +70,7 @@ function Secao({ titulo, descricao, children }: { titulo: string; descricao?: st
   );
 }
 
-export default function LpCorretorConfigPanel({ projectId, projectName, colunas, regras, onClose }: LpCorretorConfigPanelProps) {
+export default function LpCorretorConfigPanel({ projectId, projectName, colunas, regras, unidades, onClose }: LpCorretorConfigPanelProps) {
   const [config, setConfig] = useState<LpCorretorConfig | null>(null);
   const [salvo, setSalvo] = useState<LpCorretorConfig | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -75,6 +78,7 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [enviando, setEnviando] = useState<UploadTipo | null>(null);
+  const [publicando, setPublicando] = useState(false);
 
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +111,33 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
   }, [projectId, projectName]);
 
   const merged = useMemo(() => mergeColunasRegras(colunas, regras), [colunas, regras]);
+
+  // A LP serve um snapshot aprovado, não a tabela ao vivo: reajustar não muda
+  // o que o corretor vê. Há versão pendente quando alguma unidade foi alterada
+  // depois da última publicação.
+  const publicadaEm = config?.tabelaPublicadaEm ? new Date(config.tabelaPublicadaEm).getTime() : null;
+  const alteradasDepois = useMemo(() => {
+    if (publicadaEm === null) return [];
+    return unidades.filter(u => new Date(u.updatedAt).getTime() > publicadaEm);
+  }, [unidades, publicadaEm]);
+  const nuncaPublicada = !!config && publicadaEm === null;
+  const temPendencia = alteradasDepois.length > 0;
+
+  const publicar = async () => {
+    if (!config || publicando) return;
+    setPublicando(true);
+    setErro(null);
+    try {
+      const em = await publicarTabelaLpCorretor(projectId);
+      const atualizado = { ...config, tabelaPublicadaEm: em };
+      setConfig(atualizado);
+      setSalvo(s => (s ? { ...s, tabelaPublicadaEm: em } : s));
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao publicar a tabela.');
+    } finally {
+      setPublicando(false);
+    }
+  };
   const dirty = !!config && !!salvo && JSON.stringify(config) !== JSON.stringify(salvo);
 
   const patch = (p: Partial<LpCorretorConfig>) => setConfig(c => (c ? { ...c, ...p } : c));
@@ -273,6 +304,59 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
             <ExternalLink size={13} />
           </a>
         </div>
+      </div>
+
+      {/* Versão da tabela servida à LP. Reajustes e edições não sobem sozinhos:
+          o corretor continua vendo a última versão aprovada até alguém publicar. */}
+      <div className={`flex flex-col gap-2.5 p-3 border rounded-lg ${
+        temPendencia ? 'bg-amber-500/5 border-amber-500/30' : 'bg-zinc-900/50 border-zinc-800'
+      }`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2 min-w-0">
+            {temPendencia
+              ? <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+              : <ShieldCheck size={14} className="text-emerald-400 shrink-0 mt-0.5" />}
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-zinc-200">
+                {nuncaPublicada
+                  ? 'Tabela ainda não publicada'
+                  : temPendencia
+                    ? 'Há uma nova versão da tabela'
+                    : 'Tabela publicada e atualizada'}
+              </p>
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                {nuncaPublicada ? (
+                  <>A LP está servindo a tabela ao vivo. Publique uma versão para congelar os valores que o corretor vê — a partir daí, reajustes só chegam a ele depois de aprovados aqui.</>
+                ) : temPendencia ? (
+                  <>
+                    {alteradasDepois.length} {alteradasDepois.length === 1 ? 'unidade foi alterada' : 'unidades foram alteradas'} desde a última publicação
+                    ({new Date(config.tabelaPublicadaEm!).toLocaleString('pt-BR')}). O corretor continua vendo os valores anteriores até você aprovar.
+                  </>
+                ) : (
+                  <>Publicada em {new Date(config.tabelaPublicadaEm!).toLocaleString('pt-BR')}. Nenhuma alteração pendente.</>
+                )}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={publicar}
+            disabled={publicando || (!temPendencia && !nuncaPublicada)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors shrink-0 ${
+              temPendencia || nuncaPublicada
+                ? 'text-white bg-amber-600 hover:bg-amber-500'
+                : 'text-zinc-600 bg-zinc-900/60 border border-zinc-800'
+            }`}
+          >
+            {publicando ? <Loader2 size={12} className="animate-spin" /> : <UploadCloud size={12} />}
+            {publicando ? 'Publicando...' : 'Aprovar e publicar'}
+          </button>
+        </div>
+        {temPendencia && alteradasDepois.length <= 12 && (
+          <p className="text-[10px] text-zinc-600 break-words">
+            {alteradasDepois.map(u => u.unidade).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join(', ')}
+          </p>
+        )}
       </div>
 
       <Secao titulo="Banner principal" descricao="Imagem de topo da página. Sem banner, a capa do empreendimento é usada.">
