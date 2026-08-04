@@ -96,8 +96,12 @@ const TXT_HEAD = 'text-[10px] font-semibold text-zinc-500 uppercase tracking-wid
 
 // Larguras fixas por tipo: colunas do mesmo tipo passam a ocupar o mesmo espaço,
 // então os números se alinham verticalmente mesmo sem alinhamento à direita.
-const W_MONEY = 'w-24';
-const W_NUMBER = 'w-16';
+// w-24/w-16 são larguras pensadas pra 2 casas ("1.234,56") — no modo científico
+// (8 casas) o texto é bem mais comprido ("1.234,56789012") e não cabia: o navegador
+// não corta o valor de verdade, só deixa de mostrar o final dentro da caixa
+// estreita, dando a impressão de que só 4 casas tinham "aparecido".
+const W_MONEY = (casas: number) => (casas > 2 ? 'w-40' : 'w-24');
+const W_NUMBER = (casas: number) => (casas > 2 ? 'w-28' : 'w-16');
 
 // Valor monetário somente leitura (colunas calculadas) com o mesmo prefixo "R$"
 // discreto usado nos campos editáveis — antes vinha do formatCurrency, que
@@ -160,13 +164,16 @@ function ValidacaoStatusCell<V extends { diferenca: number }>({
 
 // Texto editável (dirty state comparado ao valor salvo) para uma coluna
 // dinâmica — moeda usa máscara de centavos, número usa decimal livre, texto é livre.
-function campoToText(coluna: SiengeTabelaVendaColuna, value: number | string | undefined): string {
+// `casas` só se aplica fora de edição (ver VendaRow) — a máscara de centavos do
+// campo moeda assume 2 casas em qualquer dígito novo, então mostrar 8 casas
+// enquanto editável faria o próximo caractere digitado corromper o valor.
+function campoToText(coluna: SiengeTabelaVendaColuna, value: number | string | undefined, casas = 2): string {
   if (coluna.tipo === 'texto') return value != null ? String(value) : '';
   const n = typeof value === 'number' ? value : parseBrNumber(String(value ?? '0'));
   if (!n) return '';
   return coluna.tipo === 'moeda'
-    ? n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    ? n.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })
+    : n.toLocaleString('pt-BR', { maximumFractionDigits: casas });
 }
 
 function campoFromText(coluna: SiengeTabelaVendaColuna, text: string): number | string {
@@ -201,7 +208,7 @@ const NEW_ROW_CLASS = '[&>td]:bg-zinc-900/30 [&>td]:border-y [&>td]:border-dashe
 // selecionável para copiar, só não aceita digitação.
 const RO = (editavel: boolean) => (editavel ? '' : 'cursor-default select-text');
 
-function DynamicCell({ coluna, text, editavel, onChange, onCommit }: { coluna: SiengeTabelaVendaColuna; text: string; editavel: boolean; onChange: (v: string) => void; onCommit: () => void }) {
+function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { coluna: SiengeTabelaVendaColuna; text: string; editavel: boolean; casas: number; onChange: (v: string) => void; onCommit: () => void }) {
   if (coluna.tipo === 'texto') {
     return (
       <td className={`${CELL_PAD} min-w-[140px]`}>
@@ -230,7 +237,7 @@ function DynamicCell({ coluna, text, editavel, onChange, onCommit }: { coluna: S
             onChange={e => onChange(formatCurrencyInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
             placeholder="0,00"
-            className={`${W_MONEY} shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+            className={`${W_MONEY(casas)} shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
           />
         </div>
       </td>
@@ -248,7 +255,7 @@ function DynamicCell({ coluna, text, editavel, onChange, onCommit }: { coluna: S
             onChange={e => onChange(formatDecimalInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
             placeholder="0"
-            className={`${W_NUMBER} shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+            className={`${W_NUMBER(casas)} shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
           />
           <span className={TXT_UNIT}>m²</span>
         </div>
@@ -265,7 +272,7 @@ function DynamicCell({ coluna, text, editavel, onChange, onCommit }: { coluna: S
         onChange={e => onChange(formatDecimalInput(e.target.value))}
         onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
         placeholder="0"
-        className={`${W_NUMBER} bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+        className={`${W_NUMBER(casas)} bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
       />
     </td>
   );
@@ -285,8 +292,14 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
 }) {
-  const savedValorText = item.valorTabela ? item.valorTabela.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
-  const savedCampos = Object.fromEntries(colunas.map(c => [c.key, campoToText(c, item.camposExtra[c.key])]));
+  // Com edição livre ligada o campo é sempre um input ativo (máscara de
+  // centavos ao digitar) — 2 casas ali, sempre. Só em modo leitura (edição
+  // desligada) o valor exibido acompanha o toggle científico, já que nesse
+  // caso o campo nunca vai receber uma tecla que reinterprete o texto.
+  const casas = useCasasDecimais();
+  const displayCasas = editavel ? 2 : casas;
+  const savedValorText = item.valorTabela ? item.valorTabela.toLocaleString('pt-BR', { minimumFractionDigits: displayCasas, maximumFractionDigits: displayCasas }) : '';
+  const savedCampos = Object.fromEntries(colunas.map(c => [c.key, campoToText(c, item.camposExtra[c.key], displayCasas)]));
 
   const [unidadeText, setUnidadeText] = useState(item.unidade);
   const [valorText, setValorText] = useState(savedValorText);
@@ -299,7 +312,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
     setCamposText(savedCampos);
     setDescricaoText(item.descricao || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.unidade, item.valorTabela, item.camposExtra, item.descricao, colunas]);
+  }, [item.unidade, item.valorTabela, item.camposExtra, item.descricao, colunas, displayCasas]);
 
   const dirty = unidadeText !== item.unidade || valorText !== savedValorText
     || descricaoText !== (item.descricao || '')
@@ -347,7 +360,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
             onChange={e => setValorText(formatCurrencyInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') commit(); }}
             placeholder="0,00"
-            className={`${W_MONEY} shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+            className={`${W_MONEY(displayCasas)} shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
           />
         </div>
       </td>
@@ -357,6 +370,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           coluna={m.item}
           text={camposText[m.item.key] || ''}
           editavel={editavel}
+          casas={displayCasas}
           onChange={v => setCamposText(prev => ({ ...prev, [m.item.key]: v }))}
           onCommit={commit}
         />
@@ -483,7 +497,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
             onChange={e => setValorText(formatCurrencyInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') add(); }}
             placeholder="0,00"
-            className={`${W_MONEY} shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none`}
+            className={`${W_MONEY(2)} shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none`}
           />
         </div>
       </td>
@@ -492,6 +506,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
           key={`c-${m.item.id}`}
           coluna={m.item}
           text={camposText[m.item.key] || ''}
+          casas={2}
           editavel
           onChange={v => setCamposText(prev => ({ ...prev, [m.item.key]: v }))}
           onCommit={add}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen } from 'lucide-react';
+import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen } from 'lucide-react';
 import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeCalculoOperacao, SiengeColunaTipo, SiengeVenda, SiengeValidacao, SiengeValidacaoTermo } from '../types';
 
 import SiengeVendasTable from './SiengeVendasTable';
@@ -854,6 +854,91 @@ function ValidarPanel({ projectId, unidades, colunas, regras, validacoes, onSave
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Card de uma revisão no Histórico. Hierarquia pensada pra leitura em
+// varredura (como um extrato bancário): o ícone de tendência já diz "subiu ou
+// desceu" antes de ler qualquer texto; motivo (por quê) e percentual (quanto)
+// dividem a linha de destaque, porque são as duas perguntas que a pessoa vem
+// fazer aqui. Tudo o resto — tipo, colunas, data, unidades — é contexto de
+// apoio e fica junto, pequeno, numa única linha em vez de badges espalhadas.
+// Revisão revertida não compete visualmente com as ativas: o card inteiro
+// esmaece e o percentual ganha risco, porque ela já não vale mais.
+function RevisaoRow({ revisao: r, projectColunas, onReverter }: {
+  revisao: SiengeTabelaVendaRevisao;
+  projectColunas: SiengeTabelaVendaColuna[];
+  onReverter: (revisao: SiengeTabelaVendaRevisao) => void;
+}) {
+  const [showUnidades, setShowUnidades] = useState(false);
+  const positivo = r.percentual >= 0;
+  const revertida = !!r.revertidaEm;
+  // Revisões anteriores a 02/08/2026 não têm motivo; a descrição livre
+  // daquela época faz esse papel.
+  const motivo = r.motivo || r.descricao || `Revisão #${r.numero}`;
+
+  const colunasLabel = r.colunas && r.colunas.length > 0
+    ? r.colunas.map(key => key === 'valor_tabela' ? 'Valor de Tabela' : (projectColunas.find(c => c.key === key)?.label || key)).join(', ')
+    : null;
+
+  const meta = [
+    r.tipo === 'geral' ? 'Todas as unidades' : `${r.unidadesAfetadas} unidade${r.unidadesAfetadas === 1 ? '' : 's'} selecionada${r.unidadesAfetadas === 1 ? '' : 's'}`,
+    colunasLabel,
+    formatDateTime(r.createdAt),
+  ].filter(Boolean).join('  ·  ');
+
+  return (
+    <div className={`flex gap-3 px-3 py-3 border rounded-lg transition-opacity ${revertida ? 'bg-zinc-900/20 border-zinc-800/40 opacity-60' : 'bg-zinc-900/40 border-zinc-800/50'}`}>
+      {/* Ícone de tendência: primeira coisa que o olho pega, resume a direção
+          do reajuste sem precisar ler número nenhum. */}
+      <div className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${positivo ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+        {positivo ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
+      </div>
+
+      <div className="flex flex-col gap-1 min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-[13px] font-semibold text-zinc-100 leading-snug">{motivo}</span>
+          <span className={`text-base font-bold whitespace-nowrap shrink-0 ${revertida ? 'text-zinc-500 line-through decoration-2' : positivo ? 'text-emerald-400' : 'text-red-400'}`}>
+            {positivo ? '+' : ''}{r.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 5 })}%
+          </span>
+        </div>
+
+        <span className="text-[11px] text-zinc-500">{meta}</span>
+
+        <div className="flex items-center justify-between gap-2 pt-1.5 mt-0.5 border-t border-zinc-800/60">
+          {r.unidades && r.unidades.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowUnidades(v => !v)}
+              className="flex items-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-zinc-300 transition-colors w-fit"
+            >
+              {showUnidades ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              {showUnidades ? 'Ocultar unidades' : 'Exibir unidades'}
+            </button>
+          ) : <span />}
+
+          {revertida ? (
+            <span className="text-[10px] font-medium text-amber-400/80 whitespace-nowrap shrink-0">
+              Revertida em {formatDateTime(r.revertidaEm!)}
+            </span>
+          ) : r.temBackup ? (
+            <button
+              type="button"
+              onClick={() => onReverter(r)}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-md transition-colors whitespace-nowrap shrink-0"
+            >
+              <Undo2 size={10} /> Reverter
+            </button>
+          ) : (
+            <span className="text-[10px] text-zinc-700 whitespace-nowrap shrink-0">Sem backup</span>
+          )}
+        </div>
+
+        {showUnidades && r.unidades && r.unidades.length > 0 && (
+          <span className="text-[10px] text-zinc-600 break-words animate-fade-in">{r.unidades.join(', ')}</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function toDateInput(d: Date): string {
@@ -2187,56 +2272,9 @@ export default function SiengeVendasModal({
                 {projectRevisoes.length === 0 ? (
                   <p className="text-xs text-zinc-600 py-2">Nenhuma revisão registrada ainda para este empreendimento.</p>
                 ) : (
-                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto custom-scrollbar">
+                  <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto custom-scrollbar">
                     {projectRevisoes.map(r => (
-                      <div key={r.id} className="flex items-start justify-between gap-3 px-3 py-2 bg-zinc-900/40 border border-zinc-800/50 rounded-lg">
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-semibold text-zinc-200">Revisão #{r.numero}</span>
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${r.tipo === 'geral' ? 'bg-blue-500/10 text-blue-400' : 'bg-violet-500/10 text-violet-400'}`}>
-                              {r.tipo === 'geral' ? 'Geral' : 'Seletiva'}
-                            </span>
-                            {r.revertidaEm && (
-                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">
-                                Revertida em {formatDateTime(r.revertidaEm)}
-                              </span>
-                            )}
-                          </div>
-                          {/* Revisões anteriores a 02/08/2026 não têm motivo; a
-                              descrição livre daquela época faz esse papel. */}
-                          {(r.motivo || r.descricao) && (
-                            <span className="text-[11px] text-zinc-400">{r.motivo || r.descricao}</span>
-                          )}
-                          {r.colunas && r.colunas.length > 0 && (
-                            <span className="text-[10px] text-zinc-600">
-                              Colunas: {r.colunas.map(key => key === 'valor_tabela'
-                                ? 'Valor de Tabela'
-                                : (projectColunas.find(c => c.key === key)?.label || key)
-                              ).join(', ')}
-                            </span>
-                          )}
-                          {r.unidades && r.unidades.length > 0 && (
-                            <span className="text-[10px] text-zinc-600 break-words">{r.unidades.join(', ')}</span>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`text-xs font-bold ${r.percentual >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {r.percentual >= 0 ? '+' : ''}{r.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 5 })}%
-                          </span>
-                          <span className="text-[10px] text-zinc-600 whitespace-nowrap">{r.unidadesAfetadas} unid. · {formatDateTime(r.createdAt)}</span>
-                          {r.temBackup ? (
-                            <button
-                              type="button"
-                              onClick={() => abrirReverter(r)}
-                              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-md transition-colors whitespace-nowrap"
-                            >
-                              <Undo2 size={10} /> Reverter
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-zinc-700 whitespace-nowrap">Sem backup</span>
-                          )}
-                        </div>
-                      </div>
+                      <RevisaoRow key={r.id} revisao={r} projectColunas={projectColunas} onReverter={abrirReverter} />
                     ))}
                   </div>
                 )}
