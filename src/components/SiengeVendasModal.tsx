@@ -82,6 +82,7 @@ interface SiengeVendasModalProps {
   regras: SiengeCalculoRegra[];
   onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteUnidade: (id: string) => void;
+  onClearUnidades: (projectId: string) => Promise<void> | void;
   onApplyReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
   onReverterRevisao: (revisaoId: string) => Promise<void> | void;
   onAlterarSituacao: (params: {
@@ -439,6 +440,7 @@ function RegraRow({ regra, colunas, onCommit, onDelete }: {
 // para o valor de todas as unidades.
 // Palavra exigida na segunda etapa da confirmação de reversão.
 const PALAVRA_REVERTER = 'reverter';
+const PALAVRA_LIMPAR = 'limpar';
 
 const PERCENT_DECIMAIS = 5;
 const PERCENT_FATOR = 10 ** PERCENT_DECIMAIS;
@@ -1068,9 +1070,15 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
 
 export default function SiengeVendasModal({
   projects, unidades, revisoes, vendas, colunas, regras,
-  onSaveUnidade, onDeleteUnidade, onApplyReajuste, onReverterRevisao, onAlterarSituacao, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
+  onSaveUnidade, onDeleteUnidade, onClearUnidades, onApplyReajuste, onReverterRevisao, onAlterarSituacao, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
   validacoes, onSaveValidacao, onDeleteValidacao, onClose,
 }: SiengeVendasModalProps) {
+  // "Limpar Tabela" some com todas as unidades do empreendimento sem gerar
+  // revisão/backup — mais destrutivo que um reajuste (que sempre pode ser
+  // revertido). Por isso exige digitar a palavra, igual ao fluxo de reverter.
+  const [showLimparModal, setShowLimparModal] = useState(false);
+  const [limparTexto, setLimparTexto] = useState('');
+  const [limpando, setLimpando] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [situacaoFilter, setSituacaoFilter] = useState<SiengeVendaSituacao | 'todas'>('todas');
@@ -1365,6 +1373,24 @@ export default function SiengeVendasModal({
       fecharReverter();
     } finally {
       setRevertendo(false);
+    }
+  };
+
+  const fecharLimpar = () => {
+    setShowLimparModal(false);
+    setLimparTexto('');
+  };
+
+  const limparConfirmado = limparTexto.trim().toLowerCase() === PALAVRA_LIMPAR;
+
+  const handleLimparTabela = async () => {
+    if (!selectedProjectId || limpando || !limparConfirmado) return;
+    setLimpando(true);
+    try {
+      await onClearUnidades(selectedProjectId);
+      fecharLimpar();
+    } finally {
+      setLimpando(false);
     }
   };
 
@@ -1671,6 +1697,18 @@ export default function SiengeVendasModal({
             >
               <ReceiptText size={13} /> Histórico de Vendas
               {projectVendas.length > 0 && <span className={TOOL_BADGE}>{projectVendas.length}</span>}
+            </button>
+
+            <span className={TOOL_SEP} />
+
+            <button
+              type="button"
+              onClick={() => setShowLimparModal(true)}
+              disabled={projectUnidades.length === 0}
+              title="Remove todas as unidades desta tabela de vendas — colunas, regras e revisões continuam"
+              className={`${TOOL_BTN} text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40 disabled:pointer-events-none`}
+            >
+              <Trash2 size={13} /> Limpar Tabela
             </button>
           </div>
         )}
@@ -2318,6 +2356,65 @@ export default function SiengeVendasModal({
                   {revertendo ? 'Revertendo...' : 'Reverter tabela'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLimparModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-[#141417] border border-zinc-800 rounded-xl shadow-xl shadow-black/60 p-5 flex flex-col gap-3 animate-scale-in">
+            <div className="flex items-center gap-2">
+              <Trash2 size={15} className="text-red-400" />
+              <h3 className="text-sm font-bold text-zinc-100">Limpar Tabela de Vendas?</h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Todas as {projectUnidades.length} unidade{projectUnidades.length === 1 ? '' : 's'} desta tabela ({selectedProject?.name}) serão
+              excluídas permanentemente — valores, situação e colunas dinâmicas de cada unidade. Não é gerada revisão
+              nem backup, então isso não pode ser desfeito.
+            </p>
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
+              As colunas, regras de cálculo e validações configuradas continuam — só as unidades (linhas) são removidas.
+              Histórico de Vendas e revisões de reajuste já registrados também continuam intactos.
+            </p>
+
+            <div className="flex flex-col gap-1.5 p-3 bg-red-500/5 border border-red-500/30 rounded-lg">
+              <label className="text-[11px] text-zinc-300">
+                Digite <span className="font-bold text-red-300">{PALAVRA_LIMPAR}</span> para confirmar:
+              </label>
+              <input
+                type="text"
+                value={limparTexto}
+                onChange={e => setLimparTexto(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && limparConfirmado) handleLimparTabela();
+                  if (e.key === 'Escape') fecharLimpar();
+                }}
+                autoFocus
+                autoComplete="off"
+                placeholder={PALAVRA_LIMPAR}
+                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-700 outline-none focus:border-red-500/50 transition-colors"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={fecharLimpar}
+                disabled={limpando}
+                className="px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleLimparTabela}
+                disabled={limpando || !limparConfirmado}
+                title={limparConfirmado ? undefined : `Digite "${PALAVRA_LIMPAR}" para liberar`}
+                className="px-3 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 rounded-lg transition-colors"
+              >
+                {limpando ? 'Limpando...' : 'Limpar tabela'}
+              </button>
             </div>
           </div>
         </div>

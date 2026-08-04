@@ -799,6 +799,11 @@ export async function deleteSiengeTabelaVenda(id: string) {
   if (error) throw error;
 }
 
+export async function deleteAllSiengeTabelaVendasByProject(projectId: string) {
+  const { error } = await supabase.from('sienge_tabela_vendas').delete().eq('project_id', projectId);
+  if (error) throw error;
+}
+
 function mapSiengeTabelaVendaColuna(r: any): SiengeTabelaVendaColuna {
   return {
     id: r.id,

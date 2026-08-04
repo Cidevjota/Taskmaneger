@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Check, ShieldCheck, GripVertical, Trash2, Plus, X } from 'lucide-react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { AlertTriangle, Check, ShieldCheck, GripVertical, Trash2, Plus, X, Microscope } from 'lucide-react';
 import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
 import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, calcValidacaoParcelas, calcValidacaoValorUnidade, formatBrNumber, isDiferencaOk, mergeColunasRegras, parseBrNumber } from '../lib/siengeVendasTabela';
 
@@ -71,8 +71,15 @@ function parseDecimalInput(value: string): number {
   return parseFloat(value.replace(',', '.')) || 0;
 }
 
-function formatCurrency(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+// Precisão exibida nas colunas calculadas (regras), soma e badges de validação.
+// O valor internamente nunca é arredondado — só a apresentação muda: 2 casas
+// no modo normal (moeda), 8 no modo "científico", para conferir o resultado
+// exato de divisões que não fecham redondo (ex.: valor / 48 parcelas).
+const CasasDecimaisContext = createContext(2);
+const useCasasDecimais = () => useContext(CasasDecimaisContext);
+
+function formatCurrency(value: number, casas = 2): string {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: casas, maximumFractionDigits: casas });
 }
 
 // ── Escala tipográfica da tabela ────────────────────────────────────────────
@@ -96,11 +103,12 @@ const W_NUMBER = 'w-16';
 // discreto usado nos campos editáveis — antes vinha do formatCurrency, que
 // imprimia "R$" no mesmo tamanho do número e destoava das colunas vizinhas.
 function MoneyText({ value }: { value: number }) {
+  const casas = useCasasDecimais();
   if (!(value > 0)) return <span className={TXT_EMPTY}>—</span>;
   return (
     <span className="inline-flex items-baseline gap-1">
       <span className={TXT_UNIT}>R$</span>
-      <span className={TXT_VALUE}>{value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      <span className={TXT_VALUE}>{value.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}</span>
     </span>
   );
 }
@@ -117,6 +125,7 @@ function ValidacaoStatusCell<V extends { diferenca: number }>({
   calc: (item: SiengeTabelaVendaUnidade, v: SiengeValidacao, regras: SiengeCalculoRegra[]) => V;
   regras: SiengeCalculoRegra[];
 }) {
+  const casas = useCasasDecimais();
   if (validacoesList.length === 0) {
     return <td className={`${CELL_PAD} ${TXT_EMPTY}`}>—</td>;
   }
@@ -124,7 +133,7 @@ function ValidacaoStatusCell<V extends { diferenca: number }>({
   const pendentes = resultados.filter(({ r }) => !isDiferencaOk(r.diferenca));
   const ok = pendentes.length === 0;
   const title = resultados
-    .map(({ v, r }) => `${v.titulo || 'Validação'}: ${r.diferenca >= 0 ? '+' : ''}${formatCurrency(r.diferenca)}`)
+    .map(({ v, r }) => `${v.titulo || 'Validação'}: ${r.diferenca >= 0 ? '+' : ''}${formatCurrency(r.diferenca, casas)}`)
     .join('\n');
   // A diferença em si diz quanto falta ajustar; "1 pendente" só dizia que
   // havia algo errado, sem dar a pista do valor. Com mais de uma validação
@@ -140,7 +149,7 @@ function ValidacaoStatusCell<V extends { diferenca: number }>({
         {ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} className="shrink-0" />}
         {ok ? 'OK' : (
           <>
-            {pior!.r.diferenca >= 0 ? '+' : ''}{formatCurrency(pior!.r.diferenca)}
+            {pior!.r.diferenca >= 0 ? '+' : ''}{formatCurrency(pior!.r.diferenca, casas)}
             {pendentes.length > 1 && <span className="text-red-400/70">+{pendentes.length - 1}</span>}
           </>
         )}
@@ -545,6 +554,12 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [overSide, setOverSide] = useState<'before' | 'after'>('before');
+  // Modo científico: nada internamente é arredondado a 2 casas (a Tabela de
+  // Vendas guarda e calcula com a precisão total do float), esse toggle só
+  // troca quantas casas a apresentação mostra — 2 por padrão (moeda), 8 pra
+  // conferir o resultado exato de uma divisão que não fecha redondo.
+  const [modoCientifico, setModoCientifico] = useState(false);
+  const casasDecimais = modoCientifico ? 8 : 2;
   const merged = mergeColunasRegras(colunas, regras);
   const sorted = [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
   const validacoesParcelas = validacoes.filter(v => v.tipo === 'parcelas');
@@ -575,7 +590,23 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
   // linha o cabeçalho nunca congelaria.
   const TH_STICKY = 'sticky top-0 z-10 bg-[#08080a] shadow-[0_1px_0_0] shadow-zinc-800';
   return (
+    <CasasDecimaisContext.Provider value={casasDecimais}>
     <div className="overflow-x-auto overflow-y-visible custom-scrollbar">
+      <div className="flex justify-end px-1 pb-2">
+        <button
+          type="button"
+          onClick={() => setModoCientifico(v => !v)}
+          title={modoCientifico ? 'Voltar para 2 casas decimais' : 'Ver 8 casas decimais (modo científico)'}
+          className={`inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold rounded-md border transition-colors ${
+            modoCientifico
+              ? 'text-blue-300 bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20'
+              : 'text-zinc-500 bg-zinc-900/60 border-zinc-800 hover:text-zinc-300 hover:border-zinc-700'
+          }`}
+        >
+          <Microscope size={12} />
+          {modoCientifico ? '0,00000000' : '0,00 ›'}
+        </button>
+      </div>
       <table className="w-full border-separate border-spacing-y-1">
         <thead>
           <tr>
@@ -674,7 +705,7 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
                 {sumValor > 0 ? (
                   <span className="inline-flex items-baseline gap-1">
                     <span className={TXT_UNIT}>R$</span>
-                    <span className={TXT_PRIMARY}>{sumValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className={TXT_PRIMARY}>{sumValor.toLocaleString('pt-BR', { minimumFractionDigits: casasDecimais, maximumFractionDigits: casasDecimais })}</span>
                   </span>
                 ) : <span className={TXT_EMPTY}>—</span>}
               </td>
@@ -695,5 +726,6 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
         </p>
       )}
     </div>
+    </CasasDecimaisContext.Provider>
   );
 }

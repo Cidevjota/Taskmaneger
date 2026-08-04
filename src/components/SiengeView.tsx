@@ -41,6 +41,7 @@ interface SiengeViewProps {
   tabelaVendaRevisoes: SiengeTabelaVendaRevisao[];
   onSaveTabelaVenda: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteTabelaVenda: (id: string) => void;
+  onClearTabelaVenda: (projectId: string) => Promise<void> | void;
   onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
   onReverterTabelaVendaRevisao: (revisaoId: string) => Promise<void> | void;
   onAlterarSituacaoUnidades: (params: {
@@ -77,7 +78,7 @@ export default function SiengeView({
   onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig,
   editingMap, onTitlePresence,
   projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
-  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onApplyTabelaVendaReajuste, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
+  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onClearTabelaVenda, onApplyTabelaVendaReajuste, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
   tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
   validacoes, onSaveValidacao, onDeleteValidacao,
@@ -221,6 +222,7 @@ export default function SiengeView({
             regras={calculoRegras}
             onSaveUnidade={onSaveTabelaVenda}
             onDeleteUnidade={onDeleteTabelaVenda}
+            onClearUnidades={onClearTabelaVenda}
             onApplyReajuste={onApplyTabelaVendaReajuste}
             onReverterRevisao={onReverterTabelaVendaRevisao}
             onAlterarSituacao={onAlterarSituacaoUnidades}

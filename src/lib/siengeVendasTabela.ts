@@ -70,22 +70,12 @@ export function getRegraQuantidade(item: SiengeTabelaVendaUnidade, regra: Sienge
   return regra.quantidade;
 }
 
-// Arredonda pra 6 casas — dividir por uma quantidade "feia" (ex.: 48) gera
-// dízima; guardar full float acumula ruído que aparece como diferença > 0 no
-// painel Validar. A exibição continua com 2 casas (formatCurrency), só o
-// valor usado internamente (cálculo, validação, soma, export) ganha essa
-// precisão extra. Usado em toda a Tabela de Vendas, não só nas regras.
-export function round6(n: number): number {
-  return Math.round(n * 1e6) / 1e6;
-}
-
 export function calcRegraValor(item: SiengeTabelaVendaUnidade, regra: SiengeCalculoRegra): number {
   const quantidade = getRegraQuantidade(item, regra);
   if (!quantidade) return 0;
   const base = getColunaBaseValue(item, regra.colunaBaseKey);
   const percentualValor = base * (regra.percentual / 100);
-  const valor = regra.operacao === 'multiplicar' ? percentualValor * quantidade : percentualValor / quantidade;
-  return round6(valor);
+  return regra.operacao === 'multiplicar' ? percentualValor * quantidade : percentualValor / quantidade;
 }
 
 export function colunaBaseLabel(colunaBaseKey: string, colunas: SiengeTabelaVendaColuna[]): string {
@@ -120,16 +110,16 @@ export function isDiferencaOk(diferenca: number): boolean {
 // (quantidade₁ × coluna₁) + (quantidade₂ × coluna₂) + ... deve ser igual à
 // coluna de referência — ex.: (48 × Mensal) + (7 × Semestral) = Custo de Construção.
 export function calcValidacaoParcelas(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
-  const soma = round6(validacao.termos.reduce((s, t) => s + (t.quantidade ?? 0) * resolveOperando(item, t.colunaKey, regras), 0));
+  const soma = validacao.termos.reduce((s, t) => s + (t.quantidade ?? 0) * resolveOperando(item, t.colunaKey, regras), 0);
   const referencia = validacao.referenciaKey ? resolveOperando(item, validacao.referenciaKey, regras) : 0;
-  return { soma, referencia, diferenca: round6(soma - referencia) };
+  return { soma, referencia, diferenca: soma - referencia };
 }
 
 // (±coluna₁) + (±coluna₂) + ... deve ser igual ao Valor da Unidade — ex.:
 // Custo de Construção + Adesão Total = Valor da Unidade.
 export function calcValidacaoValorUnidade(item: SiengeTabelaVendaUnidade, validacao: SiengeValidacao, regras: SiengeCalculoRegra[]) {
-  const soma = round6(validacao.termos.reduce((s, t) => s + (t.sinal === '-' ? -1 : 1) * resolveOperando(item, t.colunaKey, regras), 0));
-  return { soma, valorUnidade: item.valorTabela, diferenca: round6(soma - item.valorTabela) };
+  const soma = validacao.termos.reduce((s, t) => s + (t.sinal === '-' ? -1 : 1) * resolveOperando(item, t.colunaKey, regras), 0);
+  return { soma, valorUnidade: item.valorTabela, diferenca: soma - item.valorTabela };
 }
 
 // Uma unidade "tem pendência" se qualquer validação configurada (de qualquer
