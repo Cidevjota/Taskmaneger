@@ -79,6 +79,7 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
   const [copiado, setCopiado] = useState(false);
   const [enviando, setEnviando] = useState<UploadTipo | null>(null);
   const [publicando, setPublicando] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
 
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -447,7 +448,14 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
             {config.imagens.map(img => (
               <div key={img.id} className="flex items-center gap-2">
                 <GripVertical size={12} className="text-zinc-700 shrink-0" />
-                <img src={img.url} alt="" className="w-12 h-12 object-cover rounded-lg border border-zinc-800 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => setPreview(img.url)}
+                  title="Ver foto em tamanho maior"
+                  className="shrink-0"
+                >
+                  <img src={img.url} alt="" className="w-12 h-12 object-cover rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors cursor-zoom-in" />
+                </button>
                 <input
                   type="text"
                   value={img.legenda}
@@ -495,7 +503,14 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
               const propria = planta.unidades.length > 0;
               return (
                 <div key={planta.id} className="flex items-center gap-2">
-                  <img src={planta.url} alt="" className="w-12 h-12 object-contain rounded-lg border border-zinc-800 bg-zinc-950 shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => setPreview(planta.url)}
+                    title="Ver planta em tamanho maior"
+                    className="shrink-0"
+                  >
+                    <img src={planta.url} alt="" className="w-12 h-12 object-contain rounded-lg border border-zinc-800 hover:border-zinc-600 bg-zinc-950 transition-colors cursor-zoom-in" />
+                  </button>
                   <input
                     type="text"
                     value={planta.legenda}
@@ -677,6 +692,23 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
           {salvando ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={3} />} Salvar
         </button>
       </div>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreview(null)}
+            aria-label="Fechar"
+            className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white"
+          >
+            <X size={22} />
+          </button>
+          <img src={preview} alt="" className="max-h-full max-w-full object-contain rounded-lg" />
+        </div>
+      )}
     </div>
   );
 }
