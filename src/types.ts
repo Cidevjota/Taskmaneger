@@ -449,12 +449,40 @@ export interface SiengeCategoriaOrcamento {
 
 export type SiengeVendaSituacao = 'vendida' | 'disponivel' | 'reservado' | 'permuta' | 'bloqueada';
 
+// Uma versão é uma condição comercial do mesmo empreendimento (à vista,
+// financiado, prazos diferentes): tem colunas, regras, validações e valores
+// próprios. O que atravessa as versões é a situação da unidade — sempre — e as
+// colunas listadas em colunasVinculadas (ver SiengeTabelaVendaConfig).
+export interface SiengeTabelaVendaVersao {
+  id: string;
+  projectId: string;
+  nome: string;
+  sortOrder: number;
+  // Exatamente uma por projeto (garantido por índice único parcial no banco).
+  // Só a principal alimenta VGV Meta, Saldo Remanescente, Teto do Produto e
+  // Alocação, e só ela congela venda em sienge_vendas.
+  principal: boolean;
+  lpVisivel: boolean;
+  tabelaPublicadaEm: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Config de tabela de vendas do projeto — o vínculo atravessa versões, então
+// mora no projeto, não na versão.
+export interface SiengeTabelaVendaConfig {
+  projectId: string;
+  /** Keys vinculadas entre versões: 'valor_tabela' e/ou keys de coluna. */
+  colunasVinculadas: string[];
+}
+
 // Unidade, valor de tabela e situação são fixos (sustentam o congelamento de
 // venda e o reajuste de INCC no banco). Todas as demais colunas variam por
 // empreendimento e ficam em camposExtra, descritas por SiengeTabelaVendaColuna.
 export interface SiengeTabelaVendaUnidade {
   id: string;
   projectId: string;
+  versaoId: string;
   unidade: string;
   valorTabela: number;
   situacao: SiengeVendaSituacao;
@@ -482,6 +510,7 @@ export type SiengeColunaTipo = 'numero' | 'moeda' | 'texto' | 'area';
 export interface SiengeTabelaVendaColuna {
   id: string;
   projectId: string;
+  versaoId: string;
   key: string;
   label: string;
   tipo: SiengeColunaTipo;
@@ -526,6 +555,11 @@ export type SiengeCalculoOperacao = 'dividir' | 'multiplicar';
 export interface SiengeCalculoRegra {
   id: string;
   projectId: string;
+  versaoId: string;
+  // Id estável entre versões da "mesma" regra — gerado uma vez, preservado na
+  // duplicação de versão. É o que permite vincular a fórmula entre versões
+  // (`id` muda a cada cópia, este não). Nunca editado pelo client.
+  vinculoKey: string;
   titulo: string;
   quantidade: number; // número de parcelas (divisão) ou multiplicador (multiplicação) — usado quando quantidadeColunaKey é null
   quantidadeColunaKey?: string | null; // se preenchido, a quantidade é lida dessa coluna (ou 'valor_tabela') em vez do número digitado
@@ -554,6 +588,7 @@ export interface SiengeValidacaoTermo {
 export interface SiengeValidacao {
   id: string;
   projectId: string;
+  versaoId: string;
   tipo: SiengeValidacaoTipo;
   titulo: string;
   termos: SiengeValidacaoTermo[];
@@ -683,6 +718,7 @@ export interface LpCorretorPublicData {
 export interface SiengeTabelaVendaRevisao {
   id: string;
   projectId: string;
+  versaoId: string;
   numero: number;
   tipo: 'geral' | 'seletiva';
   percentual: number;

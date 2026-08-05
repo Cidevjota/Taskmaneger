@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeVendaSituacao } from '../types';
+import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeVendaSituacao } from '../types';
 import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
@@ -38,6 +38,13 @@ interface SiengeViewProps {
   onSaveProjectTotal: (total: SiengeProjectTotal) => void;
   onSaveProjectDisplay: (display: SiengeProjectDisplay) => void;
   tabelaVendas: SiengeTabelaVendaUnidade[];
+  tabelaVendaVersoes: SiengeTabelaVendaVersao[];
+  tabelaVendaConfigs: SiengeTabelaVendaConfig[];
+  onSaveTabelaVendaVersao: (versao: SiengeTabelaVendaVersao) => Promise<void> | void;
+  onDuplicarTabelaVendaVersao: (versaoId: string, nome?: string) => Promise<void> | void;
+  onDefinirVersaoPrincipal: (versaoId: string) => Promise<void> | void;
+  onDeleteTabelaVendaVersao: (versaoId: string) => Promise<void> | void;
+  onSaveTabelaVendaConfig: (config: SiengeTabelaVendaConfig) => Promise<void> | void;
   tabelaVendaRevisoes: SiengeTabelaVendaRevisao[];
   onSaveTabelaVenda: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteTabelaVenda: (id: string) => void;
@@ -79,7 +86,7 @@ export default function SiengeView({
   onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig,
   editingMap, onTitlePresence,
   projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
-  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onClearTabelaVenda, onApplyTabelaVendaReajuste, onSetTabelaVendaMargem, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
+  tabelaVendas, tabelaVendaVersoes, tabelaVendaConfigs, onSaveTabelaVendaVersao, onDuplicarTabelaVendaVersao, onDefinirVersaoPrincipal, onDeleteTabelaVendaVersao, onSaveTabelaVendaConfig, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onClearTabelaVenda, onApplyTabelaVendaReajuste, onSetTabelaVendaMargem, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
   tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
   validacoes, onSaveValidacao, onDeleteValidacao,
@@ -224,6 +231,13 @@ export default function SiengeView({
             onSaveUnidade={onSaveTabelaVenda}
             onDeleteUnidade={onDeleteTabelaVenda}
             onClearUnidades={onClearTabelaVenda}
+            versoes={tabelaVendaVersoes}
+            versaoConfigs={tabelaVendaConfigs}
+            onSaveVersao={onSaveTabelaVendaVersao}
+            onDuplicarVersao={onDuplicarTabelaVendaVersao}
+            onDefinirVersaoPrincipal={onDefinirVersaoPrincipal}
+            onDeleteVersao={onDeleteTabelaVendaVersao}
+            onSaveVersaoConfig={onSaveTabelaVendaConfig}
             onApplyReajuste={onApplyTabelaVendaReajuste}
             onSetMargem={onSetTabelaVendaMargem}
             onReverterRevisao={onReverterTabelaVendaRevisao}

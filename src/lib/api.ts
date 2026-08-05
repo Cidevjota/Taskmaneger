@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -767,10 +767,89 @@ function mapMargens(raw: any): Record<string, number> {
   return out;
 }
 
+// ─── Versões da tabela de vendas ───────────────────────────────
+
+function mapSiengeTabelaVendaVersao(r: any): SiengeTabelaVendaVersao {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    nome: r.nome,
+    sortOrder: r.sort_order,
+    principal: !!r.principal,
+    lpVisivel: !!r.lp_visivel,
+    tabelaPublicadaEm: r.tabela_publicada_em ?? null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeTabelaVendaVersoes(): Promise<SiengeTabelaVendaVersao[]> {
+  // Sem `select('*')`: `tabela_publicada` é o snapshot inteiro da tabela por
+  // versão e não tem uso no client — trazê-lo multiplicaria o payload inicial.
+  const { data, error } = await supabase
+    .from('sienge_tabela_vendas_versoes')
+    .select('id, project_id, nome, sort_order, principal, lp_visivel, tabela_publicada_em, created_at, updated_at');
+  if (error) throw error;
+  return (data || []).map(mapSiengeTabelaVendaVersao);
+}
+
+export async function saveSiengeTabelaVendaVersao(versao: SiengeTabelaVendaVersao) {
+  const { error } = await supabase.from('sienge_tabela_vendas_versoes').upsert({
+    id: versao.id,
+    project_id: versao.projectId,
+    nome: versao.nome,
+    sort_order: versao.sortOrder,
+    principal: versao.principal,
+    lp_visivel: versao.lpVisivel,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+/** Cria uma versão como cópia de outra (colunas, regras, unidades e valores). */
+export async function duplicarSiengeTabelaVendaVersao(versaoId: string, nome?: string): Promise<string> {
+  const { data, error } = await supabase.rpc('duplicar_sienge_tabela_vendas_versao', {
+    p_versao_id: versaoId,
+    p_nome: nome ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Troca a versão principal do projeto — atômico, por causa do índice único. */
+export async function definirVersaoPrincipal(versaoId: string) {
+  const { error } = await supabase.rpc('definir_versao_principal', { p_versao_id: versaoId });
+  if (error) throw error;
+}
+
+export async function deleteSiengeTabelaVendaVersao(id: string) {
+  const { error } = await supabase.from('sienge_tabela_vendas_versoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchSiengeTabelaVendaConfigs(): Promise<SiengeTabelaVendaConfig[]> {
+  const { data, error } = await supabase.from('sienge_tabela_vendas_config').select('*');
+  if (error) throw error;
+  return (data || []).map((r: any) => ({
+    projectId: r.project_id,
+    colunasVinculadas: r.colunas_vinculadas || [],
+  }));
+}
+
+export async function saveSiengeTabelaVendaConfig(config: SiengeTabelaVendaConfig) {
+  const { error } = await supabase.from('sienge_tabela_vendas_config').upsert({
+    project_id: config.projectId,
+    colunas_vinculadas: config.colunasVinculadas,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'project_id' });
+  if (error) throw error;
+}
+
 function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
   return {
     id: r.id,
     projectId: r.project_id,
+    versaoId: r.versao_id,
     unidade: r.unidade,
     valorTabela: Number(r.valor_tabela),
     situacao: r.situacao,
@@ -796,16 +875,21 @@ export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
   const { error } = await supabase.from('sienge_tabela_vendas').upsert({
     id: item.id,
     project_id: item.projectId,
+    versao_id: item.versaoId,
     unidade: item.unidade,
     valor_tabela: item.valorTabela,
     situacao: item.situacao,
     campos_extra: item.camposExtra || {},
-    margens: item.margens || {},
+    // `margens` NÃO entra aqui de propósito. A margem compõe o valor: gravá-la
+    // exige mover o valor pelo delta, conta que vive só em
+    // set_sienge_tabela_vendas_margem. Um upsert de linha escreveria a margem
+    // sem mexer no valor e as duas ficariam incoerentes — foi assim que o
+    // Gênova ganhou margem sem o valor acompanhar.
     descricao: item.descricao,
     comprador: item.compradorAtual,
     venda_confirmada_em: item.vendaConfirmadaEm,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'project_id,unidade' });
+  }, { onConflict: 'project_id,versao_id,unidade' });
   if (error) throw error;
 }
 
@@ -823,6 +907,7 @@ function mapSiengeTabelaVendaColuna(r: any): SiengeTabelaVendaColuna {
   return {
     id: r.id,
     projectId: r.project_id,
+    versaoId: r.versao_id,
     key: r.key,
     label: r.label,
     tipo: r.tipo,
@@ -842,6 +927,7 @@ export async function saveSiengeTabelaVendaColuna(coluna: SiengeTabelaVendaColun
   const { error } = await supabase.from('sienge_tabela_vendas_colunas').upsert({
     id: coluna.id,
     project_id: coluna.projectId,
+    versao_id: coluna.versaoId,
     key: coluna.key,
     label: coluna.label,
     tipo: coluna.tipo,
@@ -860,6 +946,7 @@ function mapSiengeTabelaVendaRevisao(r: any): SiengeTabelaVendaRevisao {
   return {
     id: r.id,
     projectId: r.project_id,
+    versaoId: r.versao_id,
     numero: r.numero,
     tipo: r.tipo,
     percentual: Number(r.percentual),
@@ -971,6 +1058,8 @@ function mapSiengeCalculoRegra(r: any): SiengeCalculoRegra {
   return {
     id: r.id,
     projectId: r.project_id,
+    versaoId: r.versao_id,
+    vinculoKey: r.vinculo_key,
     titulo: r.titulo,
     quantidade: r.quantidade,
     quantidadeColunaKey: r.quantidade_coluna_key ?? null,
@@ -993,6 +1082,7 @@ export async function saveSiengeCalculoRegra(regra: SiengeCalculoRegra) {
   const { error } = await supabase.from('sienge_calculo_regras').upsert({
     id: regra.id,
     project_id: regra.projectId,
+    versao_id: regra.versaoId,
     titulo: regra.titulo,
     quantidade: regra.quantidade,
     quantidade_coluna_key: regra.quantidadeColunaKey ?? null,
@@ -1014,6 +1104,7 @@ function mapSiengeValidacao(r: any): SiengeValidacao {
   return {
     id: r.id,
     projectId: r.project_id,
+    versaoId: r.versao_id,
     tipo: r.tipo === 'valor_unidade' ? 'valor_unidade' : 'parcelas',
     titulo: r.titulo || '',
     termos: Array.isArray(r.termos) ? r.termos : [],
@@ -1034,6 +1125,7 @@ export async function saveSiengeValidacao(validacao: SiengeValidacao) {
   const { error } = await supabase.from('sienge_validacoes').upsert({
     id: validacao.id,
     project_id: validacao.projectId,
+    versao_id: validacao.versaoId,
     tipo: validacao.tipo,
     titulo: validacao.titulo,
     termos: validacao.termos,

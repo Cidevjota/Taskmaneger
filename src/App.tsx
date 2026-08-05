@@ -22,7 +22,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, Project, Label, ViewType, SiengeTitle, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeValidacao } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, deleteAllSiengeTabelaVendasByProject, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, setSiengeTabelaVendasMargem, reverterSiengeTabelaVendasRevisao, alterarSituacaoUnidades, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, fetchSiengeTabelaVendaVersoes, saveSiengeTabelaVendaVersao, deleteSiengeTabelaVendaVersao, duplicarSiengeTabelaVendaVersao, definirVersaoPrincipal, fetchSiengeTabelaVendaConfigs, saveSiengeTabelaVendaConfig, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, deleteAllSiengeTabelaVendasByProject, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, setSiengeTabelaVendasMargem, reverterSiengeTabelaVendasRevisao, alterarSituacaoUnidades, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
 import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -181,6 +181,8 @@ export default function App() {
   const { data: siengeProjectDisplays = [] } = useQuery({ queryKey: ['siengeProjectDisplays'], queryFn: fetchSiengeProjectDisplays, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeTitleStatusHistory = [] } = useQuery({ queryKey: ['siengeTitleStatusHistory'], queryFn: fetchSiengeTitleStatusHistory, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeTabelaVendas = [] } = useQuery({ queryKey: ['siengeTabelaVendas'], queryFn: fetchSiengeTabelaVendas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTabelaVendaVersoes = [] } = useQuery({ queryKey: ['siengeTabelaVendaVersoes'], queryFn: fetchSiengeTabelaVendaVersoes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
+  const { data: siengeTabelaVendaConfigs = [] } = useQuery({ queryKey: ['siengeTabelaVendaConfigs'], queryFn: fetchSiengeTabelaVendaConfigs, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeTabelaVendaRevisoes = [] } = useQuery({ queryKey: ['siengeTabelaVendaRevisoes'], queryFn: fetchSiengeTabelaVendaRevisoes, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeVendas = [] } = useQuery({ queryKey: ['siengeVendas'], queryFn: fetchSiengeVendas, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
   const { data: siengeOrcamentoConfig } = useQuery({ queryKey: ['siengeOrcamentoConfig'], queryFn: fetchSiengeOrcamentoConfig, enabled: authReady, refetchInterval: REALTIME_FALLBACK_POLL_MS });
@@ -414,6 +416,12 @@ export default function App() {
   // Realtime cai em silêncio quando a aba dorme (notebook fechado, aba em segundo
   // plano) e refetchOnWindowFocus está desligado — sem isso a tela pode ficar horas
   // exibindo dados velhos. As duas guardas evitam refetch a cada Alt+Tab.
+  //
+  // Revalida TUDO (não só ['tasks']): com a aba escondida o refetchInterval de 3 min
+  // fica pausado pelo React Query, então os Broadcasts perdidos no período — inclusive
+  // títulos que entraram na alçada do usuário — só apareciam com F5. E o WebSocket
+  // frequentemente morre junto com a aba, então os canais que não voltaram sozinhos
+  // ao estado 'joined' são reinscritos aqui.
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) {
@@ -425,7 +433,18 @@ export default function App() {
       if (hiddenFor < 30_000) return;
       if (Date.now() - lastRevalidateRef.current < 60_000) return;
       lastRevalidateRef.current = Date.now();
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+
+      // Só as queries montadas são refeitas — as demais ficam apenas marcadas como stale.
+      queryClient.invalidateQueries();
+
+      // Reconecta o Realtime: sem isso, um socket que morreu enquanto a aba dormia
+      // deixa o app sem Broadcast até o próximo reload.
+      if (!supabase.realtime.isConnected()) supabase.realtime.connect();
+      supabase.getChannels().forEach(ch => {
+        if (ch.state !== 'joined' && ch.state !== 'joining') {
+          try { ch.subscribe(); } catch { /* rejoin é best-effort */ }
+        }
+      });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -445,7 +464,23 @@ export default function App() {
         ? msg.payload
         : (msg?.payload?.payload ?? msg?.payload ?? {});
 
-    const invalidate = (key: string) => queryClient.invalidateQueries({ queryKey: [key] });
+    // Coalescência: uma importação de tabela de vendas publica mais de mil eventos no
+    // tópico 'sienge-changes' em menos de um segundo. Invalidar query a query nesse
+    // volume trava a aba e ainda expõe o canal ao rate limit do Realtime — que, ao
+    // derrubar o canal, levaria junto os títulos da alçada. Aqui juntamos a rajada
+    // numa única rodada de invalidação por frame de 250 ms.
+    const pendingKeys = new Set<string>();
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const invalidate = (key: string) => {
+      pendingKeys.add(key);
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        const keys = [...pendingKeys];
+        pendingKeys.clear();
+        keys.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      }, 250);
+    };
 
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -484,6 +519,8 @@ export default function App() {
         else if (table === 'sienge_project_display') invalidate('siengeProjectDisplays');
         else if (table === 'sienge_title_status_history') invalidate('siengeTitleStatusHistory');
         else if (table === 'sienge_tabela_vendas') invalidate('siengeTabelaVendas');
+        else if (table === 'sienge_tabela_vendas_versoes') invalidate('siengeTabelaVendaVersoes');
+        else if (table === 'sienge_tabela_vendas_config') invalidate('siengeTabelaVendaConfigs');
         else if (table === 'sienge_tabela_vendas_colunas') invalidate('siengeTabelaVendaColunas');
         else if (table === 'sienge_tabela_vendas_revisoes') invalidate('siengeTabelaVendaRevisoes');
         else if (table === 'sienge_vendas') invalidate('siengeVendas');
@@ -506,6 +543,7 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      if (flushTimer) clearTimeout(flushTimer);
       channels.forEach(ch => supabase.removeChannel(ch));
     };
   }, [queryClient, currentUser?.id]);
@@ -1513,6 +1551,31 @@ export default function App() {
                 deleteSiengeCategoriaOrcamento(id).catch(console.error);
               }}
               tabelaVendas={siengeTabelaVendas}
+              tabelaVendaVersoes={siengeTabelaVendaVersoes}
+              tabelaVendaConfigs={siengeTabelaVendaConfigs}
+              onSaveTabelaVendaVersao={async (versao) => {
+                await saveSiengeTabelaVendaVersao(versao);
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendaVersoes'] });
+              }}
+              onDuplicarTabelaVendaVersao={async (versaoId, nome) => {
+                await duplicarSiengeTabelaVendaVersao(versaoId, nome);
+                // A cópia cria linhas nas cinco tabelas de uma vez.
+                ['siengeTabelaVendaVersoes', 'siengeTabelaVendas', 'siengeTabelaVendaColunas', 'siengeCalculoRegras']
+                  .forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+              }}
+              onDefinirVersaoPrincipal={async (versaoId) => {
+                await definirVersaoPrincipal(versaoId);
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendaVersoes'] });
+              }}
+              onDeleteTabelaVendaVersao={async (versaoId) => {
+                await deleteSiengeTabelaVendaVersao(versaoId);
+                ['siengeTabelaVendaVersoes', 'siengeTabelaVendas', 'siengeTabelaVendaColunas', 'siengeCalculoRegras', 'siengeValidacoes', 'siengeTabelaVendaRevisoes']
+                  .forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+              }}
+              onSaveTabelaVendaConfig={async (config) => {
+                await saveSiengeTabelaVendaConfig(config);
+                queryClient.invalidateQueries({ queryKey: ['siengeTabelaVendaConfigs'] });
+              }}
               tabelaVendaRevisoes={siengeTabelaVendaRevisoes}
               onSaveTabelaVenda={async (item) => {
                 queryClient.setQueryData<SiengeTabelaVendaUnidade[]>(['siengeTabelaVendas'], prev => {

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
+import { SiengeCalculoRegra, SiengeColunaTipo, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
 
 export const SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -16,6 +16,10 @@ const SITUACAO_BY_LABEL: Record<string, SiengeVendaSituacao> = {
   vendida: 'vendida',
   vendido: 'vendida',
   permuta: 'permuta',
+  // "Permutante" é como as planilhas do Flow rotulam a unidade dada em permuta.
+  // Sem esta entrada ela caía no default 'disponivel' e a unidade permutada
+  // reaparecia como disponível — inclusive na LP do corretor.
+  permutante: 'permuta',
   bloqueada: 'bloqueada',
   bloqueado: 'bloqueada',
 };
@@ -117,6 +121,13 @@ export function colunaBaseLabel(colunaBaseKey: string, colunas: SiengeTabelaVend
 // principal, que espelham o mesmo cálculo pra todas as unidades. ──
 
 export const REGRA_KEY_PREFIX = 'regra:';
+
+// Marca de vínculo entre versões para uma coluna calculada, guardada junto das
+// colunas reais em SiengeTabelaVendaConfig.colunasVinculadas. Prefixo distinto
+// de REGRA_KEY_PREFIX de propósito: aquele aponta pra UMA regra específica de
+// UMA versão dentro de uma fórmula de validação; este aponta pro "conceito" de
+// regra (vinculoKey) compartilhado entre as versões que a têm.
+export const REGRA_VINCULO_PREFIX = 'vinculo_regra:';
 
 // Chaves de coluna real resolvem via getColunaBaseValue; chaves prefixadas com
 // "regra:" apontam pra uma coluna calculada (regra de cálculo), que não fica em
@@ -277,6 +288,7 @@ export interface ImportSiengeVendasResult {
 export function parseSiengeVendasCsv(
   text: string,
   projectId: string,
+  versaoId: string,
   existingUnidades: SiengeTabelaVendaUnidade[],
   existingColunas: SiengeTabelaVendaColuna[],
   existingRegraTitulos: string[]
@@ -285,12 +297,30 @@ export function parseSiengeVendasCsv(
   const firstLine = cleaned.split('\n')[0] || '';
   const delimiter = firstLine.includes(';') ? ';' : ',';
   const rows = parseCsvLines(cleaned, delimiter);
-  return parseSiengeVendasRows(rows, projectId, existingUnidades, existingColunas, existingRegraTitulos);
+  return parseSiengeVendasRows(rows, projectId, versaoId, existingUnidades, existingColunas, existingRegraTitulos);
+}
+
+// Tipo de uma coluna nova, inferido pelos próprios dados da planilha.
+// Antes toda coluna desconhecida nascia 'moeda', e o parser converte célula de
+// coluna 'moeda' com parseBrNumber — então uma coluna de texto ("Tipo" com
+// valores "Q/S") virava 0 em todas as linhas, perdendo o dado na importação sem
+// nenhum aviso. Basta uma célula não-numérica para a coluna ser texto: números
+// são o caso que aceita conversão, texto não.
+function inferirTipoColuna(dataRows: string[][], idx: number): SiengeColunaTipo {
+  for (const cells of dataRows) {
+    const raw = (cells[idx] ?? '').trim();
+    if (!raw) continue;
+    // Mesma tolerância do parseBrNumber: aceita 1.234,56 / 1234.56 / -12.
+    if (!/^-?[\d.,]+$/.test(raw)) return 'texto';
+  }
+  // Só números (ou coluna vazia) mantém o padrão histórico 'moeda'.
+  return 'moeda';
 }
 
 export function parseSiengeVendasRows(
   rows: string[][],
   projectId: string,
+  versaoId: string,
   existingUnidades: SiengeTabelaVendaUnidade[],
   existingColunas: SiengeTabelaVendaColuna[],
   existingRegraTitulos: string[]
@@ -310,7 +340,7 @@ export function parseSiengeVendasRows(
   let nextSortOrder = existingColunas.length > 0 ? Math.max(...existingColunas.map(c => c.sortOrder)) + 1 : 1;
   const now = new Date().toISOString();
 
-  const colMap: ColEntry[] = header.map(h => {
+  const colMap: ColEntry[] = header.map((h, idx) => {
     const n = normalize(h);
     if (n === 'unidade') return { type: 'unidade' };
     if (n === 'valor da unidade' || n === 'valor' || n === 'valor de tabela' || n === 'valor tabela') return { type: 'valor' };
@@ -323,9 +353,10 @@ export function parseSiengeVendasRows(
       coluna = {
         id: crypto.randomUUID(),
         projectId,
+        versaoId,
         key: slugifyKey(h),
         label: h,
-        tipo: 'moeda',
+        tipo: inferirTipoColuna(dataRows, idx),
         sortOrder: nextSortOrder++,
         createdAt: now,
         updatedAt: now,
@@ -361,6 +392,7 @@ export function parseSiengeVendasRows(
     unidades.push({
       id: existing?.id || crypto.randomUUID(),
       projectId,
+      versaoId,
       unidade: unidadeNome,
       valorTabela,
       situacao,
@@ -395,6 +427,7 @@ function xlsxCellToString(v: unknown): string {
 export async function parseSiengeVendasXlsx(
   file: File,
   projectId: string,
+  versaoId: string,
   existingUnidades: SiengeTabelaVendaUnidade[],
   existingColunas: SiengeTabelaVendaColuna[],
   existingRegraTitulos: string[]
@@ -409,5 +442,5 @@ export async function parseSiengeVendasXlsx(
     .map(r => r.map(xlsxCellToString))
     .filter(r => r.some(f => f.trim().length > 0));
 
-  return parseSiengeVendasRows(rows, projectId, existingUnidades, existingColunas, existingRegraTitulos);
+  return parseSiengeVendasRows(rows, projectId, versaoId, existingUnidades, existingColunas, existingRegraTitulos);
 }

@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen, Snowflake } from 'lucide-react';
-import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeCalculoOperacao, SiengeColunaTipo, SiengeVenda, SiengeValidacao, SiengeValidacaoTermo } from '../types';
+import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen, Snowflake, Star, Link2, Unlink2, Layers } from 'lucide-react';
+import { Project, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeCalculoOperacao, SiengeColunaTipo, SiengeVenda, SiengeValidacao, SiengeValidacaoTermo } from '../types';
 
 import SiengeVendasTable from './SiengeVendasTable';
 import LpCorretorConfigPanel from './LpCorretorConfigPanel';
-import { ColunaOuRegra, calcValidacaoParcelas, calcValidacaoValorUnidade, colunaBaseLabel, baseReajustavel, exportSiengeVendasCsv, formatCurrencyInput, getColunaBaseValue, getMargem, isDiferencaOk, MARGEM_VALOR_TABELA_KEY, margemEfetiva, mergeColunasRegras, parseCurrencyInput, parseSiengeVendasCsv, parseSiengeVendasXlsx, REGRA_KEY_PREFIX, unidadeValidacaoPendente } from '../lib/siengeVendasTabela';
+import { ColunaOuRegra, calcValidacaoParcelas, calcValidacaoValorUnidade, colunaBaseLabel, baseReajustavel, exportSiengeVendasCsv, formatCurrencyInput, getColunaBaseValue, getMargem, isDiferencaOk, MARGEM_VALOR_TABELA_KEY, margemEfetiva, mergeColunasRegras, parseCurrencyInput, parseSiengeVendasCsv, parseSiengeVendasXlsx, REGRA_KEY_PREFIX, REGRA_VINCULO_PREFIX, unidadeValidacaoPendente } from '../lib/siengeVendasTabela';
 
 const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -75,6 +75,13 @@ const TIPO_LABELS: Record<SiengeColunaTipo, string> = {
 
 interface SiengeVendasModalProps {
   projects: Project[];
+  versoes: SiengeTabelaVendaVersao[];
+  versaoConfigs: SiengeTabelaVendaConfig[];
+  onSaveVersao: (versao: SiengeTabelaVendaVersao) => Promise<void> | void;
+  onDuplicarVersao: (versaoId: string, nome?: string) => Promise<void> | void;
+  onDefinirVersaoPrincipal: (versaoId: string) => Promise<void> | void;
+  onDeleteVersao: (versaoId: string) => Promise<void> | void;
+  onSaveVersaoConfig: (config: SiengeTabelaVendaConfig) => Promise<void> | void;
   unidades: SiengeTabelaVendaUnidade[];
   revisoes: SiengeTabelaVendaRevisao[];
   vendas: SiengeVenda[];
@@ -133,8 +140,64 @@ function moveEntry(
   else onSaveRegra({ ...b.item, sortOrder: soA, updatedAt: now });
 }
 
-function ColunaRow({ coluna, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: {
+// Renomear a versão aberta: rascunho local, grava no blur/Enter. Ligar o input
+// direto ao onSave gravaria uma vez por tecla digitada — uma escrita no banco
+// (e um broadcast de realtime para todo mundo) por caractere.
+function VersaoNomeInput({ versao, onCommit }: {
+  versao: SiengeTabelaVendaVersao;
+  onCommit: (v: SiengeTabelaVendaVersao) => Promise<void> | void;
+}) {
+  const [nome, setNome] = useState(versao.nome);
+  useEffect(() => setNome(versao.nome), [versao.id, versao.nome]);
+
+  const commit = () => {
+    const limpo = nome.trim();
+    // Nome vazio deixaria a aba sem rótulo e sem como ser clicada de volta.
+    if (!limpo) { setNome(versao.nome); return; }
+    if (limpo !== versao.nome) onCommit({ ...versao, nome: limpo });
+  };
+
+  return (
+    <input
+      type="text"
+      value={nome}
+      onChange={e => setNome(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      title="Renomear esta versão"
+      className="w-40 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-blue-500/50 transition-colors"
+    />
+  );
+}
+
+// Vínculo entre versões: com o elo fechado, o valor dessa coluna é o mesmo em
+// todas as versões e editar em qualquer uma replica nas demais. É a única
+// diferença entre "duas versões da mesma tabela" e "duas tabelas soltas", então
+// o estado precisa ser legível de relance — cor e ícone mudam juntos.
+function VinculoToggle({ ativo, onToggle, rotulo }: { ativo: boolean; onToggle: () => void; rotulo: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={ativo}
+      title={ativo
+        ? `"${rotulo}" está vinculada: o valor é o mesmo em todas as versões e editar em qualquer uma replica nas outras. Clique para desvincular.`
+        : `"${rotulo}" é independente por versão. Clique para vincular e manter o mesmo valor em todas.`}
+      className={`flex items-center justify-center w-8 h-8 shrink-0 rounded-lg border transition-colors ${
+        ativo
+          ? 'text-blue-300 bg-blue-500/15 border-blue-500/30 hover:bg-blue-500/25'
+          : 'text-zinc-600 bg-zinc-900/60 border-zinc-800 hover:text-zinc-300 hover:border-zinc-700'
+      }`}
+    >
+      {ativo ? <Link2 size={13} /> : <Unlink2 size={13} />}
+    </button>
+  );
+}
+
+function ColunaRow({ coluna, vinculada, onToggleVinculo, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: {
   coluna: SiengeTabelaVendaColuna;
+  vinculada: boolean;
+  onToggleVinculo: () => void;
   onCommit: (c: SiengeTabelaVendaColuna) => void;
   onDelete: (id: string) => void;
   onMoveUp: () => void;
@@ -177,6 +240,11 @@ function ColunaRow({ coluna, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, 
         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         className={inputClass}
       />
+      <VinculoToggle
+        ativo={vinculada}
+        onToggle={onToggleVinculo}
+        rotulo={coluna.label}
+      />
       <select
         value={coluna.tipo}
         onChange={e => onCommit({ ...coluna, tipo: e.target.value as SiengeColunaTipo })}
@@ -201,9 +269,11 @@ function ColunaRow({ coluna, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, 
 // Coluna calculada (regra) dentro da mesma lista de "Colunas da Tabela" —
 // só título e reordenação aqui; fórmula (operação, quantidade, % e referência)
 // se edita no painel "Regras de Cálculo".
-function RegraColunaRow({ regra, colunas, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: {
+function RegraColunaRow({ regra, colunas, vinculada, onToggleVinculo, onCommit, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: {
   regra: SiengeCalculoRegra;
   colunas: SiengeTabelaVendaColuna[];
+  vinculada: boolean;
+  onToggleVinculo: () => void;
   onCommit: (r: SiengeCalculoRegra) => void;
   onDelete: (id: string) => void;
   onMoveUp: () => void;
@@ -250,6 +320,15 @@ function RegraColunaRow({ regra, colunas, onCommit, onDelete, onMoveUp, onMoveDo
         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         className="flex-1 min-w-0 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-blue-500/50 transition-colors"
       />
+      {/* Vincula a FÓRMULA (percentual, quantidade, operação, coluna base),
+          não um valor gravado — a regra não tem valor próprio, é sempre
+          recalculada. Editar a fórmula de qualquer versão vinculada replica
+          nas outras; título e posição continuam livres por versão. */}
+      <VinculoToggle
+        ativo={vinculada}
+        onToggle={onToggleVinculo}
+        rotulo={regra.titulo}
+      />
       <span title={resumo} className="flex items-center gap-1.5 px-2.5 py-2 text-[10px] font-semibold text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-lg shrink-0 max-w-[220px] truncate">
         <Calculator size={11} className="shrink-0" /> {resumo}
       </span>
@@ -265,7 +344,7 @@ function RegraColunaRow({ regra, colunas, onCommit, onDelete, onMoveUp, onMoveDo
   );
 }
 
-function NovaColunaForm({ projectId, nextSortOrder, onAdd }: { projectId: string; nextSortOrder: number; onAdd: (c: SiengeTabelaVendaColuna) => void }) {
+function NovaColunaForm({ projectId, versaoId, nextSortOrder, onAdd }: { projectId: string; versaoId: string; nextSortOrder: number; onAdd: (c: SiengeTabelaVendaColuna) => void }) {
   const [label, setLabel] = useState('');
   const [tipo, setTipo] = useState<SiengeColunaTipo>('moeda');
 
@@ -275,6 +354,7 @@ function NovaColunaForm({ projectId, nextSortOrder, onAdd }: { projectId: string
     onAdd({
       id: crypto.randomUUID(),
       projectId,
+      versaoId,
       key: slugifyKeyLocal(trimmed),
       label: trimmed,
       tipo,
@@ -691,8 +771,9 @@ function ValidacaoValorUnidadeCard({ validacao, opcoes, regras, item, onCommit, 
 // persistidas por empreendimento — Validar Parcelas (soma quantidade×coluna vs.
 // uma coluna de referência) e Validar Valor da Unidade (soma ±coluna vs. o Valor
 // da Unidade) — ambas esperam diferença = 0,00.
-function ValidarPanel({ projectId, unidades, colunas, regras, validacoes, onSaveValidacao, onDeleteValidacao, onClose }: {
+function ValidarPanel({ projectId, versaoId, unidades, colunas, regras, validacoes, onSaveValidacao, onDeleteValidacao, onClose }: {
   projectId: string;
+  versaoId: string;
   unidades: SiengeTabelaVendaUnidade[];
   colunas: SiengeTabelaVendaColuna[];
   regras: SiengeCalculoRegra[];
@@ -725,6 +806,7 @@ function ValidarPanel({ projectId, unidades, colunas, regras, validacoes, onSave
     onSaveValidacao({
       id: crypto.randomUUID(),
       projectId,
+      versaoId,
       tipo: 'parcelas',
       titulo: '',
       termos: [novoTermoParcela(colunaKey)],
@@ -740,6 +822,7 @@ function ValidarPanel({ projectId, unidades, colunas, regras, validacoes, onSave
     onSaveValidacao({
       id: crypto.randomUUID(),
       projectId,
+      versaoId,
       tipo: 'valor_unidade',
       titulo: '',
       termos: [novoTermoValor(colunaKey)],
@@ -1464,7 +1547,8 @@ function MargemPanel({ projectId, unidades, colunas, onSetMargem, onClose }: {
 }
 
 export default function SiengeVendasModal({
-  projects, unidades, revisoes, vendas, colunas, regras,
+  projects, versoes, versaoConfigs, onSaveVersao, onDuplicarVersao, onDefinirVersaoPrincipal, onDeleteVersao, onSaveVersaoConfig,
+  unidades, revisoes, vendas, colunas, regras,
   onSaveUnidade, onDeleteUnidade, onClearUnidades, onApplyReajuste, onSetMargem, onReverterRevisao, onAlterarSituacao, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
   validacoes, onSaveValidacao, onDeleteValidacao, onClose,
 }: SiengeVendasModalProps) {
@@ -1536,19 +1620,75 @@ export default function SiengeVendasModal({
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
+  // Versões do empreendimento. Enquanto a barra de abas (Fase 3) não existe, a
+  // tela inteira opera sobre a principal — que é exatamente o conteúdo que a
+  // tabela tinha antes de existirem versões.
+  const projectVersoes = useMemo(
+    () => versoes.filter(v => v.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [versoes, selectedProjectId]
+  );
+  // Aba selecionada. Sem escolha explícita (ou depois de trocar de
+  // empreendimento / apagar a versão aberta), cai na principal — que é a
+  // tabela oficial e o palpite certo em qualquer dúvida.
+  const [versaoSelecionadaId, setVersaoSelecionadaId] = useState<string | null>(null);
+  const versaoAtiva = projectVersoes.find(v => v.id === versaoSelecionadaId)
+    || projectVersoes.find(v => v.principal)
+    || projectVersoes[0];
+  const versaoAtivaId = versaoAtiva?.id || '';
+
+  const colunasVinculadas = useMemo(
+    () => versaoConfigs.find(c => c.projectId === selectedProjectId)?.colunasVinculadas || [],
+    [versaoConfigs, selectedProjectId]
+  );
+
+  // Vincular/desvincular é do projeto, não da versão: a mesma key vale para
+  // todas as abas.
+  const toggleColunaVinculada = (key: string) => {
+    const proximas = colunasVinculadas.includes(key)
+      ? colunasVinculadas.filter(k => k !== key)
+      : [...colunasVinculadas, key];
+    onSaveVersaoConfig({ projectId: selectedProjectId, colunasVinculadas: proximas });
+  };
+
+  const [criandoVersao, setCriandoVersao] = useState(false);
+  const [novaVersaoAberta, setNovaVersaoAberta] = useState(false);
+  const [novaVersaoNome, setNovaVersaoNome] = useState('');
+  // Mesmo padrão do banco (duplicar_sienge_tabela_vendas_versao), para o
+  // placeholder mostrar o nome que sairia se o campo ficasse vazio.
+  const nomeVersaoSugerido = `Versão ${projectVersoes.length + 1}`;
+
+  const fecharNovaVersao = () => { setNovaVersaoAberta(false); setNovaVersaoNome(''); };
+
+  const abrirNovaVersao = () => {
+    if (!versaoAtivaId) return;
+    setNovaVersaoNome(nomeVersaoSugerido);
+    setNovaVersaoAberta(true);
+  };
+
+  const criarVersao = async () => {
+    if (!versaoAtivaId || criandoVersao) return;
+    setCriandoVersao(true);
+    try {
+      await onDuplicarVersao(versaoAtivaId, novaVersaoNome.trim() || undefined);
+      fecharNovaVersao();
+    } finally {
+      setCriandoVersao(false);
+    }
+  };
+
   const projectUnidades = useMemo(
-    () => unidades.filter(u => u.projectId === selectedProjectId),
-    [unidades, selectedProjectId]
+    () => unidades.filter(u => u.projectId === selectedProjectId && u.versaoId === versaoAtivaId),
+    [unidades, selectedProjectId, versaoAtivaId]
   );
 
   const projectColunas = useMemo(
-    () => colunas.filter(c => c.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
-    [colunas, selectedProjectId]
+    () => colunas.filter(c => c.projectId === selectedProjectId && c.versaoId === versaoAtivaId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [colunas, selectedProjectId, versaoAtivaId]
   );
 
   const projectRegras = useMemo(
-    () => regras.filter(r => r.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
-    [regras, selectedProjectId]
+    () => regras.filter(r => r.projectId === selectedProjectId && r.versaoId === versaoAtivaId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [regras, selectedProjectId, versaoAtivaId]
   );
 
   const projectMerged = useMemo(
@@ -1558,8 +1698,8 @@ export default function SiengeVendasModal({
   const nextEntrySortOrder = projectMerged.length > 0 ? Math.max(...projectMerged.map(m => m.item.sortOrder)) + 1 : 1;
 
   const projectValidacoes = useMemo(
-    () => validacoes.filter(v => v.projectId === selectedProjectId).sort((a, b) => a.sortOrder - b.sortOrder),
-    [validacoes, selectedProjectId]
+    () => validacoes.filter(v => v.projectId === selectedProjectId && v.versaoId === versaoAtivaId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [validacoes, selectedProjectId, versaoAtivaId]
   );
 
   // Quantas unidades do empreendimento estão com alguma validação fora da
@@ -1619,8 +1759,8 @@ export default function SiengeVendasModal({
   }, [projectUnidades, reajusteColunas]);
 
   const projectRevisoes = useMemo(
-    () => revisoes.filter(r => r.projectId === selectedProjectId).sort((a, b) => b.numero - a.numero),
-    [revisoes, selectedProjectId]
+    () => revisoes.filter(r => r.projectId === selectedProjectId && r.versaoId === versaoAtivaId).sort((a, b) => b.numero - a.numero),
+    [revisoes, selectedProjectId, versaoAtivaId]
   );
 
   const projectVendas = useMemo(
@@ -1828,7 +1968,7 @@ export default function SiengeVendasModal({
 
     if (isExcel) {
       const { unidades: parsed, novasColunas } = await parseSiengeVendasXlsx(
-        file, selectedProjectId, projectUnidades, projectColunas, regraTitulos
+        file, selectedProjectId, versaoAtivaId, projectUnidades, projectColunas, regraTitulos
       );
       novasColunas.forEach(onSaveColuna);
       parsed.forEach(onSaveUnidade);
@@ -1839,7 +1979,7 @@ export default function SiengeVendasModal({
     reader.onload = () => {
       const text = String(reader.result || '');
       const { unidades: parsed, novasColunas } = parseSiengeVendasCsv(
-        text, selectedProjectId, projectUnidades, projectColunas, regraTitulos
+        text, selectedProjectId, versaoAtivaId, projectUnidades, projectColunas, regraTitulos
       );
       novasColunas.forEach(onSaveColuna);
       parsed.forEach(onSaveUnidade);
@@ -2024,6 +2164,112 @@ export default function SiengeVendasModal({
           )}
         </div>
 
+        {/* Barra de versões — cada aba é uma condição comercial do mesmo
+            empreendimento (à vista, financiado, prazos diferentes), com colunas,
+            regras e valores próprios. Fica acima das ferramentas porque a versão
+            escolhida define o que todas elas enxergam.
+
+            Com uma versão só a barra inteira some: aba única, botão de trocar a
+            principal e lixeira bloqueada não informam nada — só ocupam a faixa e
+            sugerem uma escolha que não existe. A exceção é enquanto se digita o
+            nome da segunda versão, quando a barra reaparece para hospedar o
+            campo. */}
+        {selectedProjectId && (projectVersoes.length > 1 || novaVersaoAberta) && (
+          <div className="flex items-center gap-1 flex-wrap animate-scale-in">
+            {projectVersoes.length > 1 && projectVersoes.map(v => {
+              const ativa = v.id === versaoAtivaId;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setVersaoSelecionadaId(v.id)}
+                  title={v.principal ? 'Versão principal: alimenta VGV, saldo e orçamento' : 'Cenário comercial — não entra nos números financeiros'}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg border ${PRESS} ${
+                    ativa
+                      ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                      : 'text-zinc-500 bg-zinc-900/40 border-zinc-800 hover:text-zinc-300 hover:border-zinc-700'
+                  }`}
+                >
+                  {/* A estrela é o único sinal de qual versão é a oficial —
+                      sem ela, duas abas pareceriam intercambiáveis. */}
+                  {v.principal && <Star size={11} className="fill-current shrink-0" />}
+                  {v.nome}
+                </button>
+              );
+            })}
+
+            {/* Campo de nome da versão nova, aberto pelo botão "Adicionar
+                versão" da barra de ferramentas. Nasce preenchido com o próximo
+                nome padrão, então dar Enter direto continua sendo o caminho
+                rápido — nomear é opção, não obrigação. */}
+            {novaVersaoAberta && (
+              <div className="flex items-center gap-1 animate-scale-in">
+                <input
+                  type="text"
+                  autoFocus
+                  value={novaVersaoNome}
+                  onChange={e => setNovaVersaoNome(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') criarVersao();
+                    if (e.key === 'Escape') fecharNovaVersao();
+                  }}
+                  placeholder={nomeVersaoSugerido}
+                  className="w-44 bg-zinc-900/60 border border-blue-500/40 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-100 placeholder-zinc-600 outline-none focus:border-blue-500/70 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={criarVersao}
+                  disabled={criandoVersao}
+                  title="Criar a versão"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 ${PRESS}`}
+                >
+                  {criandoVersao ? 'Criando...' : <Check size={12} strokeWidth={3} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharNovaVersao}
+                  title="Cancelar"
+                  className="p-1.5 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
+            {versaoAtiva && projectVersoes.length > 1 && (
+              <div className="flex items-center gap-1 ml-auto">
+                <VersaoNomeInput versao={versaoAtiva} onCommit={onSaveVersao} />
+                {!versaoAtiva.principal && (
+                  <button
+                    type="button"
+                    onClick={() => onDefinirVersaoPrincipal(versaoAtiva.id)}
+                    title="Tornar esta a versão oficial: passa a alimentar VGV Meta, Saldo, Teto do Produto e Alocação, e a congelar venda"
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border ${PRESS} text-amber-300/80 bg-amber-500/10 border-amber-500/30 hover:text-amber-200`}
+                  >
+                    <Star size={11} /> Tornar principal
+                  </button>
+                )}
+                {/* Apagar a principal fica bloqueado: sem principal, os números
+                    financeiros ficariam sem fonte e a venda sem onde congelar. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (versaoAtiva.principal || projectVersoes.length < 2) return;
+                    if (!window.confirm(`Remover a versão "${versaoAtiva.nome}"? As unidades, colunas, regras e revisões dela serão apagadas. As outras versões não são afetadas.`)) return;
+                    setVersaoSelecionadaId(null);
+                    onDeleteVersao(versaoAtiva.id);
+                  }}
+                  disabled={versaoAtiva.principal || projectVersoes.length < 2}
+                  title={versaoAtiva.principal ? 'A versão principal não pode ser removida — torne outra principal antes' : 'Remover esta versão'}
+                  className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Faixa 2 — ferramentas, agrupadas por assunto dentro de um único
             contêiner: Dados · Estrutura da tabela · Histórico. Botões fantasma
             (sem borda própria) para não competirem com a faixa de cima. */}
@@ -2045,6 +2291,17 @@ export default function SiengeVendasModal({
 
             <span className={TOOL_SEP} />
 
+            {/* Junto de Colunas e Regras de Cálculo: as três mexem na
+                estrutura da tabela, não nos dados. */}
+            <button
+              type="button"
+              onClick={abrirNovaVersao}
+              disabled={!versaoAtivaId || novaVersaoAberta}
+              title="Cria uma cópia desta versão (mesmas unidades e situação) para editar as condições que mudam"
+              className={`${TOOL_BTN} ${novaVersaoAberta ? TOOL_ON : TOOL_OFF} disabled:opacity-40 disabled:pointer-events-none`}
+            >
+              <Layers size={13} /> Adicionar versão
+            </button>
             <button
               type="button"
               onClick={() => togglePainel('colunas')}
@@ -2400,10 +2657,27 @@ export default function SiengeVendasModal({
                   </button>
                 </div>
                 <div className="flex flex-col gap-2">
+                  {/* Valor da Unidade não é coluna dinâmica (não sai de
+                      sienge_tabela_vendas_colunas), mas é a candidata mais óbvia
+                      a vínculo — normalmente o preço é o mesmo e o que muda
+                      entre versões é a forma de pagamento. Por isso ganha uma
+                      linha própria aqui, em vez de ficar sem lugar. */}
+                  {projectVersoes.length > 1 && (
+                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-zinc-800/60">
+                      <span className="flex-1 min-w-0 px-3 py-2 text-xs text-zinc-400">Valor da Unidade <span className="text-zinc-600">(coluna fixa)</span></span>
+                      <VinculoToggle
+                        ativo={colunasVinculadas.includes(MARGEM_VALOR_TABELA_KEY)}
+                        onToggle={() => toggleColunaVinculada(MARGEM_VALOR_TABELA_KEY)}
+                        rotulo="Valor da Unidade"
+                      />
+                    </div>
+                  )}
                   {projectMerged.map((m, idx) => m.kind === 'coluna' ? (
                     <ColunaRow
                       key={`c-${m.item.id}`}
                       coluna={m.item}
+                      vinculada={colunasVinculadas.includes(m.item.key)}
+                      onToggleVinculo={() => toggleColunaVinculada(m.item.key)}
                       onCommit={onSaveColuna}
                       onDelete={onDeleteColuna}
                       onMoveUp={() => moveEntry(projectMerged, idx, -1, onSaveColuna, onSaveRegra)}
@@ -2416,6 +2690,8 @@ export default function SiengeVendasModal({
                       key={`r-${m.item.id}`}
                       regra={m.item}
                       colunas={projectColunas}
+                      vinculada={colunasVinculadas.includes(REGRA_VINCULO_PREFIX + m.item.vinculoKey)}
+                      onToggleVinculo={() => toggleColunaVinculada(REGRA_VINCULO_PREFIX + m.item.vinculoKey)}
                       onCommit={onSaveRegra}
                       onDelete={onDeleteRegra}
                       onMoveUp={() => moveEntry(projectMerged, idx, -1, onSaveColuna, onSaveRegra)}
@@ -2426,6 +2702,7 @@ export default function SiengeVendasModal({
                   ))}
                   <NovaColunaForm
                     projectId={selectedProjectId}
+                    versaoId={versaoAtivaId}
                     nextSortOrder={nextEntrySortOrder}
                     onAdd={onSaveColuna}
                   />
@@ -2612,6 +2889,11 @@ export default function SiengeVendasModal({
                     onClick={() => onSaveRegra({
                       id: crypto.randomUUID(),
                       projectId: selectedProjectId,
+                      versaoId: versaoAtivaId,
+                      // Placeholder só para o tipo — o banco ignora este valor
+                      // no insert (não está no payload de saveSiengeCalculoRegra)
+                      // e gera o vinculo_key definitivo sozinho.
+                      vinculoKey: crypto.randomUUID(),
                       titulo: 'Nova Regra',
                       quantidade: 1,
                       quantidadeColunaKey: null,
@@ -2648,6 +2930,7 @@ export default function SiengeVendasModal({
             {showValidarConfig && (
               <ValidarPanel
                 projectId={selectedProjectId}
+                versaoId={versaoAtivaId}
                 unidades={projectUnidades}
                 colunas={projectColunas}
                 regras={projectRegras}
@@ -2675,6 +2958,7 @@ export default function SiengeVendasModal({
 
             <SiengeVendasTable
               projectId={selectedProjectId}
+              versaoId={versaoAtivaId}
               unidades={filteredUnidades}
               allUnidadeNames={projectUnidades.map(u => u.unidade)}
               colunas={projectColunas}

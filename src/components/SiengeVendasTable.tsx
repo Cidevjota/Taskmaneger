@@ -5,6 +5,7 @@ import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, calcValidacaoParcelas, 
 
 interface SiengeVendasTableProps {
   projectId: string;
+  versaoId: string;
   unidades: SiengeTabelaVendaUnidade[];
   allUnidadeNames: string[];
   colunas: SiengeTabelaVendaColuna[];
@@ -75,6 +76,13 @@ function formatCurrency(value: number, casas = 2): string {
 // escolhia o seu (zinc-100/300/500, com e sem prefixo "R$"), o que fazia colunas
 // de mesmo tipo parecerem informações de níveis diferentes.
 const CELL_PAD = 'px-3 py-2.5';
+// Cada <td>/<th> marcado com isto reivindica só a largura do próprio conteúdo
+// (o hack padrão de table-layout:auto: width:1px + nowrap). Sem essa marca o
+// navegador reparte a sobra de largura da tabela IGUALMENTE entre todas as
+// colunas — inclusive "Vagas" com um "1" dentro, que ficava tão larga quanto
+// "Descrição". Só a Descrição (w-full) deve herdar essa sobra; todo o resto
+// aqui é CELL_TIGHT.
+const CELL_TIGHT = 'w-px whitespace-nowrap';
 const TXT_PRIMARY = 'text-xs font-semibold text-zinc-100 tabular-nums';   // unidade, valor de tabela
 const TXT_VALUE = 'text-xs text-zinc-300 tabular-nums';                   // demais números (digitados ou calculados)
 const TXT_MUTED = 'text-xs text-zinc-500';                                // texto livre, descrição
@@ -120,7 +128,7 @@ function ValidacaoStatusCell<V extends { diferenca: number }>({
 }) {
   const casas = useCasasDecimais();
   if (validacoesList.length === 0) {
-    return <td className={`${CELL_PAD} ${TXT_EMPTY}`}>—</td>;
+    return <td className={`${CELL_PAD} ${TXT_EMPTY} ${CELL_TIGHT}`}>—</td>;
   }
   const resultados = validacoesList.map(v => ({ v, r: calc(item, v, regras) }));
   const pendentes = resultados.filter(({ r }) => !isDiferencaOk(r.diferenca));
@@ -137,7 +145,7 @@ function ValidacaoStatusCell<V extends { diferenca: number }>({
     null
   );
   return (
-    <td className={CELL_PAD} title={title}>
+    <td className={`${CELL_PAD} ${CELL_TIGHT}`} title={title}>
       <span className={`inline-flex items-center gap-1 text-[11px] font-semibold whitespace-nowrap tabular-nums ${ok ? 'text-emerald-400' : 'text-red-400'}`}>
         {ok ? <ShieldCheck size={13} /> : <AlertTriangle size={13} className="shrink-0" />}
         {ok ? 'OK' : (
@@ -200,7 +208,7 @@ const RO = (editavel: boolean) => (editavel ? '' : 'cursor-default select-text')
 function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { coluna: SiengeTabelaVendaColuna; text: string; editavel: boolean; casas: number; onChange: (v: string) => void; onCommit: () => void }) {
   if (coluna.tipo === 'texto') {
     return (
-      <td className={`${CELL_PAD} min-w-[140px]`}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <input
           type="text"
           value={text}
@@ -208,14 +216,15 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
           placeholder="—"
-          className={`w-full min-w-0 bg-transparent ${TXT_MUTED} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+          style={chWidth(text, '—', 4)}
+          className={`shrink-0 bg-transparent ${TXT_MUTED} placeholder-zinc-700 outline-none ${RO(editavel)}`}
         />
       </td>
     );
   }
   if (coluna.tipo === 'moeda') {
     return (
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="inline-flex items-baseline gap-1">
           <span className={TXT_UNIT}>R$</span>
           <input
@@ -235,7 +244,7 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
   }
   if (coluna.tipo === 'area') {
     return (
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="inline-flex items-baseline gap-1">
           <input
             type="text"
@@ -254,7 +263,7 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
     );
   }
   return (
-    <td className={CELL_PAD}>
+    <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
       <input
         type="text"
         inputMode="decimal"
@@ -331,7 +340,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
       // segundos para terminar de se montar.
       style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }}
     >
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <input
           type="text"
           value={unidadeText}
@@ -342,7 +351,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           className={`bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
         />
       </td>
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="inline-flex items-baseline gap-1">
           <span className={TXT_UNIT}>R$</span>
           <input
@@ -369,7 +378,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           onCommit={commit}
         />
       ) : (
-        <td key={`r-${m.item.id}`} className={`${CELL_PAD} whitespace-nowrap`}>
+        <td key={`r-${m.item.id}`} className={`${CELL_PAD} ${CELL_TIGHT}`}>
           <MoneyText value={calcRegraValor(draftItem, m.item)} />
         </td>
       ))}
@@ -379,7 +388,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           <ValidacaoStatusCell item={draftItem} validacoesList={validacoesValorUnidade} calc={calcValidacaoValorUnidade} regras={regras} />
         </>
       )}
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <span
           title={item.situacaoMotivo || 'Alterada pelo painel "Alterar Situação"'}
           className={`${BADGE_CLASS} ${SITUACAO_STYLES[item.situacao]}`}
@@ -398,7 +407,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           className={`w-full min-w-0 bg-transparent ${TXT_MUTED} placeholder-zinc-700 outline-none ${RO(editavel)}`}
         />
       </td>
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="flex items-center justify-end gap-1">
           {editavel && dirty && (
             <button
@@ -426,8 +435,9 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   );
 }
 
-function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingUnidades, onSave, onCancel }: {
+function NewUnidadeRow({ projectId, versaoId, colunas, merged, mostrarValidacao, existingUnidades, onSave, onCancel }: {
   projectId: string;
+  versaoId: string;
   colunas: SiengeTabelaVendaColuna[];
   merged: ColunaOuRegra[];
   mostrarValidacao: boolean;
@@ -454,6 +464,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
     onSave({
       id: crypto.randomUUID(),
       projectId,
+      versaoId,
       unidade: trimmed,
       valorTabela: parseCurrencyInput(valorText),
       camposExtra,
@@ -474,7 +485,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
 
   return (
     <tr className={NEW_ROW_CLASS}>
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <input
           type="text"
           value={unidadeText}
@@ -484,7 +495,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
           className={`w-20 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none`}
         />
       </td>
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="inline-flex items-baseline gap-1">
           <span className={TXT_UNIT}>R$</span>
           <input
@@ -510,15 +521,15 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
           onCommit={add}
         />
       ) : (
-        <td key={`r-${m.item.id}`} className={`${CELL_PAD} ${TXT_EMPTY}`}>—</td>
+        <td key={`r-${m.item.id}`} className={`${CELL_PAD} ${TXT_EMPTY} ${CELL_TIGHT}`}>—</td>
       ))}
       {mostrarValidacao && (
         <>
-          <td className={`${CELL_PAD} ${TXT_EMPTY}`}>—</td>
-          <td className={`${CELL_PAD} ${TXT_EMPTY}`}>—</td>
+          <td className={`${CELL_PAD} ${TXT_EMPTY} ${CELL_TIGHT}`}>—</td>
+          <td className={`${CELL_PAD} ${TXT_EMPTY} ${CELL_TIGHT}`}>—</td>
         </>
       )}
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <span className={`${BADGE_CLASS} ${SITUACAO_STYLES[situacao]}`}>
           {SITUACAO_LABELS[situacao]}
         </span>
@@ -533,7 +544,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
           className={`w-full min-w-0 bg-transparent ${TXT_MUTED} placeholder-zinc-700 outline-none`}
         />
       </td>
-      <td className={CELL_PAD}>
+      <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="flex items-center justify-end gap-1">
           <button
             type="button"
@@ -562,7 +573,7 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames, colunas, regras, validacoes, mostrarValidacao, editavel, onSave, onDelete, onSaveColuna, onSaveRegra }: SiengeVendasTableProps) {
+export default function SiengeVendasTable({ projectId, versaoId, unidades, allUnidadeNames, colunas, regras, validacoes, mostrarValidacao, editavel, onSave, onDelete, onSaveColuna, onSaveRegra }: SiengeVendasTableProps) {
   const [addingNew, setAddingNew] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -623,8 +634,8 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
       <table className="w-full border-separate border-spacing-y-1">
         <thead>
           <tr>
-            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Unidade</th>
-            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Valor da Unidade</th>
+            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Unidade</th>
+            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Valor da Unidade</th>
             {merged.map((m, idx) => (
               <th
                 key={`${m.kind}-${m.item.id}`}
@@ -641,7 +652,7 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
                 onDrop={e => { e.preventDefault(); handleDrop(); }}
                 onDragEnd={resetDrag}
                 title={editavel ? 'Arraste para reordenar a coluna' : 'Ative a edição livre para reordenar'}
-                className={`group relative text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} select-none transition-opacity ${editavel ? 'cursor-grab active:cursor-grabbing' : ''} ${dragIndex === idx ? 'opacity-30' : ''}`}
+                className={`group relative text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT} select-none transition-opacity ${editavel ? 'cursor-grab active:cursor-grabbing' : ''} ${dragIndex === idx ? 'opacity-30' : ''}`}
               >
                 {dragIndex !== null && overIndex === idx && dragIndex !== idx && (
                   <span
@@ -656,16 +667,16 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
             ))}
             {mostrarValidacao && (
               <>
-                <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Validar Parcelas</th>
-                <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Validar Valor da Unidade</th>
+                <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Validar Parcelas</th>
+                <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Validar Valor da Unidade</th>
               </>
             )}
-            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Situação</th>
-            {/* w-full: a Descrição absorve toda a sobra de largura da tabela,
-                assim as colunas numéricas ficam coladas ao próprio conteúdo em
-                vez de dividirem o espaço vago igualmente entre si. */}
+            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Situação</th>
+            {/* w-full: a Descrição absorve toda a sobra de largura da tabela —
+                é a única coluna sem CELL_TIGHT, então é ela quem recebe o que
+                as demais deixam de reivindicar. */}
             <th className={`text-left px-3 py-1.5 w-full ${TXT_HEAD} ${TH_STICKY}`}>Descrição</th>
-            <th className={`px-3 py-1 ${TH_STICKY}`} />
+            <th className={`px-3 py-1 ${TH_STICKY} ${CELL_TIGHT}`} />
           </tr>
         </thead>
         <tbody>
@@ -688,6 +699,7 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
           {editavel && (addingNew ? (
             <NewUnidadeRow
               projectId={projectId}
+              versaoId={versaoId}
               colunas={colunas}
               merged={merged}
               mostrarValidacao={mostrarValidacao}
@@ -714,10 +726,10 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
             <tr className="[&>td]:bg-zinc-900/70 [&>td]:border-y [&>td]:border-zinc-800 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               {/* Sob filtro a soma é das linhas visíveis, não do empreendimento.
                   Sem dizer isso, um total financeiro menor passaria por total real. */}
-              <td className={`${CELL_PAD} ${TXT_HEAD} whitespace-nowrap`}>
+              <td className={`${CELL_PAD} ${TXT_HEAD} ${CELL_TIGHT}`}>
                 {sorted.length < allUnidadeNames.length ? `Soma (${sorted.length} de ${allUnidadeNames.length})` : 'Soma'}
               </td>
-              <td className={`${CELL_PAD} whitespace-nowrap`}>
+              <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
                 {sumValor > 0 ? (
                   <span className="inline-flex items-baseline gap-1">
                     <span className={TXT_UNIT}>R$</span>
