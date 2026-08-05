@@ -1155,12 +1155,14 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
 }
 
 // Campo de margem de uma unidade: rascunho local + commit no blur/Enter, mesmo
-// padrão das células da tabela. Margem 0 não é gravada como zero — a key sai do
-// jsonb, para "sem margem" e "margem zero" serem o mesmo estado em todo lugar.
-function MargemUnidadeInput({ item, colunaKey, onSave }: {
+// padrão das células da tabela. O commit vai pela MESMA RPC da edição em lote —
+// gravar margem move o valor da coluna pelo delta, e essa conta precisa existir
+// num lugar só (o banco). Repetir o delta aqui criaria uma segunda
+// implementação para divergir da primeira, com dinheiro no meio.
+function MargemUnidadeInput({ item, colunaKey, onCommit }: {
   item: SiengeTabelaVendaUnidade;
   colunaKey: string;
-  onSave: (item: SiengeTabelaVendaUnidade) => void;
+  onCommit: (valor: number) => Promise<void> | void;
 }) {
   const salvo = getMargem(item, colunaKey);
   const salvoText = salvo ? salvo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
@@ -1170,9 +1172,7 @@ function MargemUnidadeInput({ item, colunaKey, onSave }: {
   const commit = () => {
     const valor = parseCurrencyInput(text);
     if (valor === salvo) return;
-    const margens = { ...item.margens };
-    if (valor) margens[colunaKey] = valor; else delete margens[colunaKey];
-    onSave({ ...item, margens, updatedAt: new Date().toISOString() });
+    onCommit(valor);
   };
 
   return (
@@ -1197,11 +1197,10 @@ function MargemUnidadeInput({ item, colunaKey, onSave }: {
 // se está falando, e a lista embaixo edita unidade a unidade. O campo de cima
 // preenche em lote (todas ou só as selecionadas) porque o caso comum é "essas
 // N unidades passam a ter margem X", não digitar 124 valores diferentes.
-function MargemPanel({ projectId, unidades, colunas, onSaveUnidade, onSetMargem, onClose }: {
+function MargemPanel({ projectId, unidades, colunas, onSetMargem, onClose }: {
   projectId: string;
   unidades: SiengeTabelaVendaUnidade[];
   colunas: SiengeTabelaVendaColuna[];
-  onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
   onSetMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
   onClose: () => void;
 }) {
@@ -1265,8 +1264,18 @@ function MargemPanel({ projectId, unidades, colunas, onSaveUnidade, onSetMargem,
         <div>
           <h3 className="text-xs font-semibold text-zinc-200">Margem</h3>
           <p className="text-[11px] text-zinc-500">
-            Parte do valor que fica congelada no reajuste. O percentual incide só sobre o resto e a margem volta somada
-            por cima — valor 100 com margem 10, a +10%, vira (100 − 10) × 1,10 + 10 = 109.
+            Parcela fixa que se soma à coluna e nunca é reajustada: o percentual incide só sobre a base e a margem volta
+            somada por cima — 90 de base com margem 10 valem 100, e a +10% viram 90 × 1,10 + 10 = 109.
+          </p>
+          {/* O aviso mais importante do painel: aqui não se configura, se move
+              dinheiro. Sem isso alguém digita uma margem "para testar" e altera
+              o valor de 798 unidades sem perceber. */}
+          <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-amber-400/90">
+            <AlertTriangle size={12} className="shrink-0 mt-px" />
+            <span>
+              Gravar a margem altera o valor da coluna: definir <strong>soma</strong> ao valor, retirar{' '}
+              <strong>subtrai</strong>. Diferente do reajuste, isto não gera revisão — não há backup para reverter.
+            </span>
           </p>
         </div>
         <button type="button" onClick={onClose} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
@@ -1421,7 +1430,11 @@ function MargemPanel({ projectId, unidades, colunas, onSaveUnidade, onSetMargem,
                   </td>
                   <td className="text-right text-xs text-zinc-400 tabular-nums whitespace-nowrap">{formatCurrency(valor)}</td>
                   <td className="text-right whitespace-nowrap">
-                    <MargemUnidadeInput item={u} colunaKey={colunaKey} onSave={onSaveUnidade} />
+                    <MargemUnidadeInput
+                      item={u}
+                      colunaKey={colunaKey}
+                      onCommit={valor => onSetMargem({ projectId, unidadeIds: [u.id], coluna: colunaKey, valor })}
+                    />
                   </td>
                   <td className={`text-right text-xs tabular-nums whitespace-nowrap ${margem > 0 ? 'text-blue-300' : 'text-zinc-600'}`}>
                     {formatCurrency(base)}
@@ -1442,9 +1455,9 @@ function MargemPanel({ projectId, unidades, colunas, onSaveUnidade, onSetMargem,
 
       <p className="text-[10px] text-zinc-600">
         A margem é gravada por unidade e por coluna, e vale para todo reajuste futuro daquela coluna — um reajuste que
-        marca várias colunas desconta a margem de cada uma separadamente. Margem maior que o valor congela o valor
-        inteiro. Definir margem não altera nenhum valor agora e não gera revisão: só muda a base sobre a qual o próximo
-        percentual incide.
+        marca várias colunas desconta a margem de cada uma separadamente. A operação é simétrica: definir margem 10 e
+        depois retirá-la devolve o valor exatamente de onde partiu. Regravar a mesma margem não mexe em nada. O que já
+        foi reajustado no passado não é recalculado — a margem vale do próximo reajuste em diante.
       </p>
     </div>
   );
@@ -2571,7 +2584,6 @@ export default function SiengeVendasModal({
                 projectId={selectedProjectId}
                 unidades={projectUnidades}
                 colunas={reajustaveisColunas}
-                onSaveUnidade={onSaveUnidade}
                 onSetMargem={onSetMargem}
                 onClose={() => setPainel(null)}
               />
