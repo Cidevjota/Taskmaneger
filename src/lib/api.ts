@@ -754,6 +754,19 @@ export async function deleteSiengeCategoriaOrcamento(id: string) {
 
 // ─── Sienge Tabela de Vendas (unidades, valor de tabela e revisões) ──
 
+// `margens` chega como jsonb, então um valor pode voltar string ("10") se algum
+// dia entrar por outro caminho. Normaliza pra number e descarta o que não for
+// numérico — a mesma tolerância que sienge_margem_de() aplica no banco.
+function mapMargens(raw: any): Record<string, number> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, number> = {};
+  Object.entries(raw).forEach(([key, value]) => {
+    const n = typeof value === 'number' ? value : parseFloat(String(value));
+    if (!isNaN(n)) out[key] = n;
+  });
+  return out;
+}
+
 function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
   return {
     id: r.id,
@@ -762,6 +775,7 @@ function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
     valorTabela: Number(r.valor_tabela),
     situacao: r.situacao,
     camposExtra: r.campos_extra || {},
+    margens: mapMargens(r.margens),
     descricao: r.descricao,
     compradorAtual: r.comprador,
     situacaoMotivo: r.situacao_motivo ?? null,
@@ -786,6 +800,7 @@ export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
     valor_tabela: item.valorTabela,
     situacao: item.situacao,
     campos_extra: item.camposExtra || {},
+    margens: item.margens || {},
     descricao: item.descricao,
     comprador: item.compradorAtual,
     venda_confirmada_em: item.vendaConfirmadaEm,
@@ -1054,6 +1069,29 @@ export async function applySiengeTabelaVendasReajuste(params: {
   });
   if (error) throw error;
   return data as string;
+}
+
+/**
+ * Grava a margem de UMA coluna em várias unidades de uma vez. `valor` 0 (ou
+ * null) remove a margem — "sem margem" e "margem zero" são o mesmo estado.
+ * Retorna quantas unidades foram alteradas.
+ */
+export async function setSiengeTabelaVendasMargem(params: {
+  projectId: string;
+  /** null = todas as unidades do empreendimento. */
+  unidadeIds: string[] | null;
+  /** 'valor_tabela' ou a key de uma coluna extra. */
+  coluna: string;
+  valor: number;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc('set_sienge_tabela_vendas_margem', {
+    p_project_id: params.projectId,
+    p_unidade_ids: params.unidadeIds,
+    p_coluna: params.coluna,
+    p_valor: params.valor,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
 }
 
 // ─── Sienge Alçada Config ──────────────────────────────────────

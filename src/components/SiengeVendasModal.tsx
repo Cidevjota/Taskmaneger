@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen } from 'lucide-react';
+import { ArrowLeft, Table2, Building2, ChevronDown, ChevronUp, TrendingUp, TrendingDown, History, Minus, Plus, X, Check, Search, Calculator, Columns3, Upload, Download, Trash2, ShieldCheck, AlertTriangle, ReceiptText, Equal, ListChecks, Settings, Smartphone, Undo2, Tags, Lock, LockOpen, Snowflake } from 'lucide-react';
 import { Project, SiengeTabelaVendaUnidade, SiengeTabelaVendaRevisao, SiengeVendaSituacao, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeCalculoOperacao, SiengeColunaTipo, SiengeVenda, SiengeValidacao, SiengeValidacaoTermo } from '../types';
 
 import SiengeVendasTable from './SiengeVendasTable';
 import LpCorretorConfigPanel from './LpCorretorConfigPanel';
-import { ColunaOuRegra, calcValidacaoParcelas, calcValidacaoValorUnidade, colunaBaseLabel, exportSiengeVendasCsv, isDiferencaOk, mergeColunasRegras, parseSiengeVendasCsv, parseSiengeVendasXlsx, REGRA_KEY_PREFIX, unidadeValidacaoPendente } from '../lib/siengeVendasTabela';
+import { ColunaOuRegra, calcValidacaoParcelas, calcValidacaoValorUnidade, colunaBaseLabel, baseReajustavel, exportSiengeVendasCsv, formatCurrencyInput, getColunaBaseValue, getMargem, isDiferencaOk, MARGEM_VALOR_TABELA_KEY, margemEfetiva, mergeColunasRegras, parseCurrencyInput, parseSiengeVendasCsv, parseSiengeVendasXlsx, REGRA_KEY_PREFIX, unidadeValidacaoPendente } from '../lib/siengeVendasTabela';
 
 const SITUACAO_FILTER_LABELS: Record<SiengeVendaSituacao, string> = {
   disponivel: 'Disponível',
@@ -37,7 +37,7 @@ const SITUACAO_DOT: Record<SiengeVendaSituacao, string> = {
 };
 
 // Painéis expansíveis da tela — no máximo um aberto por vez.
-type PainelId = 'colunas' | 'calculo' | 'reajuste' | 'validarConfig' | 'historico' | 'historicoVendas' | 'situacao' | 'lpCorretor' | null;
+type PainelId = 'colunas' | 'calculo' | 'reajuste' | 'margem' | 'validarConfig' | 'historico' | 'historicoVendas' | 'situacao' | 'lpCorretor' | null;
 
 // ── Vocabulário visual da barra de ferramentas ──────────────────────────────
 // Altura única para todo controle da faixa de contexto (dropdown, busca,
@@ -84,6 +84,7 @@ interface SiengeVendasModalProps {
   onDeleteUnidade: (id: string) => void;
   onClearUnidades: (projectId: string) => Promise<void> | void;
   onApplyReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
+  onSetMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
   onReverterRevisao: (revisaoId: string) => Promise<void> | void;
   onAlterarSituacao: (params: {
     projectId: string;
@@ -1153,9 +1154,305 @@ function searchUnidades(list: SiengeTabelaVendaUnidade[], term: string): SiengeT
   return scored.map(x => x.u);
 }
 
+// Campo de margem de uma unidade: rascunho local + commit no blur/Enter, mesmo
+// padrão das células da tabela. Margem 0 não é gravada como zero — a key sai do
+// jsonb, para "sem margem" e "margem zero" serem o mesmo estado em todo lugar.
+function MargemUnidadeInput({ item, colunaKey, onSave }: {
+  item: SiengeTabelaVendaUnidade;
+  colunaKey: string;
+  onSave: (item: SiengeTabelaVendaUnidade) => void;
+}) {
+  const salvo = getMargem(item, colunaKey);
+  const salvoText = salvo ? salvo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+  const [text, setText] = useState(salvoText);
+  useEffect(() => { setText(salvoText); }, [salvoText]);
+
+  const commit = () => {
+    const valor = parseCurrencyInput(text);
+    if (valor === salvo) return;
+    const margens = { ...item.margens };
+    if (valor) margens[colunaKey] = valor; else delete margens[colunaKey];
+    onSave({ ...item, margens, updatedAt: new Date().toISOString() });
+  };
+
+  return (
+    <div className="inline-flex items-baseline gap-1">
+      <span className="text-[10px] font-medium text-zinc-500 shrink-0">R$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={e => setText(formatCurrencyInput(e.target.value))}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        placeholder="0,00"
+        className="w-24 bg-zinc-900/60 border border-zinc-800 rounded-md px-2 py-1 text-xs text-zinc-100 text-right tabular-nums placeholder-zinc-700 outline-none focus:border-blue-500/50 transition-colors"
+      />
+    </div>
+  );
+}
+
+// Painel "Margem" — a parcela de cada valor que NÃO acompanha o reajuste.
+// A margem é por unidade E por coluna: o seletor de cima escolhe de qual coluna
+// se está falando, e a lista embaixo edita unidade a unidade. O campo de cima
+// preenche em lote (todas ou só as selecionadas) porque o caso comum é "essas
+// N unidades passam a ter margem X", não digitar 124 valores diferentes.
+function MargemPanel({ projectId, unidades, colunas, onSaveUnidade, onSetMargem, onClose }: {
+  projectId: string;
+  unidades: SiengeTabelaVendaUnidade[];
+  colunas: SiengeTabelaVendaColuna[];
+  onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
+  onSetMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const opcoes = useMemo(
+    () => [
+      { key: MARGEM_VALOR_TABELA_KEY, label: 'Valor de Tabela' },
+      ...colunas.map(c => ({ key: c.key, label: c.label })),
+    ],
+    [colunas]
+  );
+
+  const [colunaKey, setColunaKey] = useState(MARGEM_VALOR_TABELA_KEY);
+  // Apagar a coluna extra que estava selecionada não pode deixar o painel
+  // editando uma key que não existe mais.
+  useEffect(() => {
+    if (!opcoes.some(o => o.key === colunaKey)) setColunaKey(MARGEM_VALOR_TABELA_KEY);
+  }, [opcoes, colunaKey]);
+
+  const [busca, setBusca] = useState('');
+  const [loteText, setLoteText] = useState('');
+  const [escopo, setEscopo] = useState<'todas' | 'selecionadas'>('todas');
+  const [unitIds, setUnitIds] = useState<Set<string>>(new Set());
+  const [aplicando, setAplicando] = useState(false);
+
+  const sorted = useMemo(
+    () => [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true })),
+    [unidades]
+  );
+  const visiveis = useMemo(() => searchUnidades(sorted, busca), [sorted, busca]);
+
+  const comMargem = useMemo(() => unidades.filter(u => getMargem(u, colunaKey) > 0), [unidades, colunaKey]);
+  const totalMargem = comMargem.reduce((s, u) => s + getMargem(u, colunaKey), 0);
+
+  const toggleUnit = (id: string) => {
+    setUnitIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const alvo = escopo === 'todas' ? null : Array.from(unitIds);
+  const podeAplicarLote = escopo === 'todas' || unitIds.size > 0;
+
+  const aplicarLote = async () => {
+    if (!podeAplicarLote || aplicando) return;
+    setAplicando(true);
+    try {
+      await onSetMargem({ projectId, unidadeIds: alvo, coluna: colunaKey, valor: parseCurrencyInput(loteText) });
+      setLoteText('');
+    } finally {
+      setAplicando(false);
+    }
+  };
+
+  const colunaLabel = opcoes.find(o => o.key === colunaKey)?.label || colunaKey;
+
+  return (
+    <div className="flex flex-col gap-3 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-panel-in origin-top">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-xs font-semibold text-zinc-200">Margem</h3>
+          <p className="text-[11px] text-zinc-500">
+            Parte do valor que fica congelada no reajuste. O percentual incide só sobre o resto e a margem volta somada
+            por cima — valor 100 com margem 10, a +10%, vira (100 − 10) × 1,10 + 10 = 109.
+          </p>
+        </div>
+        <button type="button" onClick={onClose} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors">
+          <X size={13} />
+        </button>
+      </div>
+
+      {/* A margem pertence a uma coluna: escolher a coluna é o primeiro passo,
+          senão não se sabe de qual valor os números da lista falam. */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Coluna</span>
+        <div className="flex flex-wrap gap-1.5">
+          {opcoes.map(o => {
+            const ativa = o.key === colunaKey;
+            const quantas = unidades.filter(u => getMargem(u, o.key) > 0).length;
+            return (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() => setColunaKey(o.key)}
+                className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                  ativa ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                }`}
+              >
+                {o.label}
+                {quantas > 0 && <span className={SEG_COUNT}>{quantas}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Margem em lote</label>
+          <div className="inline-flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-1.5 focus-within:border-blue-500/50 transition-colors">
+            <span className="text-[10px] font-medium text-zinc-500">R$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={loteText}
+              onChange={e => setLoteText(formatCurrencyInput(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') aplicarLote(); }}
+              placeholder="0,00"
+              className="w-28 bg-transparent text-xs text-zinc-100 text-right tabular-nums placeholder-zinc-600 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 p-1 bg-zinc-900/60 border border-zinc-800 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setEscopo('todas')}
+            className={`${SEG_BTN} ${escopo === 'todas' ? SEG_ON : SEG_OFF}`}
+          >
+            Todas ({unidades.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setEscopo('selecionadas')}
+            className={`${SEG_BTN} ${escopo === 'selecionadas' ? SEG_ON : SEG_OFF}`}
+          >
+            Selecionadas ({unitIds.size})
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={aplicarLote}
+          disabled={!podeAplicarLote || aplicando}
+          title={podeAplicarLote ? undefined : 'Selecione ao menos uma unidade na lista abaixo'}
+          className={`flex items-center gap-1.5 ${CTL_H} px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed rounded-lg shrink-0 ${PRESS}`}
+        >
+          {aplicando ? 'Aplicando...' : 'Aplicar'}
+        </button>
+
+        {/* Zerar em lote é o caminho de volta: sem isso, tirar a margem de 124
+            unidades exigiria apagar campo por campo. */}
+        <button
+          type="button"
+          onClick={async () => {
+            if (!podeAplicarLote || aplicando) return;
+            setAplicando(true);
+            try {
+              await onSetMargem({ projectId, unidadeIds: alvo, coluna: colunaKey, valor: 0 });
+            } finally {
+              setAplicando(false);
+            }
+          }}
+          disabled={!podeAplicarLote || aplicando}
+          className={`flex items-center gap-1.5 ${CTL_H} px-3 text-xs font-semibold rounded-lg border text-zinc-400 bg-zinc-900/60 hover:text-zinc-100 hover:bg-zinc-800 border-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed ${PRESS}`}
+        >
+          Zerar margem
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className={`flex items-center gap-1.5 ${CTL_H} bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 focus-within:border-blue-500/50 transition-colors`}>
+          <Search size={13} className="text-zinc-500 shrink-0" />
+          <input
+            type="text"
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar unidade..."
+            className="w-32 bg-transparent text-xs text-zinc-100 placeholder-zinc-600 outline-none"
+          />
+          {busca && (
+            <button type="button" onClick={() => setBusca('')} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        <span className="text-[11px] text-zinc-500">
+          {comMargem.length > 0
+            ? `${comMargem.length} unidade(s) com margem em ${colunaLabel} — ${formatCurrency(totalMargem)} congelado(s) no total.`
+            : `Nenhuma margem em ${colunaLabel}: o reajuste incide sobre o valor cheio.`}
+        </span>
+      </div>
+
+      <div className="max-h-72 overflow-y-auto custom-scrollbar border border-zinc-800/50 rounded-lg">
+        <table className="w-full border-separate border-spacing-0">
+          <thead>
+            <tr className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-[#0d0d10] [&>th]:z-10 [&>th]:px-3 [&>th]:py-2 [&>th]:text-[10px] [&>th]:font-semibold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:border-b [&>th]:border-zinc-800">
+              <th className="text-left">Unidade</th>
+              <th className="text-right">{colunaLabel}</th>
+              <th className="text-right">Margem</th>
+              {/* O que de fato recebe o percentual — o número que explica o
+                  resultado do reajuste sem precisar refazer a conta de cabeça. */}
+              <th className="text-right">Base reajustável</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visiveis.map(u => {
+              const valor = getColunaBaseValue(u, colunaKey);
+              const margem = getMargem(u, colunaKey);
+              const base = baseReajustavel(valor, margem);
+              const selecionada = unitIds.has(u.id);
+              return (
+                <tr key={u.id} className="[&>td]:px-3 [&>td]:py-1.5 [&>td]:border-b [&>td]:border-zinc-800/40 hover:[&>td]:bg-zinc-800/30 transition-colors">
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => toggleUnit(u.id)}
+                      title="Selecionar para a aplicação em lote"
+                      className={`flex items-center gap-1.5 px-1.5 py-0.5 text-[11px] font-semibold rounded-md border transition-colors ${
+                        selecionada ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'text-zinc-300 border-transparent hover:border-zinc-700'
+                      }`}
+                    >
+                      {selecionada && <Check size={10} strokeWidth={3} />}
+                      {u.unidade}
+                    </button>
+                  </td>
+                  <td className="text-right text-xs text-zinc-400 tabular-nums whitespace-nowrap">{formatCurrency(valor)}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <MargemUnidadeInput item={u} colunaKey={colunaKey} onSave={onSaveUnidade} />
+                  </td>
+                  <td className={`text-right text-xs tabular-nums whitespace-nowrap ${margem > 0 ? 'text-blue-300' : 'text-zinc-600'}`}>
+                    {formatCurrency(base)}
+                  </td>
+                </tr>
+              );
+            })}
+            {visiveis.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-3 py-6 text-center text-xs text-zinc-600">
+                  {unidades.length === 0 ? 'Nenhuma unidade cadastrada.' : 'Nenhuma unidade corresponde à busca.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[10px] text-zinc-600">
+        A margem é gravada por unidade e por coluna, e vale para todo reajuste futuro daquela coluna — um reajuste que
+        marca várias colunas desconta a margem de cada uma separadamente. Margem maior que o valor congela o valor
+        inteiro. Definir margem não altera nenhum valor agora e não gera revisão: só muda a base sobre a qual o próximo
+        percentual incide.
+      </p>
+    </div>
+  );
+}
+
 export default function SiengeVendasModal({
   projects, unidades, revisoes, vendas, colunas, regras,
-  onSaveUnidade, onDeleteUnidade, onClearUnidades, onApplyReajuste, onReverterRevisao, onAlterarSituacao, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
+  onSaveUnidade, onDeleteUnidade, onClearUnidades, onApplyReajuste, onSetMargem, onReverterRevisao, onAlterarSituacao, onSaveColuna, onDeleteColuna, onSaveRegra, onDeleteRegra,
   validacoes, onSaveValidacao, onDeleteValidacao, onClose,
 }: SiengeVendasModalProps) {
   // "Limpar Tabela" some com todas as unidades do empreendimento sem gerar
@@ -1179,6 +1476,7 @@ export default function SiengeVendasModal({
   const [painel, setPainel] = useState<PainelId>(null);
   const togglePainel = (id: Exclude<PainelId, null>) => setPainel(p => (p === id ? null : id));
   const showReajuste = painel === 'reajuste';
+  const showMargem = painel === 'margem';
   const showHistorico = painel === 'historico';
   const showCalculo = painel === 'calculo';
   const showColunas = painel === 'colunas';
@@ -1286,6 +1584,26 @@ export default function SiengeVendasModal({
     () => projectColunas.filter(c => c.tipo === 'moeda' || c.tipo === 'numero'),
     [projectColunas]
   );
+
+  // Quantas unidades têm alguma margem definida (em qualquer coluna) — vira o
+  // contador do botão, que é o único aviso de que os próximos reajustes não
+  // incidem sobre o valor cheio.
+  const margemCount = useMemo(
+    () => projectUnidades.filter(u => Object.values(u.margens || {}).some(v => v > 0)).length,
+    [projectUnidades]
+  );
+
+  // Total congelado nas colunas marcadas para o reajuste — o resumo que explica
+  // por que o resultado não bate com "percentual × valor da tabela".
+  const margemDoReajuste = useMemo(() => {
+    let total = 0;
+    projectUnidades.forEach(u => {
+      reajusteColunas.forEach(key => {
+        total += margemEfetiva(getColunaBaseValue(u, key), getMargem(u, key));
+      });
+    });
+    return total;
+  }, [projectUnidades, reajusteColunas]);
 
   const projectRevisoes = useMemo(
     () => revisoes.filter(r => r.projectId === selectedProjectId).sort((a, b) => b.numero - a.numero),
@@ -1735,6 +2053,15 @@ export default function SiengeVendasModal({
             >
               <TrendingUp size={13} /> Atualizar Valor
             </button>
+            <button
+              type="button"
+              onClick={() => togglePainel('margem')}
+              title="Parte do valor que fica congelada e não recebe o percentual do reajuste"
+              className={`${TOOL_BTN} ${showMargem ? TOOL_ON : TOOL_OFF}`}
+            >
+              <Snowflake size={13} /> Margem
+              {margemCount > 0 && <span className={TOOL_BADGE}>{margemCount}</span>}
+            </button>
 
             {/* Validar + engrenagem viram um par visual: a config é modificador
                 do toggle, não uma ação independente. */}
@@ -2153,6 +2480,20 @@ export default function SiengeVendasModal({
                   {reajusteColunas.size === 0 && (
                     <span className="text-[10px] text-red-400">Selecione ao menos uma coluna.</span>
                   )}
+                  {/* Margem cadastrada muda o resultado do reajuste; sem esse
+                      aviso, quem aplica o percentual encontraria um número que
+                      não bate com a conta que fez de cabeça. */}
+                  {margemDoReajuste > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPainel('margem')}
+                      className="flex items-center gap-1.5 w-fit text-[10px] text-blue-300/90 hover:text-blue-200 transition-colors"
+                    >
+                      <Snowflake size={11} className="shrink-0" />
+                      {formatCurrency(margemDoReajuste)} de margem congelada nas colunas marcadas — o percentual incide
+                      só sobre o restante. Ver margens
+                    </button>
+                  )}
                 </div>
 
                 {reajusteTipo === 'seletiva' && (
@@ -2223,6 +2564,17 @@ export default function SiengeVendasModal({
                   A LP do Corretor só passa a exibir os novos valores depois de aprovada em "Tabela Corretor".
                 </p>
               </div>
+            )}
+
+            {showMargem && (
+              <MargemPanel
+                projectId={selectedProjectId}
+                unidades={projectUnidades}
+                colunas={reajustaveisColunas}
+                onSaveUnidade={onSaveUnidade}
+                onSetMargem={onSetMargem}
+                onClose={() => setPainel(null)}
+              />
             )}
 
             {showCalculo && (

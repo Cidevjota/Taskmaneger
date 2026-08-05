@@ -43,6 +43,7 @@ interface SiengeViewProps {
   onDeleteTabelaVenda: (id: string) => void;
   onClearTabelaVenda: (projectId: string) => Promise<void> | void;
   onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
+  onSetTabelaVendaMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
   onReverterTabelaVendaRevisao: (revisaoId: string) => Promise<void> | void;
   onAlterarSituacaoUnidades: (params: {
     projectId: string;
@@ -78,7 +79,7 @@ export default function SiengeView({
   onSaveTitle, onDeleteTitle, onSaveLote, onDeleteLote, onSaveFatura, onDeleteFatura, onSaveAlcadaConfig,
   editingMap, onTitlePresence,
   projectMetas, categoriaOrcamento, projectTotais, projectDisplays, onSaveProjectMeta, onDeleteProjectMeta, onSaveCategoriaOrcamento, onDeleteCategoriaOrcamento, onSaveProjectTotal, onSaveProjectDisplay,
-  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onClearTabelaVenda, onApplyTabelaVendaReajuste, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
+  tabelaVendas, tabelaVendaRevisoes, onSaveTabelaVenda, onDeleteTabelaVenda, onClearTabelaVenda, onApplyTabelaVendaReajuste, onSetTabelaVendaMargem, onReverterTabelaVendaRevisao, onAlterarSituacaoUnidades,
   vendas, orcamentoConfig, onSaveOrcamentoConfig,
   tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
   validacoes, onSaveValidacao, onDeleteValidacao,
@@ -224,6 +225,7 @@ export default function SiengeView({
             onDeleteUnidade={onDeleteTabelaVenda}
             onClearUnidades={onClearTabelaVenda}
             onApplyReajuste={onApplyTabelaVendaReajuste}
+            onSetMargem={onSetTabelaVendaMargem}
             onReverterRevisao={onReverterTabelaVendaRevisao}
             onAlterarSituacao={onAlterarSituacaoUnidades}
             onSaveColuna={onSaveTabelaVendaColuna}

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { AlertTriangle, Check, ShieldCheck, GripVertical, Trash2, Plus, X, Microscope } from 'lucide-react';
 import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
-import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, calcValidacaoParcelas, calcValidacaoValorUnidade, formatBrNumber, isDiferencaOk, mergeColunasRegras, parseBrNumber } from '../lib/siengeVendasTabela';
+import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, calcValidacaoParcelas, calcValidacaoValorUnidade, formatBrNumber, formatCurrencyInput, isDiferencaOk, mergeColunasRegras, parseBrNumber, parseCurrencyInput } from '../lib/siengeVendasTabela';
 
 interface SiengeVendasTableProps {
   projectId: string;
@@ -49,18 +49,6 @@ export const SITUACAO_STYLES: Record<SiengeVendaSituacao, string> = {
   bloqueada: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20',
 };
 
-function formatCurrencyInput(value: string): string {
-  const digits = value.replace(/\D/g, '');
-  if (!digits) return '';
-  const num = parseInt(digits, 10) / 100;
-  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function parseCurrencyInput(formatted: string): number {
-  const cleaned = formatted.replace(/\./g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
-}
-
 function formatDecimalInput(value: string): string {
   const cleaned = value.replace(/[^\d,]/g, '');
   const [intPart, ...rest] = cleaned.split(',');
@@ -94,14 +82,15 @@ const TXT_EMPTY = 'text-xs text-zinc-700';                                // pla
 const TXT_UNIT = 'text-[10px] font-medium text-zinc-500 shrink-0';        // sufixos/prefixos R$, m²
 const TXT_HEAD = 'text-[10px] font-semibold text-zinc-500 uppercase tracking-wider';
 
-// Larguras fixas por tipo: colunas do mesmo tipo passam a ocupar o mesmo espaço,
-// então os números se alinham verticalmente mesmo sem alinhamento à direita.
-// w-24/w-16 são larguras pensadas pra 2 casas ("1.234,56") — no modo científico
-// (8 casas) o texto é bem mais comprido ("1.234,56789012") e não cabia: o navegador
-// não corta o valor de verdade, só deixa de mostrar o final dentro da caixa
-// estreita, dando a impressão de que só 4 casas tinham "aparecido".
-const W_MONEY = (casas: number) => (casas > 2 ? 'w-40' : 'w-24');
-const W_NUMBER = (casas: number) => (casas > 2 ? 'w-28' : 'w-16');
+// Largura dos <input> acompanha o conteúdo, em `ch` (a fonte é tabular-nums,
+// então 1ch = exatamente a largura de um dígito e a conta bate). Antes eram
+// classes fixas (w-24/w-16) dimensionadas pro pior caso: uma coluna de "3" ou
+// "1" reservava espaço de um valor em reais, abrindo lacunas enormes entre
+// colunas estreitas. O `min` evita que uma coluna vazia colapse a ponto de não
+// dar pra clicar, e o placeholder entra na conta pra não ficar cortado.
+function chWidth(text: string, placeholder: string, min: number): React.CSSProperties {
+  return { width: `${Math.max(text.length, placeholder.length, min)}ch` };
+}
 
 // Valor monetário somente leitura (colunas calculadas) com o mesmo prefixo "R$"
 // discreto usado nos campos editáveis — antes vinha do formatCurrency, que
@@ -237,7 +226,8 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
             onChange={e => onChange(formatCurrencyInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
             placeholder="0,00"
-            className={`${W_MONEY(casas)} shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+            style={chWidth(text, '0,00', casas > 2 ? 12 : 8)}
+            className={`shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
           />
         </div>
       </td>
@@ -255,7 +245,8 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
             onChange={e => onChange(formatDecimalInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
             placeholder="0"
-            className={`${W_NUMBER(casas)} shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+            style={chWidth(text, '0', 4)}
+            className={`shrink-0 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
           />
           <span className={TXT_UNIT}>m²</span>
         </div>
@@ -272,7 +263,8 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
         onChange={e => onChange(formatDecimalInput(e.target.value))}
         onKeyDown={e => { if (e.key === 'Enter') onCommit(); }}
         placeholder="0"
-        className={`${W_NUMBER(casas)} bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+        style={chWidth(text, '0', 3)}
+        className={`bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
       />
     </td>
   );
@@ -346,7 +338,8 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           readOnly={!editavel}
           onChange={e => setUnidadeText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
-          className={`w-14 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+          style={chWidth(unidadeText, '', 4)}
+          className={`bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
         />
       </td>
       <td className={CELL_PAD}>
@@ -360,7 +353,8 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
             onChange={e => setValorText(formatCurrencyInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') commit(); }}
             placeholder="0,00"
-            className={`${W_MONEY(displayCasas)} shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+            style={chWidth(valorText, '0,00', displayCasas > 2 ? 12 : 8)}
+            className={`shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none ${RO(editavel)}`}
           />
         </div>
       </td>
@@ -393,7 +387,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
           {SITUACAO_LABELS[item.situacao]}
         </span>
       </td>
-      <td className={`${CELL_PAD} min-w-[180px]`}>
+      <td className={`${CELL_PAD} w-full min-w-[180px]`}>
         <input
           type="text"
           value={descricaoText}
@@ -463,6 +457,9 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
       unidade: trimmed,
       valorTabela: parseCurrencyInput(valorText),
       camposExtra,
+      // Sem margem por padrão: unidade nova reajusta o valor cheio até alguém
+      // definir a margem no painel "Margem".
+      margens: {},
       situacao,
       descricao: descricaoText.trim() || null,
       compradorAtual: null,
@@ -497,7 +494,8 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
             onChange={e => setValorText(formatCurrencyInput(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') add(); }}
             placeholder="0,00"
-            className={`${W_MONEY(2)} shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none`}
+            style={chWidth(valorText, '0,00', 8)}
+            className={`shrink-0 bg-transparent ${TXT_PRIMARY} placeholder-zinc-700 outline-none`}
           />
         </div>
       </td>
@@ -525,7 +523,7 @@ function NewUnidadeRow({ projectId, colunas, merged, mostrarValidacao, existingU
           {SITUACAO_LABELS[situacao]}
         </span>
       </td>
-      <td className={`${CELL_PAD} min-w-[180px]`}>
+      <td className={`${CELL_PAD} w-full min-w-[180px]`}>
         <input
           type="text"
           value={descricaoText}
@@ -663,7 +661,10 @@ export default function SiengeVendasTable({ projectId, unidades, allUnidadeNames
               </>
             )}
             <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Situação</th>
-            <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY}`}>Descrição</th>
+            {/* w-full: a Descrição absorve toda a sobra de largura da tabela,
+                assim as colunas numéricas ficam coladas ao próprio conteúdo em
+                vez de dividirem o espaço vago igualmente entre si. */}
+            <th className={`text-left px-3 py-1.5 w-full ${TXT_HEAD} ${TH_STICKY}`}>Descrição</th>
             <th className={`px-3 py-1 ${TH_STICKY}`} />
           </tr>
         </thead>

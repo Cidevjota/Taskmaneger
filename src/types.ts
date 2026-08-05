@@ -459,6 +459,10 @@ export interface SiengeTabelaVendaUnidade {
   valorTabela: number;
   situacao: SiengeVendaSituacao;
   camposExtra: Record<string, number | string>;
+  // Parcela congelada do valor, por coluna ('valor_tabela' ou key de coluna
+  // extra): o reajuste aplica o percentual só sobre (valor − margem) e soma a
+  // margem de volta. Coluna ausente aqui = valor reajusta cheio.
+  margens: Record<string, number>;
   descricao: string | null;
   compradorAtual: string | null;
   // Motivo da última mudança de situação; copiado para o snapshot de venda.

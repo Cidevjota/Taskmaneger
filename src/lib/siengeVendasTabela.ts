@@ -54,6 +54,35 @@ export function mergeColunasRegras(colunas: SiengeTabelaVendaColuna[], regras: S
   });
 }
 
+// ─── Margem (parcela congelada do valor) ──────────────────────
+// Espelha as funções sienge_margem_de / sienge_reajusta_com_margem do banco —
+// aqui só para pré-visualizar o efeito no painel; quem grava o reajuste de fato
+// é a RPC, e o cálculo tem que dar o mesmo número dos dois lados.
+
+export const MARGEM_VALOR_TABELA_KEY = 'valor_tabela';
+
+export function getMargem(item: SiengeTabelaVendaUnidade, colunaKey: string): number {
+  const v = item.margens?.[colunaKey];
+  return typeof v === 'number' && !isNaN(v) ? v : 0;
+}
+
+// A margem nunca passa do próprio valor: congelar mais do que existe faria o
+// percentual incidir sobre base negativa e um reajuste positivo derrubar o
+// valor. Nesse caso o valor inteiro fica congelado.
+export function margemEfetiva(valor: number, margem: number): number {
+  return Math.min(Math.max(margem || 0, 0), Math.max(valor || 0, 0));
+}
+
+// A parte do valor que de fato recebe o percentual.
+export function baseReajustavel(valor: number, margem: number): number {
+  return valor - margemEfetiva(valor, margem);
+}
+
+export function reajustaComMargem(valor: number, margem: number, percentual: number): number {
+  const m = margemEfetiva(valor, margem);
+  return m + (valor - m) * (1 + percentual / 100);
+}
+
 // ─── Regras de cálculo (colunas calculadas: Mensal, Semestral, etc.) ──
 
 export function getColunaBaseValue(item: SiengeTabelaVendaUnidade, colunaBaseKey: string): number {
@@ -145,6 +174,22 @@ export function parseBrNumber(raw: string): number {
 
 export function formatBrNumber(n: number): string {
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Máscara de centavos: cada dígito digitado entra pela direita (1 → 0,01;
+// 12 → 0,12; 123 → 1,23). Vive aqui, e não em cada componente, porque a tabela
+// e o painel de margem editam o mesmo tipo de valor e precisam se comportar
+// igual — inclusive no par formata/parse, que só faz sentido junto.
+export function formatCurrencyInput(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function parseCurrencyInput(formatted: string): number {
+  const cleaned = formatted.replace(/\./g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
 }
 
 // ─── CSV (padrão Excel BR: ';' e decimal ',') ──────────────────
@@ -320,6 +365,9 @@ export function parseSiengeVendasRows(
       valorTabela,
       situacao,
       camposExtra,
+      // A importação não mexe em margem: ela é configuração de reajuste, não
+      // dado da planilha. Reimportar a tabela preserva a margem já cadastrada.
+      margens: existing?.margens ?? {},
       descricao,
       compradorAtual: comprador ?? existing?.compradorAtual ?? null,
       situacaoMotivo: existing?.situacaoMotivo ?? null,
