@@ -62,6 +62,17 @@ async function uploadLpFile(projectId: string, file: File): Promise<string> {
   return uploadToStorage('attachments', path, file, UPLOAD_LIMITS.task);
 }
 
+// Ponto de partida da legenda de uma planta: o nome do arquivo, sem extensão e
+// com '-'/'_' virando espaço — evita a planta nascer sem identificação a cada
+// upload. É só o valor inicial do campo, continua editável normalmente depois.
+function legendaInicialDoArquivo(nomeArquivo: string): string {
+  return nomeArquivo
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function Secao({ titulo, descricao, children }: { titulo: string; descricao?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2.5 pt-4 border-t border-zinc-800/70 first:pt-0 first:border-0">
@@ -195,12 +206,20 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
     setErro(null);
     try {
       if (tipo === 'imagens' || tipo === 'plantas') {
-        const urls = await Promise.all(Array.from(files).map(f => uploadLpFile(projectId, f)));
+        const arquivos = Array.from(files);
+        const urls = await Promise.all(arquivos.map(f => uploadLpFile(projectId, f)));
         if (tipo === 'imagens') {
           const novas: LpCorretorImagem[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '' }));
           patch({ imagens: [...config.imagens, ...novas] });
         } else {
-          const novas: LpCorretorPlanta[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '', unidades: [], terminacoes: [], andares: [] }));
+          const novas: LpCorretorPlanta[] = urls.map((url, i) => ({
+            id: crypto.randomUUID(),
+            url,
+            legenda: legendaInicialDoArquivo(arquivos[i].name),
+            unidades: [],
+            terminacoes: [],
+            andares: [],
+          }));
           patch({ plantas: [...config.plantas, ...novas] });
         }
       } else {
