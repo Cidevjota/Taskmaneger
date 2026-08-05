@@ -2638,9 +2638,13 @@ export default function SiengeVendasModal({
                 key={selectedProjectId}
                 projectId={selectedProjectId}
                 projectName={selectedProject?.name || ''}
-                colunas={projectColunas}
-                regras={projectRegras}
-                unidades={projectUnidades}
+                versoes={projectVersoes}
+                onSaveVersao={onSaveVersao}
+                // Todas as versões, não só a aberta: a LP escolhe quais libera
+                // e precisa enxergar as colunas e regras de cada uma.
+                colunas={colunas.filter(c => c.projectId === selectedProjectId)}
+                regras={regras.filter(r => r.projectId === selectedProjectId)}
+                unidades={unidades.filter(u => u.projectId === selectedProjectId)}
                 onClose={() => setPainel(null)}
               />
             )}

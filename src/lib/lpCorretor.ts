@@ -87,6 +87,13 @@ export const LP_SITUACAO_LABELS: Record<SiengeVendaSituacao, string> = {
 
 const limpar = (lista: string[] | undefined) => (lista || []).map(s => s.trim().toLowerCase()).filter(Boolean);
 
+/** Andar da unidade para uma dada terminação: o que sobra do número ao tirar
+ *  a terminação do fim (ex.: '1601' menos '01' = '16'), sem zeros à esquerda —
+ *  é o que permite comparar '3' com '03'. */
+function andarPorTerminacao(alvo: string, terminacao: string): string {
+  return alvo.slice(0, alvo.length - terminacao.length).replace(/^0+/, '') || '0';
+}
+
 /**
  * Plantas de uma unidade, em ordem de especificidade:
  *
@@ -95,7 +102,10 @@ const limpar = (lista: string[] | undefined) => (lista || []).map(s => s.trim().
  *      unidade: a cobertura 1601 termina em '01' como a 101 e a 201, mas tem
  *      planta própria e não pode herdar a do tipo.
  *   2. Plantas por terminação (ex.: '01' pega 101, 201, 1101), aplicadas só a
- *      quem não tem planta própria.
+ *      quem não tem planta própria. Se a planta também tem andares
+ *      informados, só bate quando o andar da unidade está na lista — é o que
+ *      separa duas plantas com a mesma terminação em andares diferentes; sem
+ *      andar informado, a terminação sozinha decide, como antes.
  *   3. Plantas gerais (sem unidades e sem terminações) — o pavimento, que vale
  *      para o empreendimento inteiro, inclusive para as coberturas.
  */
@@ -107,7 +117,13 @@ export function plantasDaUnidade(plantas: LpCorretorPlanta[], unidade: string): 
 
   const porTerminacao = proprias.length > 0
     ? []
-    : semLista.filter(p => limpar(p.terminacoes).some(t => alvo.endsWith(t)));
+    : semLista.filter(p => {
+        const andares = limpar(p.andares);
+        return limpar(p.terminacoes).some(t => {
+          if (!alvo.endsWith(t)) return false;
+          return andares.length === 0 || andares.includes(andarPorTerminacao(alvo, t));
+        });
+      });
 
   const gerais = semLista.filter(p => limpar(p.terminacoes).length === 0);
 

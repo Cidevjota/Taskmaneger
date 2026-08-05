@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
-import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade } from '../types';
-import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, publicarTabelaLpCorretor, saveLpCorretorConfig } from '../lib/api';
+import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao } from '../types';
+import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, publicarTabelaLpCorretorVersao, saveLpCorretorConfig } from '../lib/api';
 import { REGRA_PREFIX, lpCorretorUrl, slugifyLpSlug } from '../lib/lpCorretor';
 import { mergeColunasRegras } from '../lib/siengeVendasTabela';
 import { UPLOAD_LIMITS, sanitizeFileName, uploadToStorage } from '../lib/storage';
@@ -9,6 +9,10 @@ import { UPLOAD_LIMITS, sanitizeFileName, uploadToStorage } from '../lib/storage
 interface LpCorretorConfigPanelProps {
   projectId: string;
   projectName: string;
+  /** Todas as versões do empreendimento — cada uma pode ir para a LP ou não. */
+  versoes: SiengeTabelaVendaVersao[];
+  onSaveVersao: (versao: SiengeTabelaVendaVersao) => Promise<void> | void;
+  /** Colunas e regras de TODAS as versões: a LP escolhe entre elas. */
   colunas: SiengeTabelaVendaColuna[];
   regras: SiengeCalculoRegra[];
   /** Unidades do empreendimento — usadas para detectar alterações não publicadas. */
@@ -70,7 +74,7 @@ function Secao({ titulo, descricao, children }: { titulo: string; descricao?: st
   );
 }
 
-export default function LpCorretorConfigPanel({ projectId, projectName, colunas, regras, unidades, onClose }: LpCorretorConfigPanelProps) {
+export default function LpCorretorConfigPanel({ projectId, projectName, versoes, onSaveVersao, colunas, regras, unidades, onClose }: LpCorretorConfigPanelProps) {
   const [config, setConfig] = useState<LpCorretorConfig | null>(null);
   const [salvo, setSalvo] = useState<LpCorretorConfig | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -78,7 +82,8 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [enviando, setEnviando] = useState<UploadTipo | null>(null);
-  const [publicando, setPublicando] = useState(false);
+  /** Id da versão sendo publicada — o botão que roda é só o dela. */
+  const [publicando, setPublicando] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
   const bannerInputRef = useRef<HTMLInputElement>(null);
@@ -111,32 +116,52 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
     return () => { ativo = false; };
   }, [projectId, projectName]);
 
-  const merged = useMemo(() => mergeColunasRegras(colunas, regras), [colunas, regras]);
+  const ordenadas = useMemo(() => [...versoes].sort((a, b) => a.sortOrder - b.sortOrder), [versoes]);
+  const versoesLp = useMemo(() => ordenadas.filter(v => v.lpVisivel), [ordenadas]);
+
+  // As colunas que a LP pode exibir são as das versões liberadas. Uma key
+  // repetida entre versões é a mesma coluna e aparece uma vez só; regras têm id
+  // próprio por versão, então cada uma entra separada — marcar a de uma versão
+  // não faz a irmã aparecer na outra.
+  const merged = useMemo(() => {
+    const ids = new Set(versoesLp.map(v => v.id));
+    const doLp = colunas.filter(c => ids.has(c.versaoId));
+    const porKey = new Map<string, SiengeTabelaVendaColuna>();
+    for (const c of doLp) if (!porKey.has(c.key)) porKey.set(c.key, c);
+    return mergeColunasRegras([...porKey.values()], regras.filter(r => ids.has(r.versaoId)));
+  }, [colunas, regras, versoesLp]);
+
+  // Nome da versão de cada regra — sem ele, duas versões com a mesma regra
+  // ("Entrada 20%") viram duas linhas idênticas e indistinguíveis na lista.
+  const nomeVersaoDaRegra = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of regras) {
+      const v = ordenadas.find(x => x.id === r.versaoId);
+      if (v) m.set(r.id, v.nome);
+    }
+    return m;
+  }, [regras, ordenadas]);
 
   // A LP serve um snapshot aprovado, não a tabela ao vivo: reajustar não muda
-  // o que o corretor vê. Há versão pendente quando alguma unidade foi alterada
-  // depois da última publicação.
-  const publicadaEm = config?.tabelaPublicadaEm ? new Date(config.tabelaPublicadaEm).getTime() : null;
-  const alteradasDepois = useMemo(() => {
-    if (publicadaEm === null) return [];
-    return unidades.filter(u => new Date(u.updatedAt).getTime() > publicadaEm);
-  }, [unidades, publicadaEm]);
-  const nuncaPublicada = !!config && publicadaEm === null;
-  const temPendencia = alteradasDepois.length > 0;
+  // o que o corretor vê. Há versão pendente quando alguma unidade daquela
+  // versão foi alterada depois da última publicação dela.
+  const pendenciaDaVersao = (versao: SiengeTabelaVendaVersao) => {
+    if (!versao.tabelaPublicadaEm) return null;
+    const em = new Date(versao.tabelaPublicadaEm).getTime();
+    return unidades.filter(u => u.versaoId === versao.id && new Date(u.updatedAt).getTime() > em);
+  };
 
-  const publicar = async () => {
-    if (!config || publicando) return;
-    setPublicando(true);
+  const publicar = async (versao: SiengeTabelaVendaVersao) => {
+    if (publicando) return;
+    setPublicando(versao.id);
     setErro(null);
     try {
-      const em = await publicarTabelaLpCorretor(projectId);
-      const atualizado = { ...config, tabelaPublicadaEm: em };
-      setConfig(atualizado);
-      setSalvo(s => (s ? { ...s, tabelaPublicadaEm: em } : s));
+      const em = await publicarTabelaLpCorretorVersao(versao.id);
+      await onSaveVersao({ ...versao, tabelaPublicadaEm: em });
     } catch (e: any) {
       setErro(e.message || 'Erro ao publicar a tabela.');
     } finally {
-      setPublicando(false);
+      setPublicando(null);
     }
   };
   const dirty = !!config && !!salvo && JSON.stringify(config) !== JSON.stringify(salvo);
@@ -175,7 +200,7 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
           const novas: LpCorretorImagem[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '' }));
           patch({ imagens: [...config.imagens, ...novas] });
         } else {
-          const novas: LpCorretorPlanta[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '', unidades: [], terminacoes: [] }));
+          const novas: LpCorretorPlanta[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '', unidades: [], terminacoes: [], andares: [] }));
           patch({ plantas: [...config.plantas, ...novas] });
         }
       } else {
@@ -307,58 +332,102 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
         </div>
       </div>
 
-      {/* Versão da tabela servida à LP. Reajustes e edições não sobem sozinhos:
-          o corretor continua vendo a última versão aprovada até alguém publicar. */}
-      <div className={`flex flex-col gap-2.5 p-3 border rounded-lg ${
-        temPendencia ? 'bg-amber-500/5 border-amber-500/30' : 'bg-zinc-900/50 border-zinc-800'
-      }`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2 min-w-0">
-            {temPendencia
-              ? <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
-              : <ShieldCheck size={14} className="text-emerald-400 shrink-0 mt-0.5" />}
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-zinc-200">
-                {nuncaPublicada
-                  ? 'Tabela ainda não publicada'
-                  : temPendencia
-                    ? 'Há uma nova versão da tabela'
-                    : 'Tabela publicada e atualizada'}
+      {/* Versões servidas à LP. A página é uma só — banner, plantas e ficha são
+          as mesmas; o que o botão de versão troca lá são as unidades, as colunas
+          e os valores. Cada versão tem a própria publicação: reajustar não sobe
+          sozinho, o corretor vê a última aprovada até alguém publicar. */}
+      <Secao
+        titulo="Versões na página"
+        descricao="Marque quais versões o corretor pode escolher. Com mais de uma marcada, a página exibe os botões de versão nos filtros da tabela. Versão sem publicação serve os valores ao vivo."
+      >
+        {ordenadas.length === 0 ? (
+          <p className="text-[11px] text-zinc-600">Este empreendimento ainda não tem versões de tabela de vendas.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {ordenadas.map(v => {
+              const pendentes = pendenciaDaVersao(v);
+              const nunca = pendentes === null;
+              const temPendencia = !!pendentes && pendentes.length > 0;
+              const alerta = v.lpVisivel && (temPendencia || nunca);
+              return (
+                <div
+                  key={v.id}
+                  className={`flex flex-col gap-2 p-2.5 border rounded-lg ${
+                    alerta ? 'bg-amber-500/5 border-amber-500/30' : 'bg-zinc-900/50 border-zinc-800'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 min-w-0">
+                      {!v.lpVisivel
+                        ? <EyeOff size={14} className="text-zinc-600 shrink-0 mt-0.5" />
+                        : alerta
+                          ? <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                          : <ShieldCheck size={14} className="text-emerald-400 shrink-0 mt-0.5" />}
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+                          {v.nome}
+                          {v.principal && <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">principal</span>}
+                        </p>
+                        <p className="text-[11px] text-zinc-500 leading-relaxed">
+                          {!v.lpVisivel ? (
+                            <>Não aparece na página. Marque para o corretor poder escolher esta condição.</>
+                          ) : nunca ? (
+                            <>Servindo os valores ao vivo. Publique para congelar o que o corretor vê.</>
+                          ) : temPendencia ? (
+                            <>
+                              {pendentes!.length} {pendentes!.length === 1 ? 'unidade alterada' : 'unidades alteradas'} desde a última publicação
+                              ({new Date(v.tabelaPublicadaEm!).toLocaleString('pt-BR')}).
+                            </>
+                          ) : (
+                            <>Publicada em {new Date(v.tabelaPublicadaEm!).toLocaleString('pt-BR')}. Sem pendências.</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {v.lpVisivel && (
+                        <button
+                          type="button"
+                          onClick={() => publicar(v)}
+                          disabled={!!publicando || (!temPendencia && !nunca)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg transition-colors ${
+                            temPendencia || nunca
+                              ? 'text-white bg-amber-600 hover:bg-amber-500'
+                              : 'text-zinc-600 bg-zinc-900/60 border border-zinc-800'
+                          }`}
+                        >
+                          {publicando === v.id ? <Loader2 size={11} className="animate-spin" /> : <UploadCloud size={11} />}
+                          {publicando === v.id ? 'Publicando...' : 'Publicar'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onSaveVersao({ ...v, lpVisivel: !v.lpVisivel })}
+                        title={v.lpVisivel ? 'Tirar esta versão da página' : 'Liberar esta versão na página'}
+                        className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${v.lpVisivel ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${v.lpVisivel ? 'left-[22px]' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {temPendencia && pendentes!.length <= 12 && (
+                    <p className="text-[10px] text-zinc-600 break-words">
+                      {pendentes!.map(u => u.unidade).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join(', ')}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            {versoesLp.length === 0 && (
+              <p className="text-[11px] text-amber-400">
+                Nenhuma versão liberada — a página responde como indisponível para o corretor.
               </p>
-              <p className="text-[11px] text-zinc-500 leading-relaxed">
-                {nuncaPublicada ? (
-                  <>A LP está servindo a tabela ao vivo. Publique uma versão para congelar os valores que o corretor vê — a partir daí, reajustes só chegam a ele depois de aprovados aqui.</>
-                ) : temPendencia ? (
-                  <>
-                    {alteradasDepois.length} {alteradasDepois.length === 1 ? 'unidade foi alterada' : 'unidades foram alteradas'} desde a última publicação
-                    ({new Date(config.tabelaPublicadaEm!).toLocaleString('pt-BR')}). O corretor continua vendo os valores anteriores até você aprovar.
-                  </>
-                ) : (
-                  <>Publicada em {new Date(config.tabelaPublicadaEm!).toLocaleString('pt-BR')}. Nenhuma alteração pendente.</>
-                )}
-              </p>
-            </div>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={publicar}
-            disabled={publicando || (!temPendencia && !nuncaPublicada)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors shrink-0 ${
-              temPendencia || nuncaPublicada
-                ? 'text-white bg-amber-600 hover:bg-amber-500'
-                : 'text-zinc-600 bg-zinc-900/60 border border-zinc-800'
-            }`}
-          >
-            {publicando ? <Loader2 size={12} className="animate-spin" /> : <UploadCloud size={12} />}
-            {publicando ? 'Publicando...' : 'Aprovar e publicar'}
-          </button>
-        </div>
-        {temPendencia && alteradasDepois.length <= 12 && (
-          <p className="text-[10px] text-zinc-600 break-words">
-            {alteradasDepois.map(u => u.unidade).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join(', ')}
-          </p>
         )}
-      </div>
+      </Secao>
 
       <Secao titulo="Banner principal" descricao="Imagem de topo da página. Sem banner, a capa do empreendimento é usada.">
         <div className="flex items-center gap-3">
@@ -486,7 +555,7 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
 
       <Secao
         titulo="Plantas"
-        descricao="Exibidas ao expandir a linha de uma unidade. A ligação é por terminação: '01' vale para 101, 201, 1101 e assim por diante. Uma planta com unidades específicas preenchidas vale só para elas e ignora as terminações — é assim que a cobertura fica com a planta própria mesmo tendo a mesma terminação das demais. Com os dois campos em branco, a planta vale para o empreendimento inteiro (ex.: pavimento)."
+        descricao="Exibidas ao expandir a linha de uma unidade. A ligação é por terminação: '01' vale para 101, 201, 1101 e assim por diante. Se a mesma terminação tiver plantas diferentes em andares diferentes, informe o(s) andar(es) para desempatar (ex.: '01' + andar '3' pega só a 301). Uma planta com unidades específicas preenchidas vale só para elas e ignora terminação e andar — é assim que a cobertura fica com a planta própria mesmo tendo a mesma terminação das demais. Com todos os campos em branco, a planta vale para o empreendimento inteiro (ex.: pavimento)."
       >
         <input ref={plantasInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => { handleUpload('plantas', e.target.files); e.target.value = ''; }} />
         {config.plantas.length > 0 && (
@@ -525,6 +594,15 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
                     disabled={propria}
                     title={propria ? 'Ignorado: esta planta já está restrita a unidades específicas' : undefined}
                     placeholder="Terminações (ex.: 01, 02)"
+                    className={`${INPUT_CLASS} disabled:opacity-40`}
+                  />
+                  <input
+                    type="text"
+                    value={(planta.andares || []).join(', ')}
+                    onChange={e => atualizar({ andares: listaDe(e.target.value) })}
+                    disabled={propria}
+                    title={propria ? 'Ignorado: esta planta já está restrita a unidades específicas' : 'Opcional — só necessário quando a mesma terminação tem plantas diferentes por andar'}
+                    placeholder="Andar (ex.: 3, 10) — opcional"
                     className={`${INPUT_CLASS} disabled:opacity-40`}
                   />
                   <input
@@ -618,21 +696,25 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
 
       <Secao
         titulo="Colunas da tabela"
-        descricao="Unidade, valor e situação sempre aparecem na linha. Para cada coluna restante escolha: Oculta (não sai do banco), Linha (aparece na linha compacta) ou Detalhe (aparece só ao expandir a unidade, ao lado da planta)."
+        descricao="Colunas das versões liberadas acima. Unidade, valor e situação sempre aparecem na linha. Para cada coluna restante escolha: Oculta (não sai do banco), Linha (aparece na linha compacta) ou Detalhe (aparece só ao expandir a unidade, ao lado da planta) — o card da unidade sempre mostra tudo que não estiver oculto."
       >
         {merged.length === 0 ? (
-          <p className="text-[11px] text-zinc-600">Este empreendimento ainda não tem colunas cadastradas.</p>
+          <p className="text-[11px] text-zinc-600">Nenhuma coluna nas versões liberadas para a página.</p>
         ) : (
           <div className="flex flex-col gap-1.5">
             {merged.map(m => {
               const key = m.kind === 'coluna' ? m.item.key : `${REGRA_PREFIX}${m.item.id}`;
               const label = m.kind === 'coluna' ? m.item.label : m.item.titulo;
               const destino = destinoDe(key);
+              // Regra pertence a uma versão só; com várias liberadas, o nome
+              // dela é o que distingue duas regras homônimas.
+              const daVersao = m.kind === 'regra' && versoesLp.length > 1 ? nomeVersaoDaRegra.get(m.item.id) : null;
               return (
                 <div key={key} className="flex items-center gap-2">
                   <span className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-zinc-300 truncate">
                     {label}
                     {m.kind === 'regra' && <span className="text-[9px] text-zinc-600 uppercase shrink-0">calc.</span>}
+                    {daVersao && <span className="text-[9px] text-zinc-600 shrink-0 truncate">· {daVersao}</span>}
                   </span>
                   <div className="flex items-center gap-0.5 shrink-0">
                     {DESTINOS.map(d => (

@@ -621,14 +621,20 @@ export interface LpCorretorFichaItem {
 //      a mesma terminação das demais.
 //   2. `terminacoes` preenchido → vale para toda unidade cujo número termine
 //      assim (ex.: '01' pega 101, 201, 1101), exceto as que já têm planta
-//      própria pela regra 1.
-//   3. Ambos vazios → planta geral do empreendimento (ex.: pavimento).
+//      própria pela regra 1. Quando `andares` também está preenchido, a
+//      unidade só bate se o andar (o que sobra do número depois de tirar a
+//      terminação) estiver na lista — necessário quando a mesma terminação
+//      tem plantas diferentes em andares diferentes.
+//   3. `unidades`, `terminacoes` e `andares` vazios → planta geral do
+//      empreendimento (ex.: pavimento).
 export interface LpCorretorPlanta {
   id: string;
   url: string;
   legenda: string;
   unidades: string[];
   terminacoes: string[];
+  /** Vazio = terminação vale para qualquer andar (comportamento anterior). */
+  andares: string[];
 }
 
 // Chave de coluna visível na LP: a key de uma coluna real ou 'regra:<id>'
@@ -691,7 +697,18 @@ export interface LpCorretorPublicUnidade {
   calculados: Record<string, number>;
 }
 
+/** Versão liberada ao corretor — vira um botão nos filtros da página. */
+export interface LpCorretorPublicVersao {
+  id: string;
+  nome: string;
+  principal: boolean;
+}
+
 export interface LpCorretorPublicData {
+  /** Versões liberadas na LP. Uma só = a página não mostra os botões. */
+  versoes: LpCorretorPublicVersao[];
+  /** Qual delas esta resposta traz — colunas, regras e unidades são dela. */
+  versaoId: string;
   config: {
     projectId: string;
     slug: string;

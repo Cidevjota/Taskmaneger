@@ -331,12 +331,10 @@ function FaixaSlider({ min, max, step, valor, onChange, formatar }: {
  * cabem os dados que a linha compacta não mostra — no celular a tabela rola na
  * horizontal e boa parte das colunas fica fora da tela.
  */
-function DetalheUnidade({ unidade, entradas, chavesLinha, plantas, colspan, reservaUrl, larguraVisivel }: {
+function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, larguraVisivel }: {
   unidade: LpCorretorPublicUnidade;
-  /** Todas as colunas visíveis, na ordem da tabela. */
+  /** Todas as colunas visíveis (linha + detalhe) — o card mostra todas elas. */
   entradas: ReturnType<typeof mergeLpColunas>;
-  /** Quais dessas já aparecem na linha compacta. */
-  chavesLinha: Set<string>;
   plantas: LpCorretorPlanta[];
   colspan: number;
   reservaUrl: string | null;
@@ -400,10 +398,10 @@ function DetalheUnidade({ unidade, entradas, chavesLinha, plantas, colspan, rese
                 <dd className="text-xs font-medium text-zinc-300">{unidade.valorTabela > 0 ? formatMoeda(unidade.valorTabela) : '—'}</dd>
               </div>
               {entradas.map(e => (
-                // As colunas que já estão na linha compacta se repetem aqui
-                // apenas no celular, onde elas saem da tela ao rolar. No
-                // desktop a linha inteira está visível e repetir seria ruído.
-                <div key={e.id} className={`min-w-0 ${chavesLinha.has(e.id) ? 'lg:hidden' : ''}`}>
+                // O card mostra todas as colunas visíveis, mesmo as que já
+                // aparecem na linha compacta — inclusive no desktop, onde a
+                // linha some por baixo do card ao expandir.
+                <div key={e.id} className="min-w-0">
                   <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider truncate">{e.label}</dt>
                   <dd className="text-xs font-medium text-zinc-300">{formatLpValor(e.tipo, e.read(unidade))}</dd>
                 </div>
@@ -536,7 +534,6 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                   <DetalheUnidade
                     unidade={u}
                     entradas={entradas}
-                    chavesLinha={chavesLinha}
                     plantas={plantasDaUnidade(plantas, u.unidade)}
                     colspan={colspan}
                     reservaUrl={reservaUrl}
@@ -560,14 +557,22 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   const [filtro, setFiltro] = useState<SiengeVendaSituacao | 'todas'>('disponivel');
   const [faixaValor, setFaixaValor] = useState<Faixa | null>(null);
   const [faixaArea, setFaixaArea] = useState<Faixa | null>(null);
+  // null = ainda não escolhida; a RPC decide qual versão liberada abrir.
+  const [versaoId, setVersaoId] = useState<string | null>(null);
+  // Troca de versão não volta ao esqueleto: a página inteira (banner, ficha,
+  // plantas) é a mesma, só a tabela muda. Sumir com tudo para remontar igual
+  // faria a página piscar a cada toque num botão de versão.
+  const [trocandoVersao, setTrocandoVersao] = useState(false);
 
   useEffect(() => {
     let ativo = true;
-    fetchLpCorretorPublic(slug)
-      .then(d => { if (ativo) { setData(d); setCarregando(false); } })
-      .catch(() => { if (ativo) { setErro(true); setCarregando(false); } });
+    const primeira = versaoId === null;
+    if (!primeira) setTrocandoVersao(true);
+    fetchLpCorretorPublic(slug, versaoId ?? undefined)
+      .then(d => { if (ativo) { setData(d); setCarregando(false); setTrocandoVersao(false); } })
+      .catch(() => { if (ativo) { setErro(true); setCarregando(false); setTrocandoVersao(false); } });
     return () => { ativo = false; };
-  }, [slug]);
+  }, [slug, versaoId]);
 
   useEffect(() => {
     if (data) document.title = `${data.config.titulo || data.projeto.nome} — Tabela de Vendas`;
@@ -721,6 +726,38 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
         </section>
 
         <div className="sticky top-0 z-20 bg-[#08080a]/95 backdrop-blur border-b border-zinc-900">
+          {/* Versões liberadas. Ficam acima e com mais peso que os demais
+              filtros porque não filtram a lista: trocam a tabela inteira —
+              outras colunas, outros valores. Com uma versão só, o seletor não
+              tem função e some. */}
+          {data.versoes.length > 1 && (
+            <div className={`${GUTTER} pt-3 pb-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-900/80`}>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider shrink-0">Condição</span>
+              <div className="flex gap-1.5 flex-wrap min-w-0">
+                {data.versoes.map(v => {
+                  const ativa = v.id === data.versaoId;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setVersaoId(v.id)}
+                      disabled={trocandoVersao}
+                      aria-pressed={ativa}
+                      className={`shrink-0 px-3.5 py-2 min-h-[38px] rounded-md text-xs font-bold border transition-colors disabled:opacity-60 ${
+                        ativa
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.35)]'
+                          : 'text-zinc-300 bg-zinc-900 border-zinc-700 hover:border-zinc-600 hover:text-white'
+                      }`}
+                    >
+                      {v.nome}
+                    </button>
+                  );
+                })}
+              </div>
+              {trocandoVersao && <Loader2 size={13} className="text-zinc-500 animate-spin shrink-0" />}
+            </div>
+          )}
+
           <div className={`${GUTTER} py-3 flex items-center gap-2`}>
             <div className="flex gap-1.5 overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {(['disponivel', 'todas'] as const).map(f => {

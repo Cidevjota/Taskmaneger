@@ -1003,9 +1003,9 @@ export async function reverterSiengeTabelaVendasRevisao(revisaoId: string): Prom
   return Number(data ?? 0);
 }
 
-/** Aprova os valores atuais como a versão que a LP do Corretor passa a servir. */
-export async function publicarTabelaLpCorretor(projectId: string): Promise<string> {
-  const { data, error } = await supabase.rpc('publicar_tabela_lp_corretor', { p_project_id: projectId });
+/** Aprova os valores atuais de uma versão como o que a LP passa a servir nela. */
+export async function publicarTabelaLpCorretorVersao(versaoId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('publicar_tabela_lp_corretor_versao', { p_versao_id: versaoId });
   if (error) throw error;
   return String(data);
 }
@@ -1462,8 +1462,9 @@ export async function saveLpCorretorConfig(config: LpCorretorConfig) {
  * (colunas visíveis, colunas calculadas já resolvidas, comprador removido)
  * acontece dentro da função get_lp_corretor, no banco.
  */
-export async function fetchLpCorretorPublic(slug: string): Promise<LpCorretorPublicData | null> {
-  const { data, error } = await supabase.rpc('get_lp_corretor', { p_slug: slug });
+/** Sem versaoId a RPC devolve a primeira versão liberada ao corretor. */
+export async function fetchLpCorretorPublic(slug: string, versaoId?: string): Promise<LpCorretorPublicData | null> {
+  const { data, error } = await supabase.rpc('get_lp_corretor', { p_slug: slug, p_versao_id: versaoId ?? null });
   if (error) throw error;
   return (data as LpCorretorPublicData | null) ?? null;
 }
