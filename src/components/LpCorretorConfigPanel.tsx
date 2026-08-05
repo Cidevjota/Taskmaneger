@@ -487,7 +487,11 @@ export default function LpCorretorConfigPanel({ projectId, projectName, colunas,
               const atualizar = (mudanca: Partial<LpCorretorPlanta>) => patch({
                 plantas: config.plantas.map((p: LpCorretorPlanta) => p.id === planta.id ? { ...p, ...mudanca } : p),
               });
-              const listaDe = (texto: string) => texto.split(',').map(s => s.trim()).filter(Boolean);
+              // Aceita ',' e ';' como separador — o resto do módulo Sienge usa ';'
+              // (CSV de import/export), então quem digita aqui no automatismo do
+              // app inteiro não pode ficar com o campo inteiro virando um único
+              // item que nunca bate com nenhuma unidade real.
+              const listaDe = (texto: string) => texto.split(/[,;]/).map(s => s.trim()).filter(Boolean);
               const propria = planta.unidades.length > 0;
               return (
                 <div key={planta.id} className="flex items-center gap-2">

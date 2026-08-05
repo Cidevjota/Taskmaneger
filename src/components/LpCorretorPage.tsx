@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe } from 'lucide-react';
 import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
 import { fetchLpCorretorPublic } from '../lib/api';
 import { LP_SITUACAO_LABELS, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, mergeLpColunas, plantasDaUnidade, sortUnidades, valorNumerico } from '../lib/lpCorretor';
@@ -20,6 +20,16 @@ const SITUACAO_DOT: Record<SiengeVendaSituacao, string> = {
   vendida: 'bg-zinc-600',
   permuta: 'bg-zinc-600',
   bloqueada: 'bg-zinc-600',
+};
+
+// Ícone por canal de contato do rodapé — lucide não tem o glifo oficial do
+// WhatsApp, MessageCircle é o substituto convencional.
+const CANAL_ICONE: Record<string, React.ReactNode> = {
+  WhatsApp: <MessageCircle size={15} />,
+  Telefone: <Phone size={15} />,
+  'E-mail': <Mail size={15} />,
+  Instagram: <Instagram size={15} />,
+  Site: <Globe size={15} />,
 };
 
 type SecaoAberta = 'ficha' | null;
@@ -786,45 +796,63 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* Footer institucional */}
+        {/* Footer institucional. Um fio de degradê marca o início do rodapé em
+            vez de uma borda plana — o mesmo azul da marca, quase imperceptível. */}
         <footer
-          className={`border-t border-zinc-900 ${GUTTER} py-8 lg:py-12 flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:gap-10 lg:items-start`}
-          style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
+          className="relative border-t border-zinc-900"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          <div className="flex flex-col gap-3 lg:col-span-2">
-            <img src={LP_EMPRESA.logoUrl} alt={LP_EMPRESA.nome} className="h-6 lg:h-7 w-auto opacity-80" />
-            {LP_EMPRESA.descricao && <p className="text-xs lg:text-sm text-zinc-500 leading-relaxed lg:max-w-xl">{LP_EMPRESA.descricao}</p>}
-            {LP_EMPRESA.endereco && (
-              <p className="flex items-start gap-1.5 text-xs text-zinc-500">
-                <MapPin size={13} className="shrink-0 mt-0.5" /> {LP_EMPRESA.endereco}
-              </p>
-            )}
-          </div>
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-500/40 to-transparent" />
 
-          {canais.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {canais.map(c => (
-                <a
-                  key={c.label}
-                  href={c.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 min-h-[44px] rounded-md bg-zinc-900/60 border border-zinc-800 hover:bg-zinc-800 active:bg-zinc-800 transition-colors"
-                >
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{c.label}</span>
-                  <span className="text-xs font-medium text-zinc-200 truncate">{c.texto}</span>
-                </a>
-              ))}
+          <div className={`${GUTTER} py-10 lg:py-14`}>
+            <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between lg:gap-16">
+              {/* Marca: sem opacidade reduzida — era o que fazia o logo parecer
+                  desbotado sobre o fundo quase preto. */}
+              <div className="flex flex-col gap-4 lg:max-w-sm">
+                <img src={LP_EMPRESA.logoUrl} alt={LP_EMPRESA.nome} className="h-8 lg:h-9 w-auto object-contain" />
+                {LP_EMPRESA.descricao && (
+                  <p className="text-sm text-zinc-400 leading-relaxed">{LP_EMPRESA.descricao}</p>
+                )}
+                {LP_EMPRESA.endereco && (
+                  <p className="flex items-start gap-1.5 text-xs text-zinc-500">
+                    <MapPin size={13} className="shrink-0 mt-0.5 text-zinc-600" /> {LP_EMPRESA.endereco}
+                  </p>
+                )}
+              </div>
+
+              {canais.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 lg:w-auto lg:min-w-[380px]">
+                  {canais.map(c => (
+                    <a
+                      key={c.label}
+                      href={c.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center gap-3 px-3.5 py-3 min-h-[56px] rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/70 active:bg-zinc-900/70 transition-colors"
+                    >
+                      <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/80 text-zinc-400 shrink-0 group-hover:text-blue-400 group-hover:bg-blue-500/10 transition-colors">
+                        {CANAL_ICONE[c.label]}
+                      </span>
+                      <span className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{c.label}</span>
+                        <span className="text-xs font-medium text-zinc-200 truncate">{c.texto}</span>
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
 
-          <div className="pt-3 border-t border-zinc-900 text-[10px] text-zinc-600 leading-relaxed lg:col-span-3">
-            {LP_EMPRESA.creci && <p>{LP_EMPRESA.creci}</p>}
-            <p>
-              Valores sujeitos a alteração sem aviso prévio. Esta tabela é de uso exclusivo dos corretores
-              credenciados e não constitui proposta comercial.
-            </p>
-            <p className="mt-1">© {new Date().getFullYear()} {LP_EMPRESA.nome}. Todos os direitos reservados.</p>
+            <div className="mt-10 pt-6 border-t border-zinc-900 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-[11px] text-zinc-600 leading-relaxed">
+                {LP_EMPRESA.creci && <span className="text-zinc-500">{LP_EMPRESA.creci} · </span>}
+                Valores sujeitos a alteração sem aviso prévio. Esta tabela é de uso exclusivo dos corretores
+                credenciados e não constitui proposta comercial.
+              </p>
+              <p className="text-[11px] text-zinc-600 shrink-0">
+                © {new Date().getFullYear()} {LP_EMPRESA.nome}. Todos os direitos reservados.
+              </p>
+            </div>
           </div>
         </footer>
       </div>
