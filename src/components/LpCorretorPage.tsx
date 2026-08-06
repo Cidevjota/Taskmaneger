@@ -361,14 +361,18 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
               <>
                 {/* Esticar a planta para a largura toda do card no desktop só
                     engrossaria o traço sem revelar mais nada; abaixo do teto ela
-                    acompanha a coluna, mantendo a proporção. Fundo branco porque
-                    a planta vem com traço escuro sobre transparente e sumiria no
+                    acompanha a coluna, mantendo a proporção. O limite de altura
+                    segura a planta em pé (retrato), que de outro modo empurraria
+                    as informações da unidade para fora da tela — object-contain
+                    a encolhe dentro da caixa em vez de cortá-la, e as sobras
+                    laterais somem contra o fundo branco. Ele é branco porque a
+                    planta vem com traço escuro sobre transparente e sumiria no
                     tema escuro da página. */}
                 <img
                   src={planta.url}
                   alt={planta.legenda || `Planta da unidade ${unidade.unidade}`}
                   loading="lazy"
-                  className="w-full h-auto object-contain rounded-md border border-zinc-800 bg-white p-[15px]"
+                  className="w-full h-auto max-h-[400px] object-contain rounded-md border border-zinc-800 bg-white p-[15px]"
                 />
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-zinc-400 truncate">{planta.legenda || `Planta ${indice + 1}`}</span>
