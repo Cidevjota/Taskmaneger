@@ -178,17 +178,38 @@ function Informacoes({ itens, bookUrl }: { itens: LpCorretorFichaItem[]; bookUrl
  * o foco cai dentro dele — carrossel que continua girando enquanto a pessoa
  * examina uma imagem é hostil. No celular a galeria segue como scroll com snap,
  * que dá o gesto de arrastar nativo.
+ *
+ * A navegação é contador + miniaturas, não pontinhos: um empreendimento publica
+ * de vinte a trinta renders, e nessa quantidade o ponto não diz nada — nem
+ * quantas faltam (são dezenas de traços iguais), nem para onde se está indo
+ * (todo ponto é idêntico ao vizinho). A miniatura responde as duas coisas e
+ * ainda deixa o corretor pular direto para a imagem que quer mostrar ao
+ * cliente, em vez de avançar de um em um até chegar nela.
  */
 function SliderImagens({ imagens, intervaloMs = 5000 }: { imagens: LpCorretorImagem[]; intervaloMs?: number }) {
   const [indice, setIndice] = useState(0);
   const [pausado, setPausado] = useState(false);
   const [ampliada, setAmpliada] = useState<string | null>(null);
+  const tirasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (pausado || imagens.length < 2 || ampliada) return;
     const t = setInterval(() => setIndice(i => (i + 1) % imagens.length), intervaloMs);
     return () => clearInterval(t);
   }, [pausado, imagens.length, intervaloMs, ampliada]);
+
+  // Traz a miniatura ativa para o centro da faixa. O scrollLeft é calculado à
+  // mão de propósito: scrollIntoView() sobe pela árvore e arrastaria a página
+  // inteira a cada troca automática de imagem.
+  useEffect(() => {
+    const faixa = tirasRef.current;
+    const ativa = faixa?.children[indice] as HTMLElement | undefined;
+    if (!faixa || !ativa) return;
+    faixa.scrollTo({
+      left: ativa.offsetLeft - faixa.clientWidth / 2 + ativa.clientWidth / 2,
+      behavior: 'smooth',
+    });
+  }, [indice]);
 
   if (imagens.length === 0) return <p className="text-sm text-zinc-500">Nenhuma imagem publicada ainda.</p>;
 
@@ -236,25 +257,49 @@ function SliderImagens({ imagens, intervaloMs = 5000 }: { imagens: LpCorretorIma
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-3 min-w-0">
-        {imagens.length > 1 && (
-          // Os indicadores encolhem em vez de vazar: com poucas imagens cada um
-          // fica nos 24px de sempre, e num empreendimento com trinta fotos eles
-          // dividem por igual a largura da coluna. flex-wrap é a rede final,
-          // para o caso em que nem o mínimo de 5px couber numa linha só.
-          <div className="flex flex-wrap items-center justify-end gap-1 min-w-0">
-            {imagens.map((img, i) => (
-              <button
-                key={img.id}
-                type="button"
-                onClick={() => setIndice(i)}
-                aria-label={`Ir para a imagem ${i + 1}`}
-                className={`flex-1 basis-6 max-w-6 min-w-[5px] h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
-              />
-            ))}
+      {imagens.length > 1 && (
+        <div className="flex flex-col gap-2 min-w-0">
+          {/* Contador: a informação que o pontinho nunca deu — em que ponto da
+              série se está e quantas imagens existem ao todo. */}
+          {/* Alinhado à direita e sozinho: a legenda da imagem já está escrita
+              sobre a própria foto, repeti-la aqui só duplicaria a informação. */}
+          <div className="flex justify-end min-w-0">
+            <span className="text-[11px] font-semibold text-zinc-400 tabular-nums">
+              {indice + 1}<span className="text-zinc-600"> / {imagens.length}</span>
+            </span>
           </div>
-        )}
-      </div>
+
+          {/* Faixa de miniaturas. Rola na horizontal, então trinta imagens não
+              mudam a altura do bloco nem espremem nada: a lista cresce para o
+              lado, do jeito que o olho já espera numa galeria. */}
+          <div
+            ref={tirasRef}
+            className="flex gap-2 overflow-x-auto overscroll-x-contain pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {imagens.map((img, i) => {
+              const ativa = i === indice;
+              return (
+                <button
+                  key={img.id}
+                  type="button"
+                  onClick={() => setIndice(i)}
+                  aria-label={img.legenda || `Ir para a imagem ${i + 1}`}
+                  aria-current={ativa}
+                  className={`relative shrink-0 w-[76px] h-[50px] rounded-[3px] overflow-hidden border transition-all ${
+                    ativa
+                      ? 'border-blue-500 opacity-100'
+                      : 'border-zinc-800 opacity-45 hover:opacity-90 hover:border-zinc-700'
+                  }`}
+                >
+                  {/* lazy: só as miniaturas visíveis na faixa são baixadas —
+                      são as imagens em tamanho cheio, sem versão reduzida. */}
+                  <img src={img.url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {ampliada && (
         <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setAmpliada(null)}>
@@ -408,8 +453,9 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
                 <div className="flex items-center justify-between gap-3 min-w-0">
                   <span className="text-xs text-zinc-400 truncate">{planta.legenda || `Planta ${indice + 1}`}</span>
                   {plantas.length > 1 && (
-                    // Mesma regra dos indicadores das imagens: encolhem juntos
-                    // em vez de empurrar a legenda para fora do card.
+                    // Aqui o ponto continua servindo: uma unidade tem duas ou
+                    // três plantas, não trinta. flex-wrap é só a rede de
+                    // segurança para um empreendimento fora da curva.
                     <div className="flex flex-wrap items-center justify-end gap-1 min-w-0 max-w-[50%]">
                       {plantas.map((p, i) => (
                         <button
@@ -417,7 +463,7 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
                           type="button"
                           onClick={() => setIndice(i)}
                           aria-label={p.legenda || `Planta ${i + 1}`}
-                          className={`flex-1 basis-6 max-w-6 min-w-[5px] h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+                          className={`w-6 h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
                         />
                       ))}
                     </div>
@@ -799,13 +845,13 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               {config.logoEmpreendimentoUrl && (
                 // Dimensionado por LARGURA, não por altura: logos horizontais e
                 // verticais chegam com proporções muito diferentes, e travar a
-                // altura fazia o horizontal atravessar a coluna. 170px é o teto
-                // no desktop; as faixas menores escalam a partir dele.
+                // altura fazia o horizontal atravessar a coluna. 170px é o piso
+                // (celular) e o desktop escala até 230px.
                 // A margem inferior é o respiro pedido até o texto de baixo.
                 <img
                   src={config.logoEmpreendimentoUrl}
                   alt={nome}
-                  className="w-[120px] sm:w-[145px] lg:w-[170px] h-auto max-w-full object-contain drop-shadow-lg mb-[50px]"
+                  className="w-[170px] sm:w-[200px] lg:w-[230px] h-auto max-w-full object-contain drop-shadow-lg mb-[50px]"
                 />
               )}
               {config.subtitulo && <p className="mt-2 text-sm lg:text-lg text-zinc-300">{config.subtitulo}</p>}
