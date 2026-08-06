@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe, Download } from 'lucide-react';
 import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
 import { fetchLpCorretorPublic } from '../lib/api';
 import { LP_SITUACAO_LABELS, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, mergeLpColunas, plantasDaUnidade, sortUnidades, valorNumerico } from '../lib/lpCorretor';
@@ -266,9 +266,13 @@ function SecaoAcordeao({ id, titulo, icone, aberta, onToggle, children }: {
       >
         <span className="w-8 h-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">{icone}</span>
         <span className="flex-1 text-sm font-semibold text-zinc-100">{titulo}</span>
-        <ChevronDown size={16} className={`text-zinc-600 transition-transform ${aberta ? 'rotate-180' : ''}`} />
+        <ChevronDown size={16} className={`lp-no-print text-zinc-600 transition-transform ${aberta ? 'rotate-180' : ''}`} />
       </button>
-      {aberta && <div className={`${GUTTER} pb-5 animate-fade-in`}>{children}</div>}
+      {/* Fechada, a seção continua no DOM e some por CSS — no papel não há como
+          tocar no acordeão, então `print:block` a reabre. Renderizar só quando
+          aberta deixaria a ficha técnica fora do PDF de quem imprime pelo
+          Ctrl+P sem ter expandido nada. */}
+      <div className={`${GUTTER} pb-5 animate-fade-in ${aberta ? '' : 'hidden print:block'}`}>{children}</div>
     </div>
   );
 }
@@ -484,7 +488,7 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
   }, []);
 
   return (
-    <div ref={scrollRef} className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div ref={scrollRef} className="lp-tabela-scroll overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <table className="w-full border-collapse">
         <thead>
           <tr className={`${ROW_GUTTER} [&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-zinc-800 [&>th]:text-[9px] lg:[&>th]:text-[10px] [&>th]:font-bold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:whitespace-nowrap`}>
@@ -492,7 +496,7 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
             <th className="text-right">Valor</th>
             {entradasLinha.map(e => <th key={e.id} className="text-right">{e.label}</th>)}
             {temReserva && <th />}
-            <th />
+            <th className="lp-no-print" />
           </tr>
         </thead>
         <tbody>
@@ -508,7 +512,10 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                 <tr
                   onClick={() => setExpandida(aberta ? null : u.id)}
                   aria-expanded={aberta}
-                  className={`cursor-pointer ${ROW_GUTTER} [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
+                  // lp-linha-disponivel só tem efeito na impressão: na tela a
+                  // distinção já vem do contraste do texto e do ponto colorido,
+                  // que no papel ficam fracos demais para varrer a lista.
+                  className={`cursor-pointer ${ROW_GUTTER} ${disponivel ? 'lp-linha-disponivel' : ''} [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
                     aberta
                       ? '[&>td]:bg-blue-500/10 [&>td]:border-blue-500/30'
                       : '[&>td]:border-zinc-900 lg:hover:[&>td]:bg-zinc-900/30'
@@ -534,21 +541,26 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                   {temReserva && (
                     <td className="text-right">
                       {reservaUrl ? (
+                        // O link sobrevive à exportação: o PDF gerado pelo
+                        // navegador mantém a âncora clicável, então o botão
+                        // continua levando ao CVCRM a partir do arquivo.
                         <a
                           href={reservaUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={ev => ev.stopPropagation()}
-                          className="inline-flex items-center gap-0.5 px-2 py-1.5 lg:px-3 rounded-[3px] text-[10px] lg:text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 whitespace-nowrap transition-colors"
+                          className="lp-botao-reserva inline-flex items-center gap-0.5 px-2 py-1.5 lg:px-3 rounded-[3px] text-[10px] lg:text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 whitespace-nowrap transition-colors"
                         >
-                          Reservar <ArrowUpRight size={11} strokeWidth={2.5} />
+                          <span className="print:hidden">Reservar</span>
+                          <span className="hidden print:inline">Iniciar reserva</span>
+                          <ArrowUpRight size={11} strokeWidth={2.5} />
                         </a>
                       ) : (
                         <span className="text-[10px] font-semibold text-zinc-600 whitespace-nowrap">{LP_SITUACAO_LABELS[u.situacao]}</span>
                       )}
                     </td>
                   )}
-                  <td className="text-right">
+                  <td className="lp-no-print text-right">
                     <ChevronDown size={13} className={`inline text-zinc-600 transition-transform ${aberta ? 'rotate-180' : ''}`} />
                   </td>
                 </tr>
@@ -648,6 +660,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   const temInfo = config.imagens.length > 0 || config.fichaTecnica.length > 0 || !!config.bookUrl;
   const disponiveis = unidades.filter(u => u.situacao === 'disponivel').length;
   const nome = config.titulo || projeto.nome;
+  const versaoAtual = data.versoes.find(v => v.id === data.versaoId) || null;
 
   return (
     // As áreas seguras cobrem o notch/ilha dinâmica em paisagem no iPhone; sem
@@ -657,7 +670,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
     // largura aqui faria o celular exibir a página encolhida, com rolagem
     // lateral no corpo inteiro.
     <div
-      className="min-h-[100svh] w-full overflow-x-hidden bg-[#08080a] text-zinc-100 antialiased"
+      className="lp-print min-h-[100svh] w-full overflow-x-hidden bg-[#08080a] text-zinc-100 antialiased"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
       {/* A largura cresce por etapas em vez de saltar de 512px para o desktop:
@@ -670,9 +683,9 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           {banner ? (
             // svh em vez de vh: no Safari do iPhone a barra de endereço some ao
             // rolar e o vh muda de valor, fazendo o banner "pular".
-            <img src={banner} alt={nome} className="w-full h-[62svh] min-h-[340px] lg:h-[72svh] lg:max-h-[640px] object-cover" />
+            <img src={banner} alt={nome} className="lp-capa w-full h-[62svh] min-h-[340px] lg:h-[72svh] lg:max-h-[640px] object-cover" />
           ) : (
-            <div className="w-full h-[38svh] min-h-[220px] lg:h-[46svh] bg-gradient-to-br from-zinc-900 to-[#08080a]" />
+            <div className="lp-capa w-full h-[38svh] min-h-[220px] lg:h-[46svh] bg-gradient-to-br from-zinc-900 to-[#08080a]" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-[#08080a] via-[#08080a]/40 to-transparent" />
           <div className={`absolute inset-x-0 bottom-0 ${GUTTER} pb-6 lg:pb-10`}>
@@ -708,7 +721,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           <>
             <nav className="border-t border-zinc-900 lg:hidden">
               {config.imagens.length > 0 && (
-                <div className="border-b border-zinc-900">
+                <div className="lp-no-print border-b border-zinc-900">
                   <div className={`flex items-center gap-3 ${GUTTER} py-4`}>
                     <span className="w-8 h-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
                       <Images size={15} />
@@ -727,7 +740,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
 
             {/* Desktop: imagens ocupam duas das três colunas, ficha técnica a terceira. */}
             <div className={`hidden lg:grid grid-cols-3 gap-8 ${GUTTER} py-10 border-t border-zinc-900 items-start`}>
-              <div className="col-span-2 min-w-0">
+              <div className="lp-no-print col-span-2 min-w-0">
                 <SecaoDesktop titulo="Imagens do Produto" icone={<Images size={14} />}>
                   <SliderImagens imagens={config.imagens} />
                 </SecaoDesktop>
@@ -740,14 +753,35 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
         )}
 
         {/* Tabela de vendas */}
-        <section className={`${GUTTER} pt-6 lg:pt-10 pb-2`}>
-          <h2 className="text-sm lg:text-xl font-bold text-zinc-100">Tabela de Vendas</h2>
-          <p className="text-xs lg:text-sm text-zinc-500 mt-0.5">
-            Atualizada em {new Date(config.atualizadoEm).toLocaleDateString('pt-BR')} · toque numa unidade para ver planta e detalhes
-          </p>
+        <section className={`${GUTTER} pt-6 lg:pt-10 pb-2 flex items-start justify-between gap-4`}>
+          <div className="min-w-0">
+            <h2 className="text-sm lg:text-xl font-bold text-zinc-100">Tabela de Vendas</h2>
+            <p className="text-xs lg:text-sm text-zinc-500 mt-0.5">
+              Atualizada em {new Date(config.atualizadoEm).toLocaleDateString('pt-BR')}
+              <span className="lp-no-print"> · toque numa unidade para ver planta e detalhes</span>
+            </p>
+            {/* No papel o seletor de condição some, então a condição impressa
+                precisa estar escrita — senão duas tabelas com valores
+                diferentes saem como PDFs indistinguíveis. */}
+            {data.versoes.length > 1 && versaoAtual && (
+              <p className="hidden print:block text-xs font-semibold text-zinc-300 mt-1">
+                Condição: {versaoAtual.nome}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="lp-no-print flex items-center gap-1.5 shrink-0 px-3 py-2 min-h-[38px] rounded-md text-xs font-bold text-zinc-200 bg-zinc-900 border border-zinc-700 hover:border-zinc-600 hover:text-white transition-colors"
+          >
+            <Download size={14} /> Baixar PDF
+          </button>
         </section>
 
-        <div className="sticky top-0 z-20 bg-[#08080a]/95 backdrop-blur border-b border-zinc-900">
+        {/* Toda a faixa de controles sai do PDF: seletor de condição, filtro de
+            situação e as duas faixas. Nenhum deles é operável no papel, e a
+            tabela impressa já é o recorte que estava na tela. */}
+        <div className="lp-no-print sticky top-0 z-20 bg-[#08080a]/95 backdrop-blur border-b border-zinc-900">
           {/* Versões liberadas. Ficam acima e com mais peso que os demais
               filtros porque não filtram a lista: trocam a tabela inteira —
               outras colunas, outros valores. Com uma versão só, o seletor não
@@ -854,7 +888,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
 
         {/* Rodapé com observações */}
         {config.observacoes && (
-          <section className="mx-5 sm:mx-6 lg:mx-8 mb-8 lg:mb-12 p-4 lg:p-6 rounded-md bg-zinc-900/40 border border-zinc-900">
+          <section className="lp-quebra-evitar mx-5 sm:mx-6 lg:mx-8 mb-8 lg:mb-12 p-4 lg:p-6 rounded-md bg-zinc-900/40 border border-zinc-900">
             <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Observações</h3>
             <p className="text-xs lg:text-sm leading-relaxed text-zinc-400 whitespace-pre-line">{config.observacoes}</p>
           </section>
@@ -863,7 +897,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
         {/* Footer institucional. Um fio de degradê marca o início do rodapé em
             vez de uma borda plana — o mesmo azul da marca, quase imperceptível. */}
         <footer
-          className="relative border-t border-zinc-900"
+          className="lp-quebra-evitar relative border-t border-zinc-900"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-500/40 to-transparent" />

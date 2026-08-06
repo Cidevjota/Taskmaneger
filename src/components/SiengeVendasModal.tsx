@@ -90,8 +90,8 @@ interface SiengeVendasModalProps {
   onSaveUnidade: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteUnidade: (id: string) => void;
   onClearUnidades: (projectId: string) => Promise<void> | void;
-  onApplyReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
-  onSetMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
+  onApplyReajuste: (params: { projectId: string; versaoId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
+  onSetMargem: (params: { projectId: string; versaoId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
   onReverterRevisao: (revisaoId: string) => Promise<void> | void;
   onAlterarSituacao: (params: {
     projectId: string;
@@ -1280,11 +1280,12 @@ function MargemUnidadeInput({ item, colunaKey, onCommit }: {
 // se está falando, e a lista embaixo edita unidade a unidade. O campo de cima
 // preenche em lote (todas ou só as selecionadas) porque o caso comum é "essas
 // N unidades passam a ter margem X", não digitar 124 valores diferentes.
-function MargemPanel({ projectId, unidades, colunas, onSetMargem, onClose }: {
+function MargemPanel({ projectId, versaoId, unidades, colunas, onSetMargem, onClose }: {
   projectId: string;
+  versaoId: string;
   unidades: SiengeTabelaVendaUnidade[];
   colunas: SiengeTabelaVendaColuna[];
-  onSetMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
+  onSetMargem: (params: { projectId: string; versaoId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
   onClose: () => void;
 }) {
   const opcoes = useMemo(
@@ -1332,7 +1333,7 @@ function MargemPanel({ projectId, unidades, colunas, onSetMargem, onClose }: {
     if (!podeAplicarLote || aplicando) return;
     setAplicando(true);
     try {
-      await onSetMargem({ projectId, unidadeIds: alvo, coluna: colunaKey, valor: parseCurrencyInput(loteText) });
+      await onSetMargem({ projectId, versaoId, unidadeIds: alvo, coluna: colunaKey, valor: parseCurrencyInput(loteText) });
       setLoteText('');
     } finally {
       setAplicando(false);
@@ -1443,7 +1444,7 @@ function MargemPanel({ projectId, unidades, colunas, onSetMargem, onClose }: {
             if (!podeAplicarLote || aplicando) return;
             setAplicando(true);
             try {
-              await onSetMargem({ projectId, unidadeIds: alvo, coluna: colunaKey, valor: 0 });
+              await onSetMargem({ projectId, versaoId, unidadeIds: alvo, coluna: colunaKey, valor: 0 });
             } finally {
               setAplicando(false);
             }
@@ -1516,7 +1517,7 @@ function MargemPanel({ projectId, unidades, colunas, onSetMargem, onClose }: {
                     <MargemUnidadeInput
                       item={u}
                       colunaKey={colunaKey}
-                      onCommit={valor => onSetMargem({ projectId, unidadeIds: [u.id], coluna: colunaKey, valor })}
+                      onCommit={valor => onSetMargem({ projectId, versaoId, unidadeIds: [u.id], coluna: colunaKey, valor })}
                     />
                   </td>
                   <td className={`text-right text-xs tabular-nums whitespace-nowrap ${margem > 0 ? 'text-blue-300' : 'text-zinc-600'}`}>
@@ -1607,6 +1608,7 @@ export default function SiengeVendasModal({
   // Colunas que recebem o percentual — valor de tabela sempre entra por padrão;
   // colunas extras em moeda/número podem ser somadas ou trocadas por ele.
   const [reajusteColunas, setReajusteColunas] = useState<Set<string>>(new Set(['valor_tabela']));
+  const [erroReajuste, setErroReajuste] = useState<string | null>(null);
   // Reverter reescreve os valores de todas as unidades e é irreversível na
   // prática — daí a confirmação em duas etapas, a segunda exigindo digitar a
   // palavra. Não há como sair no piloto automático clicando "ok, ok".
@@ -1792,6 +1794,7 @@ export default function SiengeVendasModal({
     setReajusteMotivo('');
     setSelectedUnitIds(new Set());
     setReajusteColunas(new Set(['valor_tabela']));
+    setErroReajuste(null);
   };
 
   // O motivo é obrigatório: fica registrado na revisão e é o que explica o
@@ -1802,11 +1805,13 @@ export default function SiengeVendasModal({
     && (reajusteTipo === 'geral' || selectedUnitIds.size > 0);
 
   const handleApply = async () => {
-    if (!selectedProjectId || !canApply || applying) return;
+    if (!selectedProjectId || !versaoAtivaId || !canApply || applying) return;
     setApplying(true);
+    setErroReajuste(null);
     try {
       await onApplyReajuste({
         projectId: selectedProjectId,
+        versaoId: versaoAtivaId,
         unidadeIds: reajusteTipo === 'geral' ? null : Array.from(selectedUnitIds),
         percentual: reajustePercentual,
         descricao: reajusteDescricao.trim() || null,
@@ -1814,6 +1819,11 @@ export default function SiengeVendasModal({
         colunas: Array.from(reajusteColunas),
       });
       resetReajuste();
+    } catch (e: any) {
+      // Sem este catch a rejeição morria no onClick e o painel ficava exatamente
+      // como estava — indistinguível de um reajuste que deu certo mas não mudou
+      // nada. O erro do banco é a única pista de por que a tabela não mexeu.
+      setErroReajuste(e?.message || 'Não foi possível aplicar o reajuste.');
     } finally {
       setApplying(false);
     }
@@ -2847,9 +2857,14 @@ export default function SiengeVendasModal({
                     {applying ? 'Aplicando...' : 'Aplicar'}
                   </button>
                 </div>
+                {erroReajuste && (
+                  <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                    {erroReajuste}
+                  </p>
+                )}
                 <p className="text-[10px] text-zinc-600">
                   {reajusteTipo === 'geral'
-                    ? `O percentual será aplicado às ${reajustaveisUnidades.length} unidade(s) deste empreendimento, inclusive Vendidas e em Permuta — é bom para o cliente ver quanto a unidade valorizou desde a compra.`
+                    ? `O percentual será aplicado às ${reajustaveisUnidades.length} unidade(s) desta versão da tabela, inclusive Vendidas e em Permuta — é bom para o cliente ver quanto a unidade valorizou desde a compra.`
                     : 'O percentual será aplicado apenas às unidades selecionadas acima.'}
                   {' '}Apenas as colunas marcadas acima recebem o percentual; as demais permanecem como estão.
                   {' '}Isso não altera o valor já registrado no Histórico de Vendas: aquela cópia é feita no instante da
@@ -2863,6 +2878,7 @@ export default function SiengeVendasModal({
             {showMargem && (
               <MargemPanel
                 projectId={selectedProjectId}
+                versaoId={versaoAtivaId}
                 unidades={projectUnidades}
                 colunas={reajustaveisColunas}
                 onSetMargem={onSetMargem}

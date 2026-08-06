@@ -1143,6 +1143,8 @@ export async function deleteSiengeValidacao(id: string) {
 
 export async function applySiengeTabelaVendasReajuste(params: {
   projectId: string;
+  /** Versão a reajustar. Omitido cai na versão principal do empreendimento. */
+  versaoId?: string | null;
   unidadeIds: string[] | null;
   percentual: number;
   descricao?: string | null;
@@ -1153,6 +1155,7 @@ export async function applySiengeTabelaVendasReajuste(params: {
 }): Promise<string> {
   const { data, error } = await supabase.rpc('apply_sienge_tabela_vendas_reajuste', {
     p_project_id: params.projectId,
+    p_versao_id: params.versaoId || null,
     p_unidade_ids: params.unidadeIds,
     p_percentual: params.percentual,
     p_descricao: params.descricao ?? null,
@@ -1170,7 +1173,9 @@ export async function applySiengeTabelaVendasReajuste(params: {
  */
 export async function setSiengeTabelaVendasMargem(params: {
   projectId: string;
-  /** null = todas as unidades do empreendimento. */
+  /** Versão alvo. Omitido cai na versão principal do empreendimento. */
+  versaoId?: string | null;
+  /** null = todas as unidades da versão. */
   unidadeIds: string[] | null;
   /** 'valor_tabela' ou a key de uma coluna extra. */
   coluna: string;
@@ -1178,6 +1183,7 @@ export async function setSiengeTabelaVendasMargem(params: {
 }): Promise<number> {
   const { data, error } = await supabase.rpc('set_sienge_tabela_vendas_margem', {
     p_project_id: params.projectId,
+    p_versao_id: params.versaoId || null,
     p_unidade_ids: params.unidadeIds,
     p_coluna: params.coluna,
     p_valor: params.valor,

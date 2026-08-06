@@ -49,8 +49,8 @@ interface SiengeViewProps {
   onSaveTabelaVenda: (item: SiengeTabelaVendaUnidade) => void;
   onDeleteTabelaVenda: (id: string) => void;
   onClearTabelaVenda: (projectId: string) => Promise<void> | void;
-  onApplyTabelaVendaReajuste: (params: { projectId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
-  onSetTabelaVendaMargem: (params: { projectId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
+  onApplyTabelaVendaReajuste: (params: { projectId: string; versaoId: string; unidadeIds: string[] | null; percentual: number; descricao: string | null; motivo: string; colunas: string[] }) => Promise<void> | void;
+  onSetTabelaVendaMargem: (params: { projectId: string; versaoId: string; unidadeIds: string[] | null; coluna: string; valor: number }) => Promise<void> | void;
   onReverterTabelaVendaRevisao: (revisaoId: string) => Promise<void> | void;
   onAlterarSituacaoUnidades: (params: {
     projectId: string;
