@@ -966,7 +966,7 @@ export async function fetchSiengeTabelaVendaRevisoes(): Promise<SiengeTabelaVend
   // tabela) em toda revisão; `tem_backup` já resume o que a tela precisa.
   const { data, error } = await supabase
     .from('sienge_tabela_vendas_revisoes')
-    .select('id,project_id,numero,tipo,percentual,unidades_afetadas,unidades,descricao,motivo,tem_backup,revertida_em,created_at,colunas');
+    .select('id,project_id,versao_id,numero,tipo,percentual,unidades_afetadas,unidades,descricao,motivo,tem_backup,revertida_em,created_at,colunas');
   if (error) throw error;
   return (data || []).map(mapSiengeTabelaVendaRevisao);
 }
