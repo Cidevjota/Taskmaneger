@@ -2,7 +2,7 @@ import {StrictMode, Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
 import './index.css';
 
-import { LP_CORRETOR_BASE_PATH } from './lib/lpCorretor';
+import { LP_CORRETOR_BASE_PATH, aplicarTemaLp, temaLpSalvo } from './lib/lpCorretor';
 
 // Carregados sob demanda para que os dois lados não paguem o bundle do outro —
 // a LP é aberta no celular do corretor e não pode arrastar junto os providers,
@@ -21,13 +21,11 @@ const lpSlug = (() => {
   return path.slice(prefix.length).replace(/\/+$/, '') || null;
 })();
 
-// A LP tem visual próprio e não segue a preferência de tema do usuário do
-// sistema; sem a classe `dark` os overrides de :root:not(.dark) do index.css
-// converteriam a paleta inteira para o tema claro.
-if (lpSlug) {
-  document.documentElement.classList.add('dark');
-  document.documentElement.style.colorScheme = 'dark';
-}
+// A LP tem visual próprio e não segue a preferência do sistema nem a do usuário
+// do app interno: quem escolhe é quem abre o link, pelo botão de tema da própria
+// página, e a escolha vive numa chave só dela. Aplicado aqui, antes do render,
+// para a página não piscar no tema errado a cada carregamento.
+if (lpSlug) aplicarTemaLp(temaLpSalvo());
 
 // A meta viewport NÃO é alterada aqui de propósito. Acrescentar
 // `viewport-fit=cover` por JavaScript depois do carregamento fazia o Samsung

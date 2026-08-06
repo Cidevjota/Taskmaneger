@@ -50,6 +50,7 @@ function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
     cvcrmUrlTemplate: null,
     colunasVisiveis: [],
     colunasLinha: [],
+    colunaTipologia: null,
     tabelaPublicadaEm: null,
     createdAt: now,
     updatedAt: now,
@@ -152,6 +153,21 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
     }
     return m;
   }, [regras, ordenadas]);
+
+  // Candidatas a coluna de tipologia: as visíveis, na mesma ordem da lista de
+  // colunas. Ocultas ficam de fora porque não saem do banco — a coluna
+  // apontada precisa ter valores no payload público para virar filtro.
+  const opcoesTipologia = useMemo(() => {
+    const visiveis = new Set(config?.colunasVisiveis || []);
+    return merged
+      .map(m => {
+        const key = m.kind === 'coluna' ? m.item.key : `${REGRA_PREFIX}${m.item.id}`;
+        const base = m.kind === 'coluna' ? m.item.label : m.item.titulo;
+        const daVersao = m.kind === 'regra' && versoesLp.length > 1 ? nomeVersaoDaRegra.get(m.item.id) : null;
+        return { key, label: daVersao ? `${base} · ${daVersao}` : base };
+      })
+      .filter(o => visiveis.has(o.key));
+  }, [merged, config?.colunasVisiveis, versoesLp, nomeVersaoDaRegra]);
 
   // A LP serve um snapshot aprovado, não a tabela ao vivo: reajustar não muda
   // o que o corretor vê. Há versão pendente quando alguma unidade daquela
@@ -653,39 +669,58 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
         </button>
       </Secao>
 
-      <Secao titulo="Ficha Técnica" descricao="Pares de informação exibidos em lista (ex.: Metragem — 42 m² a 78 m²).">
+      <Secao
+        titulo="Informações"
+        descricao="Pares de informação exibidos em lista (ex.: Metragem — 42 m² a 78 m²). Com um link preenchido, a linha mostra “Abrir” no lugar do valor, como o Book."
+      >
         {config.fichaTecnica.length > 0 && (
           <div className="flex flex-col gap-2">
-            {config.fichaTecnica.map(item => (
-              <div key={item.id} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={item.label}
-                  onChange={e => patch({ fichaTecnica: config.fichaTecnica.map((i: LpCorretorFichaItem) => i.id === item.id ? { ...i, label: e.target.value } : i) })}
-                  placeholder="Item"
-                  className={INPUT_CLASS}
-                />
-                <input
-                  type="text"
-                  value={item.valor}
-                  onChange={e => patch({ fichaTecnica: config.fichaTecnica.map((i: LpCorretorFichaItem) => i.id === item.id ? { ...i, valor: e.target.value } : i) })}
-                  placeholder="Valor"
-                  className={INPUT_CLASS}
-                />
-                <button
-                  type="button"
-                  onClick={() => patch({ fichaTecnica: config.fichaTecnica.filter(i => i.id !== item.id) })}
-                  className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
+            {config.fichaTecnica.map(item => {
+              // Um único atualizador por item: os três campos escrevem no mesmo
+              // objeto do array e só mudam a chave que lhes cabe.
+              const atualizar = (p: Partial<LpCorretorFichaItem>) => patch({
+                fichaTecnica: config.fichaTecnica.map((i: LpCorretorFichaItem) => i.id === item.id ? { ...i, ...p } : i),
+              });
+              return (
+                <div key={item.id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={item.label}
+                    onChange={e => atualizar({ label: e.target.value })}
+                    placeholder="Item"
+                    className={INPUT_CLASS}
+                  />
+                  <input
+                    type="text"
+                    value={item.valor}
+                    onChange={e => atualizar({ valor: e.target.value })}
+                    disabled={!!item.url?.trim()}
+                    title={item.url?.trim() ? 'Ignorado: com link preenchido a linha mostra “Abrir”' : undefined}
+                    placeholder="Valor"
+                    className={`${INPUT_CLASS} disabled:opacity-40`}
+                  />
+                  <input
+                    type="text"
+                    value={item.url || ''}
+                    onChange={e => atualizar({ url: e.target.value })}
+                    placeholder="Link (opcional)"
+                    className={INPUT_CLASS}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => patch({ fichaTecnica: config.fichaTecnica.filter(i => i.id !== item.id) })}
+                    className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
         <button
           type="button"
-          onClick={() => patch({ fichaTecnica: [...config.fichaTecnica, { id: crypto.randomUUID(), label: '', valor: '' }] })}
+          onClick={() => patch({ fichaTecnica: [...config.fichaTecnica, { id: crypto.randomUUID(), label: '', valor: '', url: '' }] })}
           className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors self-start"
         >
           <Plus size={11} strokeWidth={3} /> Adicionar item
@@ -754,6 +789,30 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
               );
             })}
           </div>
+        )}
+      </Secao>
+
+      <Secao
+        titulo="Filtro de tipologia"
+        descricao="Coluna que guarda a tipologia da unidade. A LP monta um botão por valor encontrado, e um clique filtra a tabela inteira. Sem coluna escolhida, a página não mostra esse filtro."
+      >
+        <select
+          value={config.colunaTipologia || ''}
+          onChange={e => patch({ colunaTipologia: e.target.value || null })}
+          className={INPUT_CLASS}
+        >
+          <option value="">Sem filtro de tipologia</option>
+          {/* Só colunas não-ocultas: coluna oculta não sai do banco (é a
+              fronteira de colunas_visiveis) e o filtro nasceria vazio. */}
+          {opcoesTipologia.map(o => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
+        </select>
+        {config.colunaTipologia && !opcoesTipologia.some(o => o.key === config.colunaTipologia) && (
+          <p className="flex items-center gap-1.5 text-[11px] text-amber-400">
+            <AlertTriangle size={11} className="shrink-0" />
+            A coluna escolhida está oculta ou não existe mais nas versões liberadas — o filtro não vai aparecer na página.
+          </p>
         )}
       </Secao>
 

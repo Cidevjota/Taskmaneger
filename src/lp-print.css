@@ -136,15 +136,12 @@
 
   /* Disponíveis em destaque. Na tela quem varre a lista tem filtro e hover; no
      PDF não há nem um nem outro, e o ponto de 6px não sustenta a leitura de uma
-     tabela de centenas de linhas. A faixa verde na primeira célula é o que se
-     enxerga folheando. */
+     tabela de centenas de linhas. O fundo verde claro sozinho já é o que se
+     enxerga folheando — a barra na primeira célula e a borda verde eram uma
+     terceira e uma quarta marca para a mesma informação. */
   .lp-print .lp-linha-disponivel > td {
     background-color: #ecfdf5 !important;
     color: #18181b !important;
-    border-bottom-color: #a7f3d0 !important;
-  }
-  .lp-print .lp-linha-disponivel > td:first-child {
-    box-shadow: inset 3px 0 0 0 #059669 !important;
   }
 
   /* Pontos de situação: as classes utilitárias de fundo foram zeradas na virada

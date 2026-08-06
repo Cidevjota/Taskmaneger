@@ -1415,6 +1415,7 @@ function mapLpCorretorConfig(r: any): LpCorretorConfig {
     cvcrmUrlTemplate: r.cvcrm_url_template ?? null,
     colunasVisiveis: Array.isArray(r.colunas_visiveis) ? r.colunas_visiveis : [],
     colunasLinha: Array.isArray(r.colunas_linha) ? r.colunas_linha : [],
+    colunaTipologia: r.coluna_tipologia ?? null,
     tabelaPublicadaEm: r.tabela_publicada_em ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -1426,7 +1427,7 @@ export async function fetchLpCorretorConfigs(): Promise<LpCorretorConfig[]> {
   // e não tem uso no painel — só a data da publicação importa aqui.
   const { data, error } = await supabase
     .from('sienge_lp_corretor')
-    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,colunas_visiveis,colunas_linha,tabela_publicada_em,created_at,updated_at');
+    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,colunas_visiveis,colunas_linha,coluna_tipologia,tabela_publicada_em,created_at,updated_at');
   if (error) throw error;
   return (data || []).map(mapLpCorretorConfig);
 }
@@ -1456,6 +1457,7 @@ export async function saveLpCorretorConfig(config: LpCorretorConfig) {
     cvcrm_url_template: config.cvcrmUrlTemplate,
     colunas_visiveis: config.colunasVisiveis,
     colunas_linha: config.colunasLinha,
+    coluna_tipologia: config.colunaTipologia,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'project_id' });
   // 23505 = unique_violation; o único índice único além da PK é o do slug.

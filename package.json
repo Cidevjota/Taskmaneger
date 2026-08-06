@@ -36,6 +36,8 @@
     "framer-motion": "^12.42.0",
     "htmldiff-js": "^1.0.5",
     "jsdom": "^29.1.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",

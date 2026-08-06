@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe, Download } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, Moon, Sun, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe, Download } from 'lucide-react';
 import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
 import { fetchLpCorretorPublic } from '../lib/api';
-import { LP_SITUACAO_LABELS, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, mergeLpColunas, plantasDaUnidade, sortUnidades, valorNumerico } from '../lib/lpCorretor';
+import { LP_SITUACAO_LABELS, LP_TEMA_STORAGE_KEY, LpTema, aplicarTemaLp, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, mergeLpColunas, plantasDaUnidade, sortUnidades, temaLpSalvo, valorNumerico } from '../lib/lpCorretor';
+import { baixarTabelaPdf } from '../lib/lpCorretorPdf';
 import { LP_EMPRESA, canaisDeContato } from '../lib/lpCorretorEmpresa';
 
 // Página pública, sem sessão: renderizada fora do AuthProvider (ver main.tsx),
@@ -125,32 +126,47 @@ function Galeria({ imagens }: { imagens: LpCorretorImagem[] }) {
   );
 }
 
-/** Ficha técnica; o book entra como a última linha, não como seção própria. */
-function FichaTecnica({ itens, bookUrl }: { itens: LpCorretorFichaItem[]; bookUrl: string | null }) {
+/** Lado direito de uma linha de informação quando ela aponta para um arquivo. */
+function LinkAbrir({ url }: { url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+    >
+      Abrir <ArrowUpRight size={13} />
+    </a>
+  );
+}
+
+/**
+ * Informações do produto. Cada linha mostra um valor em texto ou, quando o
+ * item tem link, o mesmo "Abrir" do book — é o que permite pendurar memorial,
+ * tour virtual e afins sem inventar uma seção nova para cada um. O book segue
+ * como a última linha, não como seção própria.
+ */
+function Informacoes({ itens, bookUrl }: { itens: LpCorretorFichaItem[]; bookUrl: string | null }) {
   if (itens.length === 0 && !bookUrl) {
-    return <p className="text-sm text-zinc-500">Ficha técnica ainda não publicada.</p>;
+    return <p className="text-sm text-zinc-500">Informações ainda não publicadas.</p>;
   }
   return (
     <dl className="flex flex-col">
-      {itens.map(item => (
-        <div key={item.id} className="flex items-baseline justify-between gap-4 py-2.5 border-b border-zinc-900 last:border-0">
-          <dt className="text-xs text-zinc-500 shrink-0">{item.label}</dt>
-          <dd className="text-sm font-medium text-zinc-200 text-right">{item.valor}</dd>
-        </div>
-      ))}
+      {itens.map(item => {
+        const url = item.url?.trim();
+        return (
+          <div key={item.id} className="flex items-baseline justify-between gap-4 py-2.5 border-b border-zinc-900 last:border-0">
+            <dt className="text-xs text-zinc-500 shrink-0">{item.label}</dt>
+            <dd className="text-sm font-medium text-zinc-200 text-right">
+              {url ? <LinkAbrir url={url} /> : item.valor}
+            </dd>
+          </div>
+        );
+      })}
       {bookUrl && (
         <div className="flex items-center justify-between gap-4 py-2.5 border-t border-zinc-900">
           <dt className="text-xs text-zinc-500 shrink-0">Book</dt>
-          <dd className="text-right">
-            <a
-              href={bookUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              Abrir <ArrowUpRight size={13} />
-            </a>
-          </dd>
+          <dd className="text-right"><LinkAbrir url={bookUrl} /></dd>
         </div>
       )}
     </dl>
@@ -220,16 +236,20 @@ function SliderImagens({ imagens, intervaloMs = 5000 }: { imagens: LpCorretorIma
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex items-center justify-end gap-3 min-w-0">
         {imagens.length > 1 && (
-          <div className="flex items-center gap-1 shrink-0">
+          // Os indicadores encolhem em vez de vazar: com poucas imagens cada um
+          // fica nos 24px de sempre, e num empreendimento com trinta fotos eles
+          // dividem por igual a largura da coluna. flex-wrap é a rede final,
+          // para o caso em que nem o mínimo de 5px couber numa linha só.
+          <div className="flex flex-wrap items-center justify-end gap-1 min-w-0">
             {imagens.map((img, i) => (
               <button
                 key={img.id}
                 type="button"
                 onClick={() => setIndice(i)}
                 aria-label={`Ir para a imagem ${i + 1}`}
-                className={`w-6 h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+                className={`flex-1 basis-6 max-w-6 min-w-[5px] h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
               />
             ))}
           </div>
@@ -385,17 +405,19 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
                   loading="lazy"
                   className="w-full h-auto max-h-[400px] object-contain rounded-md border border-zinc-800 bg-white p-[15px]"
                 />
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3 min-w-0">
                   <span className="text-xs text-zinc-400 truncate">{planta.legenda || `Planta ${indice + 1}`}</span>
                   {plantas.length > 1 && (
-                    <div className="flex items-center gap-1 shrink-0">
+                    // Mesma regra dos indicadores das imagens: encolhem juntos
+                    // em vez de empurrar a legenda para fora do card.
+                    <div className="flex flex-wrap items-center justify-end gap-1 min-w-0 max-w-[50%]">
                       {plantas.map((p, i) => (
                         <button
                           key={p.id}
                           type="button"
                           onClick={() => setIndice(i)}
                           aria-label={p.legenda || `Planta ${i + 1}`}
-                          className={`w-6 h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+                          className={`flex-1 basis-6 max-w-6 min-w-[5px] h-1.5 rounded-[2px] transition-colors ${i === indice ? 'bg-blue-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
                         />
                       ))}
                     </div>
@@ -599,8 +621,12 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   const [erro, setErro] = useState(false);
   const [secao, setSecao] = useState<SecaoAberta>(null);
   const [filtro, setFiltro] = useState<SiengeVendaSituacao | 'todas'>('disponivel');
+  const [tipologia, setTipologia] = useState<string | 'todas'>('todas');
   const [faixaValor, setFaixaValor] = useState<Faixa | null>(null);
   const [faixaArea, setFaixaArea] = useState<Faixa | null>(null);
+  const [tema, setTema] = useState<LpTema>(temaLpSalvo);
+  const [baixando, setBaixando] = useState(false);
+  const [erroPdf, setErroPdf] = useState(false);
   // null = ainda não escolhida; a RPC decide qual versão liberada abrir.
   const [versaoId, setVersaoId] = useState<string | null>(null);
   // Troca de versão não volta ao esqueleto: a página inteira (banner, ficha,
@@ -622,6 +648,13 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
     if (data) document.title = `${data.config.titulo || data.projeto.nome} — Tabela de Vendas`;
   }, [data]);
 
+  // O tema já foi aplicado em main.tsx antes do primeiro render; aqui só se
+  // reage à troca pelo botão, gravando a escolha para a próxima visita.
+  useEffect(() => {
+    aplicarTemaLp(tema);
+    try { localStorage.setItem(LP_TEMA_STORAGE_KEY, tema); } catch { /* localStorage bloqueado: vale só nesta sessão */ }
+  }, [tema]);
+
   const entradas = useMemo(() => (data ? mergeLpColunas(data.colunas, data.regras) : []), [data]);
   // Partição configurada no painel: quais colunas vão na linha compacta. O
   // restante aparece só no card expandido — e no celular o card repete também
@@ -632,6 +665,37 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   );
   const unidades = useMemo(() => (data ? sortUnidades(data.unidades) : []), [data]);
   const colArea = useMemo(() => (data ? colunaMetragem(data.colunas) : null), [data]);
+
+  // Tipologia: qual coluna carrega esse dado é decidido no painel, antes de
+  // publicar — não existe campo fixo para isso, cada empreendimento guarda a
+  // tipologia com um nome. Sem coluna apontada, nada disto é renderizado e a
+  // barra de filtros fica exatamente como era.
+  const entradaTipologia = useMemo(
+    () => entradas.find(e => e.id === data?.config.colunaTipologia) || null,
+    [entradas, data]
+  );
+  const valorTipologia = (u: LpCorretorPublicUnidade) =>
+    (entradaTipologia ? formatLpValor(entradaTipologia.tipo, entradaTipologia.read(u)) : '—');
+  const tipologias = useMemo(() => {
+    if (!entradaTipologia) return [];
+    const contagem = new Map<string, number>();
+    for (const u of unidades) {
+      const v = formatLpValor(entradaTipologia.tipo, entradaTipologia.read(u));
+      // Unidade sem tipologia preenchida não vira botão nem some da lista:
+      // ela simplesmente não é alcançada por nenhum filtro de tipologia.
+      if (v === '—') continue;
+      contagem.set(v, (contagem.get(v) || 0) + 1);
+    }
+    return [...contagem.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR', { numeric: true }))
+      .map(([valor, total]) => ({ valor, total }));
+  }, [entradaTipologia, unidades]);
+
+  // Trocar de condição pode trocar as colunas, e a tipologia escolhida pode não
+  // existir na nova — sem isto a tabela ficaria vazia sem explicação.
+  useEffect(() => {
+    if (tipologia !== 'todas' && !tipologias.some(t => t.valor === tipologia)) setTipologia('todas');
+  }, [tipologias, tipologia]);
 
   // Limites dos sliders: derivados de todas as unidades, não do subconjunto
   // filtrado, senão arrastar uma ponta encolheria a própria escala.
@@ -648,9 +712,11 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
     (!!faixaValor && (faixaValor[0] > limiteValor[0] || faixaValor[1] < limiteValor[1])) ||
     (!!faixaArea && (faixaArea[0] > limiteArea[0] || faixaArea[1] < limiteArea[1]));
 
-  // Os três filtros são cumulativos: situação ∩ faixa de valor ∩ faixa de área.
+  // Os filtros são cumulativos: situação ∩ tipologia ∩ faixa de valor ∩ faixa
+  // de área.
   const visiveis = unidades.filter(u => {
     if (filtro !== 'todas' && u.situacao !== filtro) return false;
+    if (entradaTipologia && tipologia !== 'todas' && valorTipologia(u) !== tipologia) return false;
     if (faixaValor && u.valorTabela > 0 && (u.valorTabela < faixaValor[0] || u.valorTabela > faixaValor[1])) return false;
     if (colArea && faixaArea) {
       const area = valorNumerico(u, colArea.key);
@@ -672,6 +738,27 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   const disponiveis = unidades.filter(u => u.situacao === 'disponivel').length;
   const nome = config.titulo || projeto.nome;
   const versaoAtual = data.versoes.find(v => v.id === data.versaoId) || null;
+
+  // O arquivo traz o empreendimento inteiro, independentemente dos filtros da
+  // tela: quem manda a tabela para o cliente manda a tabela, não o recorte que
+  // estava aberto no momento.
+  const baixarPdf = async () => {
+    if (baixando) return;
+    setBaixando(true);
+    setErroPdf(false);
+    try {
+      await baixarTabelaPdf({
+        data,
+        unidades,
+        entradasLinha: entradas.filter(e => chavesLinha.has(e.id)),
+        nome,
+      });
+    } catch {
+      setErroPdf(true);
+    } finally {
+      setBaixando(false);
+    }
+  };
 
   return (
     // As áreas seguras cobrem o notch/ilha dinâmica em paisagem no iPhone; sem
@@ -710,10 +797,15 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
                 {nome}
               </h1>
               {config.logoEmpreendimentoUrl && (
+                // Dimensionado por LARGURA, não por altura: logos horizontais e
+                // verticais chegam com proporções muito diferentes, e travar a
+                // altura fazia o horizontal atravessar a coluna. 170px é o teto
+                // no desktop; as faixas menores escalam a partir dele.
+                // A margem inferior é o respiro pedido até o texto de baixo.
                 <img
                   src={config.logoEmpreendimentoUrl}
                   alt={nome}
-                  className="h-16 sm:h-20 lg:h-28 w-auto max-w-full object-contain drop-shadow-lg"
+                  className="w-[120px] sm:w-[145px] lg:w-[170px] h-auto max-w-full object-contain drop-shadow-lg mb-[50px]"
                 />
               )}
               {config.subtitulo && <p className="mt-2 text-sm lg:text-lg text-zinc-300">{config.subtitulo}</p>}
@@ -732,7 +824,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
             acordeão; desktop: tudo lado a lado em colunas. */}
         {temInfo && (
           <>
-            {/* Fora do PDF: a galeria não se navega no papel e a ficha técnica
+            {/* Fora do PDF: a galeria não se navega no papel e as informações
                 o cliente pediu para não sair. Sobram capa, tabela, observações
                 e rodapé. */}
             <nav className="lp-no-print border-t border-zinc-900 lg:hidden">
@@ -749,20 +841,20 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
                   </div>
                 </div>
               )}
-              <SecaoAcordeao id="ficha" titulo="Ficha Técnica" icone={<ListChecks size={15} />} aberta={secao === 'ficha'} onToggle={setSecao}>
-                <FichaTecnica itens={config.fichaTecnica} bookUrl={config.bookUrl} />
+              <SecaoAcordeao id="ficha" titulo="Informações" icone={<ListChecks size={15} />} aberta={secao === 'ficha'} onToggle={setSecao}>
+                <Informacoes itens={config.fichaTecnica} bookUrl={config.bookUrl} />
               </SecaoAcordeao>
             </nav>
 
-            {/* Desktop: imagens ocupam duas das três colunas, ficha técnica a terceira. */}
+            {/* Desktop: imagens ocupam duas das três colunas, informações a terceira. */}
             <div className={`lp-no-print hidden lg:grid grid-cols-3 gap-8 ${GUTTER} py-10 border-t border-zinc-900 items-start`}>
               <div className="col-span-2 min-w-0">
                 <SecaoDesktop titulo="Imagens do Produto" icone={<Images size={14} />}>
                   <SliderImagens imagens={config.imagens} />
                 </SecaoDesktop>
               </div>
-              <SecaoDesktop titulo="Ficha Técnica" icone={<ListChecks size={14} />}>
-                <FichaTecnica itens={config.fichaTecnica} bookUrl={config.bookUrl} />
+              <SecaoDesktop titulo="Informações" icone={<ListChecks size={14} />}>
+                <Informacoes itens={config.fichaTecnica} bookUrl={config.bookUrl} />
               </SecaoDesktop>
             </div>
           </>
@@ -785,18 +877,38 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="lp-no-print flex items-center gap-1.5 shrink-0 px-3 py-2 min-h-[38px] rounded-md text-xs font-bold text-zinc-200 bg-zinc-900 border border-zinc-700 hover:border-zinc-600 hover:text-white transition-colors"
-          >
-            <Download size={14} /> Baixar PDF
-          </button>
+          <div className="lp-no-print flex flex-col items-end gap-1 shrink-0">
+            <div className="flex items-center gap-2">
+              {/* Tema da página inteira. A escolha é de quem abre o link — o
+                  corretor manda a tabela clara para o cliente que vai imprimir
+                  e mantém a escura para si, sem depender de sessão. */}
+              <button
+                type="button"
+                onClick={() => setTema(t => (t === 'escuro' ? 'claro' : 'escuro'))}
+                aria-label={tema === 'escuro' ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
+                title={tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}
+                className="flex items-center justify-center w-[38px] h-[38px] rounded-md text-zinc-300 bg-zinc-900 border border-zinc-700 hover:border-zinc-600 hover:text-white transition-colors"
+              >
+                {tema === 'escuro' ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={baixarPdf}
+                disabled={baixando}
+                className="flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-md text-xs font-bold text-zinc-200 bg-zinc-900 border border-zinc-700 hover:border-zinc-600 hover:text-white transition-colors disabled:opacity-60"
+              >
+                {baixando ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {baixando ? 'Gerando...' : 'Baixar PDF'}
+              </button>
+            </div>
+            {erroPdf && <span className="text-[10px] font-semibold text-red-400">Não foi possível gerar o PDF. Tente de novo.</span>}
+          </div>
         </section>
 
-        {/* Toda a faixa de controles sai do PDF: seletor de condição, filtro de
-            situação e as duas faixas. Nenhum deles é operável no papel, e a
-            tabela impressa já é o recorte que estava na tela. */}
+        {/* Toda a faixa de controles fica fora do documento: seletor de
+            condição, situação, tipologia e as duas faixas. Nenhum deles é
+            operável no papel — e o arquivo sai com a tabela inteira, não com o
+            recorte que estava aberto na tela. */}
         <div className="lp-no-print sticky top-0 z-20 bg-[#08080a]/95 backdrop-blur border-b border-zinc-900">
           {/* Versões liberadas. Ficam acima e com mais peso que os demais
               filtros porque não filtram a lista: trocam a tabela inteira —
@@ -864,6 +976,33 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               </button>
             )}
           </div>
+
+          {/* Tipologia. Só existe quando o painel apontou a coluna que guarda
+              esse dado e ela tem mais de um valor — com um valor só, o filtro
+              não separa nada. Um toque troca o recorte inteiro, como os botões
+              de situação logo acima. */}
+          {tipologias.length > 1 && (
+            <div className={`${GUTTER} pb-3 -mt-1 flex flex-col gap-1.5`}>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                {entradaTipologia?.label}
+              </span>
+              <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {[{ valor: 'todas' as const, total: unidades.length }, ...tipologias].map(t => (
+                  <button
+                    key={t.valor}
+                    type="button"
+                    onClick={() => setTipologia(t.valor)}
+                    aria-pressed={tipologia === t.valor}
+                    className={`shrink-0 px-3 py-2 min-h-[36px] rounded-[3px] text-[11px] font-bold border transition-colors ${
+                      tipologia === t.valor ? 'bg-blue-500/15 text-blue-300 border-blue-400/40' : 'text-zinc-500 bg-zinc-900/60 border-zinc-800 hover:text-zinc-300'
+                    }`}
+                  >
+                    {t.valor === 'todas' ? 'Todas' : t.valor} <span className="opacity-60">{t.total}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className={`${GUTTER} pb-4 grid gap-4 sm:grid-cols-2`}>
             {faixaValor && (

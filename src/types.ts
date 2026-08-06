@@ -612,6 +612,8 @@ export interface LpCorretorFichaItem {
   id: string;
   label: string;
   valor: string;
+  /** Quando preenchida, a linha vira um link "Abrir" no lugar do valor. */
+  url?: string | null;
 }
 
 // Planta exibida na linha expandida da tabela. A ligação com as unidades segue
@@ -663,6 +665,9 @@ export interface LpCorretorConfig {
   // Subconjunto de colunasVisiveis exibido na linha compacta da tabela; o
   // restante aparece apenas ao expandir a unidade.
   colunasLinha: LpCorretorColunaKey[];
+  // Coluna cujos valores viram os chips de filtro de tipologia na LP. null =
+  // sem filtro; a página fica com os filtros de sempre.
+  colunaTipologia: LpCorretorColunaKey | null;
   // Quando a versão atual dos valores foi aprovada para a LP. null = nunca
   // publicada, e a LP serve a tabela ao vivo.
   tabelaPublicadaEm: string | null;
@@ -724,6 +729,7 @@ export interface LpCorretorPublicData {
     observacoes: string | null;
     cvcrmUrlTemplate: string | null;
     colunasLinha: LpCorretorColunaKey[];
+    colunaTipologia: LpCorretorColunaKey | null;
     atualizadoEm: string;
   };
   projeto: { id: string; nome: string; coverImage: string | null };

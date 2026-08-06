@@ -9,6 +9,36 @@ export function lpCorretorUrl(slug: string): string {
   return `${origin}${LP_CORRETOR_BASE_PATH}/${slug}`;
 }
 
+// ─── Tema da página pública ───────────────────────────────────────────────
+// Chave própria, separada do `orbit:theme` do app interno: quem abre a LP é o
+// corretor ou o cliente dele, e a preferência de um não deve mexer na do outro
+// nem depender de sessão. O escuro segue como padrão — é o visual da marca e o
+// que a página sempre teve.
+
+export type LpTema = 'escuro' | 'claro';
+
+export const LP_TEMA_STORAGE_KEY = 'orbit:lp-tema';
+
+export function temaLpSalvo(): LpTema {
+  try {
+    return localStorage.getItem(LP_TEMA_STORAGE_KEY) === 'claro' ? 'claro' : 'escuro';
+  } catch {
+    // Safari em navegação privada bloqueia o localStorage; o padrão resolve.
+    return 'escuro';
+  }
+}
+
+/**
+ * Aplica o tema no <html>. A classe `dark` é a mesma chave que o index.css usa
+ * (`:root:not(.dark)` carrega o tema claro), então trocá-la reescreve a paleta
+ * inteira da página sem nenhum estilo paralelo.
+ */
+export function aplicarTemaLp(tema: LpTema): void {
+  const root = document.documentElement;
+  root.classList.toggle('dark', tema === 'escuro');
+  root.style.colorScheme = tema === 'escuro' ? 'dark' : 'light';
+}
+
 /** Slug default a partir do nome do empreendimento (editável no painel). */
 export function slugifyLpSlug(raw: string): string {
   return raw

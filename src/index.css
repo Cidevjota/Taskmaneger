@@ -726,6 +726,7 @@
   :root:not(.dark) .bg-\[\#0A0A0A\],
   :root:not(.dark) .bg-black { background-color: var(--t-canvas); }
 
+  :root:not(.dark) .bg-\[\#08080a\]\/95 { background-color: color-mix(in srgb, var(--t-canvas) 95%, transparent); }
   :root:not(.dark) .bg-\[\#08080a\]\/60 { background-color: color-mix(in srgb, var(--t-canvas) 60%, transparent); }
   :root:not(.dark) .bg-\[\#08080a\]\/40 { background-color: color-mix(in srgb, var(--t-canvas) 40%, transparent); }
 
@@ -763,6 +764,10 @@
 
   :root:not(.dark) .bg-\[\#30363d\] { background-color: var(--t-hairline); }
   :root:not(.dark) .bg-\[\#30363d\]\/40 { background-color: color-mix(in srgb, var(--t-hairline) 55%, transparent); }
+
+  /* Célula fixa da linha expandida na LP do Corretor: azul quase preto no
+     escuro, e no claro o mesmo azulado frio das demais superfícies de realce. */
+  :root:not(.dark) .bg-\[\#101623\] { background-color: var(--t-tint-cool); }
 
   :root:not(.dark) .bg-\[\#1f2937\] { background-color: var(--t-tint-cool); }
   :root:not(.dark) .bg-\[\#1f2937\]\/60 { background-color: color-mix(in srgb, var(--t-tint-cool) 80%, transparent); }
