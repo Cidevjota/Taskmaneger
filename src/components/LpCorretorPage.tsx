@@ -352,16 +352,23 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
         <div className="sticky left-0" style={{ width: larguraVisivel || undefined }}>
           <div className={`${GUTTER} py-5`}>
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Plantas */}
-          <div className="flex flex-col gap-2 min-w-0">
+          {/* Plantas. A coluna inteira para em 500px — não só a imagem — para a
+              legenda e os indicadores acompanharem a largura da planta em vez
+              de atravessarem o card. */}
+          <div className="flex flex-col gap-2 min-w-0 max-w-[500px]">
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Plantas</p>
             {planta ? (
               <>
+                {/* Esticar a planta para a largura toda do card no desktop só
+                    engrossaria o traço sem revelar mais nada; abaixo do teto ela
+                    acompanha a coluna, mantendo a proporção. Fundo branco porque
+                    a planta vem com traço escuro sobre transparente e sumiria no
+                    tema escuro da página. */}
                 <img
                   src={planta.url}
                   alt={planta.legenda || `Planta da unidade ${unidade.unidade}`}
                   loading="lazy"
-                  className="w-full h-auto max-w-full object-contain rounded-md border border-zinc-800 bg-zinc-950"
+                  className="w-full h-auto object-contain rounded-md border border-zinc-800 bg-white p-[15px]"
                 />
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-zinc-400 truncate">{planta.legenda || `Planta ${indice + 1}`}</span>
