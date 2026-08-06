@@ -454,8 +454,11 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
  * celular rola na horizontal com a coluna da unidade fixa à esquerda — é a
  * única referência de qual linha se está lendo. No desktop cabe inteira.
  */
-function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplate }: {
+function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas, cvcrmTemplate }: {
+  /** Todas as unidades da versão — o PDF sai completo, sem filtro. */
   unidades: LpCorretorPublicUnidade[];
+  /** Quais passam pelos filtros da tela; as demais só existem no PDF. */
+  visiveisIds: Set<string>;
   /** Todas as colunas visíveis, na ordem configurada. */
   entradas: ReturnType<typeof mergeLpColunas>;
   /** Quais delas vão na linha compacta; o resto só no card expandido. */
@@ -511,7 +514,11 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                   // lp-linha-disponivel só tem efeito na impressão: na tela a
                   // distinção já vem do contraste do texto e do ponto colorido,
                   // que no papel ficam fracos demais para varrer a lista.
-                  className={`cursor-pointer ${ROW_GUTTER} ${disponivel ? 'lp-linha-disponivel' : ''} [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
+                  className={`cursor-pointer ${ROW_GUTTER} ${disponivel ? 'lp-linha-disponivel' : ''} ${
+                    // Filtrada fora na tela, mas presente no PDF: o documento
+                    // é sempre a tabela inteira do empreendimento.
+                    visiveisIds.has(u.id) ? '' : 'hidden print:table-row'
+                  } [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
                     aberta
                       ? '[&>td]:bg-blue-500/10 [&>td]:border-blue-500/30'
                       : '[&>td]:border-zinc-900 lg:hover:[&>td]:bg-zinc-900/30'
@@ -522,7 +529,14 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                       por trás dela durante a rolagem horizontal. */}
                   <td className={`sticky left-0 z-10 lg:static lg:bg-transparent ${aberta ? 'bg-[#101623]' : stickyBg}`}>
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
-                      <span className={`w-1.5 h-1.5 rounded-[2px] shrink-0 ${SITUACAO_DOT[u.situacao]}`} title={LP_SITUACAO_LABELS[u.situacao]} />
+                      {/* data-sit sobrevive à virada de tema do PDF: lá o fundo
+                          das classes utilitárias é zerado, e o ponto é
+                          recolorido a partir deste atributo. */}
+                      <span
+                        data-sit={u.situacao}
+                        className={`w-1.5 h-1.5 rounded-[2px] shrink-0 ${SITUACAO_DOT[u.situacao]}`}
+                        title={LP_SITUACAO_LABELS[u.situacao]}
+                      />
                       <span className={`text-xs font-bold ${aberta ? 'text-blue-300' : disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>{u.unidade}</span>
                     </span>
                   </td>
@@ -646,6 +660,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
   });
 
   const limparFaixas = () => { setFaixaValor(limiteValor); setFaixaArea(limiteArea); };
+  const visiveisIds = new Set(visiveis.map(u => u.id));
 
   if (carregando) return <Skeleton />;
   if (erro || !data) return <NaoEncontrada />;
@@ -683,7 +698,9 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           ) : (
             <div className="lp-capa w-full h-[38svh] min-h-[220px] lg:h-[46svh] bg-gradient-to-br from-zinc-900 to-[#08080a]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#08080a] via-[#08080a]/40 to-transparent" />
+          {/* lp-capa-overlay: no PDF a página vira clara, mas este degradê
+              continua escuro — é ele que sustenta o texto branco sobre a foto. */}
+          <div className="lp-capa-overlay absolute inset-0 bg-gradient-to-t from-[#08080a] via-[#08080a]/40 to-transparent" />
           <div className={`absolute inset-x-0 bottom-0 ${GUTTER} pb-6 lg:pb-10`}>
             <div className="lg:max-w-2xl mx-auto flex flex-col items-center text-center">
               {/* Identidade do produto: o logo substitui o nome em texto; sem
@@ -871,19 +888,23 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
           </div>
         </div>
 
-        {visiveis.length === 0 ? (
-          <p className="text-sm text-zinc-500 text-center py-10">Nenhuma unidade com esses filtros.</p>
-        ) : (
-          <div className="py-4">
-            <UnidadesTabela
-              unidades={visiveis}
-              entradas={entradas}
-              chavesLinha={chavesLinha}
-              plantas={config.plantas}
-              cvcrmTemplate={config.cvcrmUrlTemplate}
-            />
-          </div>
+        {visiveis.length === 0 && (
+          <p className="lp-no-print text-sm text-zinc-500 text-center py-10">Nenhuma unidade com esses filtros.</p>
         )}
+        {/* A tabela sempre recebe a lista completa: o PDF traz o empreendimento
+            inteiro, independentemente do filtro em que a tela estiver. Quando o
+            filtro não deixa nada de pé, o bloco some da tela mas continua indo
+            para o papel. */}
+        <div className={`py-4 ${visiveis.length === 0 ? 'hidden print:block' : ''}`}>
+          <UnidadesTabela
+            unidades={unidades}
+            visiveisIds={visiveisIds}
+            entradas={entradas}
+            chavesLinha={chavesLinha}
+            plantas={config.plantas}
+            cvcrmTemplate={config.cvcrmUrlTemplate}
+          />
+        </div>
 
         {/* Rodapé com observações */}
         {config.observacoes && (
