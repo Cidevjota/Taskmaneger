@@ -1156,8 +1156,8 @@
    O botão chama window.print() e quem gera o arquivo é o próprio navegador
    ("Salvar como PDF"). Sem biblioteca de PDF no bundle e, principalmente, sem
    um segundo layout para manter sincronizado: o que sai no papel é o mesmo
-   HTML da tela, menos o que não faz sentido fora dela — os filtros, que não
-   têm como ser operados num PDF, e a galeria de imagens.
+   HTML da tela, menos o que não entra no documento — os filtros, que não têm
+   como ser operados num PDF, a galeria de imagens e a ficha técnica.
 
    Todo o bloco é escopado em .lp-print para não afetar a impressão de nenhuma
    outra tela do app.
@@ -1177,7 +1177,38 @@
   /* Na tela a tabela rola na horizontal com a coluna da unidade fixa. No papel
      não há para onde rolar: ela abre inteira e nada mais gruda. */
   .lp-print .lp-tabela-scroll { overflow: visible !important; }
-  .lp-print .lp-tabela-scroll table { width: 100% !important; }
+  /* Layout automático de propósito: as colunas passam a ter a largura exata do
+     conteúdo. Com `fixed` elas ficariam todas iguais e um valor longo seria
+     truncado sem aviso — que é justamente o defeito a corrigir. */
+  .lp-print .lp-tabela-scroll table {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  /* A tabela vinha ~810px de largura contra os ~700px úteis da folha em pé, e o
+     excedente — a coluna do botão, que é a última — era cortado pela margem.
+     Reduzir a tipografia encolhe todas as colunas na mesma proporção, então a
+     tabela cabe sem que nenhuma coluna seja espremida em relação às outras. */
+  .lp-print .lp-tabela-scroll th,
+  .lp-print .lp-tabela-scroll td {
+    font-size: 8px !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+    padding-top: 3.5px !important;
+    padding-bottom: 3.5px !important;
+  }
+
+  /* O espaçamento entre letras dos títulos custa caro em nove colunas: só
+     "12 SEMESTRAIS" ganha uns 10px de volta. */
+  .lp-print .lp-tabela-scroll th {
+    font-size: 7px !important;
+    letter-spacing: 0 !important;
+  }
+
+  /* Os recuos laterais da página (pl-5/pl-8) são grandes demais para o papel e
+     roubam largura útil das colunas. */
+  .lp-print .lp-tabela-scroll tr > :first-child { padding-left: 4px !important; }
+  .lp-print .lp-tabela-scroll tr > :last-child { padding-right: 4px !important; }
   /* A largura inline vem medida da área visível na tela; no papel ela seguraria
      o card da unidade expandida num tamanho que não é o da folha. */
   .lp-print .lp-tabela-scroll .sticky { position: static !important; width: auto !important; }
@@ -1201,10 +1232,14 @@
   }
 
   /* O botão de reserva vira a única ação viva do documento: mantém o azul
-     cheio para se destacar do realce verde da linha. */
+     cheio para se destacar do realce verde da linha. Compacto porque divide a
+     largura da folha com oito colunas de valores. */
   .lp-print .lp-botao-reserva {
     background: #2563eb !important;
     color: #fff !important;
+    font-size: 7.5px !important;
+    padding: 2.5px 4px !important;
+    white-space: nowrap;
   }
 
   /* Os canais do rodapé já são âncoras de verdade (wa.me, tel:, mailto:,
@@ -1216,11 +1251,11 @@
   }
 
   /* svh não existe no papel: sem altura fixa a capa ou toma a folha inteira ou
-     colapsa. 92mm deixa capa e início da ficha técnica na primeira página. */
+     colapsa. 78mm deixa a capa e o começo da tabela na primeira página. */
   .lp-print .lp-capa {
-    height: 92mm !important;
+    height: 78mm !important;
     min-height: 0 !important;
-    max-height: 92mm !important;
+    max-height: 78mm !important;
   }
 
   /* A página inteira é uma coluna só; o limite de largura da tela travaria o
@@ -1228,4 +1263,7 @@
   .lp-print > div { max-width: none !important; }
 }
 
-@page { margin: 10mm; }
+/* Retrato, com margem enxuta: cada milímetro devolvido à margem é largura útil
+   para as colunas e mais linhas por folha. 6mm é o menor valor que a maioria
+   das impressoras ainda consegue imprimir sem cortar. */
+@page { margin: 6mm; }

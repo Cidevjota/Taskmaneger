@@ -266,13 +266,9 @@ function SecaoAcordeao({ id, titulo, icone, aberta, onToggle, children }: {
       >
         <span className="w-8 h-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">{icone}</span>
         <span className="flex-1 text-sm font-semibold text-zinc-100">{titulo}</span>
-        <ChevronDown size={16} className={`lp-no-print text-zinc-600 transition-transform ${aberta ? 'rotate-180' : ''}`} />
+        <ChevronDown size={16} className={`text-zinc-600 transition-transform ${aberta ? 'rotate-180' : ''}`} />
       </button>
-      {/* Fechada, a seção continua no DOM e some por CSS — no papel não há como
-          tocar no acordeão, então `print:block` a reabre. Renderizar só quando
-          aberta deixaria a ficha técnica fora do PDF de quem imprime pelo
-          Ctrl+P sem ter expandido nada. */}
-      <div className={`${GUTTER} pb-5 animate-fade-in ${aberta ? '' : 'hidden print:block'}`}>{children}</div>
+      {aberta && <div className={`${GUTTER} pb-5 animate-fade-in`}>{children}</div>}
     </div>
   );
 }
@@ -719,9 +715,12 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
             acordeão; desktop: tudo lado a lado em colunas. */}
         {temInfo && (
           <>
-            <nav className="border-t border-zinc-900 lg:hidden">
+            {/* Fora do PDF: a galeria não se navega no papel e a ficha técnica
+                o cliente pediu para não sair. Sobram capa, tabela, observações
+                e rodapé. */}
+            <nav className="lp-no-print border-t border-zinc-900 lg:hidden">
               {config.imagens.length > 0 && (
-                <div className="lp-no-print border-b border-zinc-900">
+                <div className="border-b border-zinc-900">
                   <div className={`flex items-center gap-3 ${GUTTER} py-4`}>
                     <span className="w-8 h-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
                       <Images size={15} />
@@ -739,8 +738,8 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
             </nav>
 
             {/* Desktop: imagens ocupam duas das três colunas, ficha técnica a terceira. */}
-            <div className={`hidden lg:grid grid-cols-3 gap-8 ${GUTTER} py-10 border-t border-zinc-900 items-start`}>
-              <div className="lp-no-print col-span-2 min-w-0">
+            <div className={`lp-no-print hidden lg:grid grid-cols-3 gap-8 ${GUTTER} py-10 border-t border-zinc-900 items-start`}>
+              <div className="col-span-2 min-w-0">
                 <SecaoDesktop titulo="Imagens do Produto" icone={<Images size={14} />}>
                   <SliderImagens imagens={config.imagens} />
                 </SecaoDesktop>
