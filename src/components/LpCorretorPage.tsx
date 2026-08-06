@@ -38,6 +38,17 @@ type Faixa = [number, number];
 // Recuo lateral padrão das seções, coerente em todas as larguras.
 const GUTTER = 'px-5 sm:px-6 lg:px-8';
 
+// O mesmo recuo do GUTTER, porém aplicado às células das pontas — a tabela rola
+// na horizontal, então o padding não pode viver no container (ele rolaria junto
+// e a primeira coluna encostaria na borda). Vive na <tr> e não em cada célula
+// porque o `[&>td]:px-2` da linha, tendo especificidade maior que um `pl-8`
+// solto na célula, vencia o recuo e alinhava a tabela 24px à esquerda de todo o
+// resto da página.
+const ROW_GUTTER =
+  '[&>:first-child]:pl-5 [&>:last-child]:pr-5 ' +
+  'sm:[&>:first-child]:pl-6 sm:[&>:last-child]:pr-6 ' +
+  'lg:[&>:first-child]:pl-8 lg:[&>:last-child]:pr-8';
+
 function Skeleton() {
   return (
     <div className="min-h-[100svh] bg-[#08080a] flex items-center justify-center">
@@ -476,12 +487,12 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
     <div ref={scrollRef} className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <table className="w-full border-collapse">
         <thead>
-          <tr className="[&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-zinc-800 [&>th]:text-[9px] lg:[&>th]:text-[10px] [&>th]:font-bold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:whitespace-nowrap">
-            <th className={`sticky left-0 z-10 ${stickyBg} lg:static text-left pl-5 sm:pl-6 lg:pl-8`}>Un.</th>
+          <tr className={`${ROW_GUTTER} [&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-zinc-800 [&>th]:text-[9px] lg:[&>th]:text-[10px] [&>th]:font-bold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:whitespace-nowrap`}>
+            <th className={`sticky left-0 z-10 ${stickyBg} lg:static text-left`}>Un.</th>
             <th className="text-right">Valor</th>
             {entradasLinha.map(e => <th key={e.id} className="text-right">{e.label}</th>)}
             {temReserva && <th />}
-            <th className="pr-5 sm:pr-6 lg:pr-8" />
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -497,7 +508,7 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                 <tr
                   onClick={() => setExpandida(aberta ? null : u.id)}
                   aria-expanded={aberta}
-                  className={`cursor-pointer [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
+                  className={`cursor-pointer ${ROW_GUTTER} [&>td]:py-2.5 [&>td]:px-2 [&>td]:border-b [&>td]:transition-colors ${
                     aberta
                       ? '[&>td]:bg-blue-500/10 [&>td]:border-blue-500/30'
                       : '[&>td]:border-zinc-900 lg:hover:[&>td]:bg-zinc-900/30'
@@ -506,7 +517,7 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                   {/* A célula fixa precisa de fundo opaco próprio: o realce
                       translúcido da linha deixaria as outras colunas passarem
                       por trás dela durante a rolagem horizontal. */}
-                  <td className={`sticky left-0 z-10 lg:static lg:bg-transparent pl-5 sm:pl-6 lg:pl-8 ${aberta ? 'bg-[#101623]' : stickyBg}`}>
+                  <td className={`sticky left-0 z-10 lg:static lg:bg-transparent ${aberta ? 'bg-[#101623]' : stickyBg}`}>
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
                       <span className={`w-1.5 h-1.5 rounded-[2px] shrink-0 ${SITUACAO_DOT[u.situacao]}`} title={LP_SITUACAO_LABELS[u.situacao]} />
                       <span className={`text-xs font-bold ${aberta ? 'text-blue-300' : disponivel ? 'text-zinc-100' : 'text-zinc-600'}`}>{u.unidade}</span>
@@ -537,7 +548,7 @@ function UnidadesTabela({ unidades, entradas, chavesLinha, plantas, cvcrmTemplat
                       )}
                     </td>
                   )}
-                  <td className="pr-5 sm:pr-6 lg:pr-8 text-right">
+                  <td className="text-right">
                     <ChevronDown size={13} className={`inline text-zinc-600 transition-transform ${aberta ? 'rotate-180' : ''}`} />
                   </td>
                 </tr>
@@ -742,9 +753,15 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               outras colunas, outros valores. Com uma versão só, o seletor não
               tem função e some. */}
           {data.versoes.length > 1 && (
-            <div className={`${GUTTER} pt-3 pb-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-900/80`}>
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider shrink-0">Condição</span>
-              <div className="flex gap-1.5 flex-wrap min-w-0">
+            <div className={`${GUTTER} pt-3 pb-2.5 flex flex-col gap-1 border-b border-zinc-900/80`}>
+              <span className="flex items-center gap-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                Condição
+                {trocandoVersao && <Loader2 size={12} className="animate-spin shrink-0" />}
+              </span>
+              {/* Ocupam a largura toda, como as faixas de valor e tamanho logo
+                  abaixo: os botões dividem a linha em partes iguais e só quebram
+                  quando o nome da condição não couber em ~140px. */}
+              <div className="flex flex-wrap gap-1.5">
                 {data.versoes.map(v => {
                   const ativa = v.id === data.versaoId;
                   return (
@@ -754,7 +771,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
                       onClick={() => setVersaoId(v.id)}
                       disabled={trocandoVersao}
                       aria-pressed={ativa}
-                      className={`shrink-0 px-3.5 py-2 min-h-[38px] rounded-md text-xs font-bold border transition-colors disabled:opacity-60 ${
+                      className={`flex-1 basis-[140px] px-3.5 py-2 min-h-[38px] rounded-md text-xs font-bold border transition-colors disabled:opacity-60 ${
                         ativa
                           ? 'bg-blue-600 text-white border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.35)]'
                           : 'text-zinc-300 bg-zinc-900 border-zinc-700 hover:border-zinc-600 hover:text-white'
@@ -765,7 +782,6 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
                   );
                 })}
               </div>
-              {trocandoVersao && <Loader2 size={13} className="text-zinc-500 animate-spin shrink-0" />}
             </div>
           )}
 
