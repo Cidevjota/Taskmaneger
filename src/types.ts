@@ -668,6 +668,10 @@ export interface LpCorretorConfig {
   // Coluna cujos valores viram os chips de filtro de tipologia na LP. null =
   // sem filtro; a página fica com os filtros de sempre.
   colunaTipologia: LpCorretorColunaKey | null;
+  // RI registrado. false = a LP apresenta as unidades vendidas como reservadas,
+  // porque antes do registro da incorporação não houve venda. A troca acontece
+  // na RPC, não na tela: a situação real não sai do banco.
+  riRegistrado: boolean;
   // Quando a versão atual dos valores foi aprovada para a LP. null = nunca
   // publicada, e a LP serve a tabela ao vivo.
   tabelaPublicadaEm: string | null;

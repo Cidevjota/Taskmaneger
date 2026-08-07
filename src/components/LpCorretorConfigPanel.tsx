@@ -51,6 +51,7 @@ function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
     colunasVisiveis: [],
     colunasLinha: [],
     colunaTipologia: null,
+    riRegistrado: true,
     tabelaPublicadaEm: null,
     createdAt: now,
     updatedAt: now,
@@ -790,6 +791,40 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
             })}
           </div>
         )}
+      </Secao>
+
+      <Secao
+        titulo="RI"
+        descricao="Registro de Incorporação. Enquanto não está registrado, o empreendimento não vende — o que existe são reservas, e a página precisa dizer isso."
+      >
+        <div className="flex items-center justify-between gap-3 p-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+          <div className="flex items-center gap-2 min-w-0">
+            {config.riRegistrado
+              ? <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+              : <AlertTriangle size={14} className="text-amber-400 shrink-0" />}
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-zinc-200">
+                {config.riRegistrado ? 'RI registrado' : 'RI não registrado'}
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                {config.riRegistrado
+                  ? 'A tabela sai como está: vendida aparece como vendida.'
+                  : 'As unidades vendidas aparecem como reservadas. As já reservadas não mudam.'}
+              </p>
+            </div>
+          </div>
+          {/* A troca acontece na RPC, não na tela: com o RI desligado a
+              situação real nem chega ao navegador do corretor. */}
+          <button
+            type="button"
+            onClick={() => patch({ riRegistrado: !config.riRegistrado })}
+            aria-pressed={config.riRegistrado}
+            aria-label={config.riRegistrado ? 'Marcar RI como não registrado' : 'Marcar RI como registrado'}
+            className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${config.riRegistrado ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${config.riRegistrado ? 'left-[22px]' : 'left-0.5'}`} />
+          </button>
+        </div>
       </Secao>
 
       <Secao
