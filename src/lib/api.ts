@@ -293,7 +293,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
     if ('reminderType' in updates) dbUpdates.reminder_type = updates.reminderType ?? null;
     if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate || null;
     if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
-    if (updates.parentTaskId !== undefined) dbUpdates.parent_task_id = updates.parentTaskId;
+    if ('parentTaskId' in updates) dbUpdates.parent_task_id = updates.parentTaskId ?? null;
     if (updates.updatedBy !== undefined) dbUpdates.updated_by = updates.updatedBy;
     if (updates.chatMessages !== undefined) dbUpdates.chat_messages = updates.chatMessages;
     if (updates.designBriefing !== undefined) dbUpdates.design_briefing = updates.designBriefing;
