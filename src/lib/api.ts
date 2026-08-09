@@ -62,7 +62,7 @@ export async function fetchTaskHistory(taskId: string): Promise<TaskHistoryEntry
 const TASKS_LIST_COLS = [
   'id', 'task_code', 'title', 'description', 'status', 'priority',
   'project_id', 'created_at', 'due_date', 'reminder_date', 'reminder_type',
-  'planned_date', 'assignee_id', 'parent_task_id', 'updated_by',
+  'planned_date', 'assignee_id', 'parent_task_id', 'hierarchy_order', 'updated_by',
   'chat_messages', 'attachments', 'proposals', 'budget_approvals', 'social_media_approval', 'time_tracking',
   'updated_at', 'status_history', 'rework_count', 'pending_deadline_change'
 ].join(', ');
@@ -99,6 +99,7 @@ export async function fetchTasks(): Promise<Task[]> {
       plannedDate: t.planned_date,
       assigneeId: t.assignee_id,
       parentTaskId: t.parent_task_id,
+      hierarchyOrder: t.hierarchy_order ?? undefined,
       updatedBy: t.updated_by,
       chatMessages: t.chat_messages || [],
       attachments: t.attachments || [],
@@ -185,6 +186,7 @@ export async function saveTask(task: Task) {
     planned_date: task.plannedDate || null,
     assignee_id: task.assigneeId || null,
     parent_task_id: task.parentTaskId || null,
+    hierarchy_order: task.hierarchyOrder ?? null,
     updated_by: task.updatedBy || null,
     chat_messages: task.chatMessages || [],
     design_briefing: task.designBriefing,
@@ -294,6 +296,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
     if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate || null;
     if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
     if ('parentTaskId' in updates) dbUpdates.parent_task_id = updates.parentTaskId ?? null;
+    if ('hierarchyOrder' in updates) dbUpdates.hierarchy_order = updates.hierarchyOrder ?? null;
     if (updates.updatedBy !== undefined) dbUpdates.updated_by = updates.updatedBy;
     if (updates.chatMessages !== undefined) dbUpdates.chat_messages = updates.chatMessages;
     if (updates.designBriefing !== undefined) dbUpdates.design_briefing = updates.designBriefing;

@@ -815,6 +815,8 @@ export default function TaskSheet({
   const [currentVisibleIndex, setCurrentVisibleIndex] = useState<number>(-1);
   const [isLinkDropdownOpen, setIsLinkDropdownOpen] = useState(false);
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
+  const [draggedChildId, setDraggedChildId] = useState<string | null>(null);
+  const [dragOverChildId, setDragOverChildId] = useState<string | null>(null);
   
   const [compareTaskId, setCompareTaskId] = useState<string | null>(null);
   const [isCompareSearchOpen, setIsCompareSearchOpen] = useState(false);
@@ -948,17 +950,36 @@ export default function TaskSheet({
   const theme = getTheme(baseColor);
   const themeTextColor = theme.text;
 
-  const childTasks = allTasks
-    ? allTasks
-        .filter(t => t.parentTaskId === task?.id)
-        .sort((a, b) => {
-          // Earliest deadline first; tasks without a due date sort last.
-          if (!a.dueDate && !b.dueDate) return 0;
-          if (!a.dueDate) return 1;
-          if (!b.dueDate) return -1;
-          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-        })
-    : [];
+  const childTasksRaw = allTasks ? allTasks.filter(t => t.parentTaskId === task?.id) : [];
+  const hasManualHierarchyOrder = childTasksRaw.some(t => t.hierarchyOrder != null);
+  const childTasks = childTasksRaw.slice().sort((a, b) => {
+    if (hasManualHierarchyOrder) {
+      const orderA = a.hierarchyOrder ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.hierarchyOrder ?? Number.MAX_SAFE_INTEGER;
+      return orderA - orderB;
+    }
+    // Default: earliest deadline first; tasks without a due date sort last.
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+  });
+
+  const handleReorderChildTask = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId || !onUpdateTask) return;
+    const ids = childTasks.map(t => t.id);
+    const fromIdx = ids.indexOf(draggedId);
+    const toIdx = ids.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const reordered = childTasks.slice();
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    reordered.forEach((t, idx) => {
+      if (t.hierarchyOrder !== idx) {
+        onUpdateTask({ ...t, hierarchyOrder: idx } as Task);
+      }
+    });
+  };
 
   let ThemeIcon = TagIcon;
   if (primaryLabelData?.name === 'Design') ThemeIcon = PenTool;
@@ -2218,11 +2239,25 @@ export default function TaskSheet({
                                   <div className="relative mt-2 flex flex-col gap-2">
                                     {childTasks.map((ct, idx) => {
                                       const isLast = idx === childTasks.length - 1;
+                                      const canDragChild = !effectiveLock && !!onUpdateTask;
                                       return (
-                                        <div key={ct.id} className="relative pl-8">
+                                        <div
+                                          key={ct.id}
+                                          className={`relative pl-8 transition-opacity ${draggedChildId === ct.id ? 'opacity-40' : ''} ${dragOverChildId === ct.id && draggedChildId && draggedChildId !== ct.id ? 'ring-1 ring-zinc-500/60 rounded-lg' : ''}`}
+                                          draggable={canDragChild}
+                                          onDragStart={() => canDragChild && setDraggedChildId(ct.id)}
+                                          onDragOver={(e) => { if (canDragChild && draggedChildId) { e.preventDefault(); setDragOverChildId(ct.id); } }}
+                                          onDrop={(e) => {
+                                            e.preventDefault();
+                                            if (canDragChild && draggedChildId) handleReorderChildTask(draggedChildId, ct.id);
+                                            setDraggedChildId(null);
+                                            setDragOverChildId(null);
+                                          }}
+                                          onDragEnd={() => { setDraggedChildId(null); setDragOverChildId(null); }}
+                                        >
                                           <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '12px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
                                           <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
-                                          <div className="relative z-10">
+                                          <div className={`relative z-10 ${canDragChild ? 'cursor-grab active:cursor-grabbing' : ''}`}>
                                             {renderTaskCard(ct, false)}
                                           </div>
                                         </div>
@@ -2253,11 +2288,25 @@ export default function TaskSheet({
                                 <div className="relative mt-2 flex flex-col gap-2">
                                   {childTasks.map((ct, idx) => {
                                     const isLast = idx === childTasks.length - 1;
+                                    const canDragChild = !effectiveLock && !!onUpdateTask;
                                     return (
-                                      <div key={ct.id} className="relative pl-8">
+                                      <div
+                                        key={ct.id}
+                                        className={`relative pl-8 transition-opacity ${draggedChildId === ct.id ? 'opacity-40' : ''} ${dragOverChildId === ct.id && draggedChildId && draggedChildId !== ct.id ? 'ring-1 ring-zinc-500/60 rounded-lg' : ''}`}
+                                        draggable={canDragChild}
+                                        onDragStart={() => canDragChild && setDraggedChildId(ct.id)}
+                                        onDragOver={(e) => { if (canDragChild && draggedChildId) { e.preventDefault(); setDragOverChildId(ct.id); } }}
+                                        onDrop={(e) => {
+                                          e.preventDefault();
+                                          if (canDragChild && draggedChildId) handleReorderChildTask(draggedChildId, ct.id);
+                                          setDraggedChildId(null);
+                                          setDragOverChildId(null);
+                                        }}
+                                        onDragEnd={() => { setDraggedChildId(null); setDragOverChildId(null); }}
+                                      >
                                         <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '12px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
                                         <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
-                                        <div className="relative z-10">
+                                        <div className={`relative z-10 ${canDragChild ? 'cursor-grab active:cursor-grabbing' : ''}`}>
                                           {renderTaskCard(ct, false)}
                                         </div>
                                       </div>

@@ -256,6 +256,7 @@ export interface Task {
   createdAt: string;
   assigneeId?: string;
   parentTaskId?: string;
+  hierarchyOrder?: number;
   reminderDate?: string;
   reminderType?: '3h' | '1d' | 'custom' | 'seen';
   timeTracking?: TaskTimeTracking;
