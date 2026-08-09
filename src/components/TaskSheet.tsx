@@ -2223,7 +2223,7 @@ export default function TaskSheet({
                               <div className="flex flex-col pl-8 mt-2 relative">
                                 {/* Level 1: Current Task */}
                                 <div className={`absolute top-[-8px] bottom-1/2 w-[2px] ${theme.line}`} style={{ left: '12px' }} />
-                                <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
+                                <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '20px', transform: 'translateY(-50%)' }} />
 
                                 <div className="group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 shadow-md relative z-10">
                                   <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
@@ -2256,7 +2256,7 @@ export default function TaskSheet({
                                           onDragEnd={() => { setDraggedChildId(null); setDragOverChildId(null); }}
                                         >
                                           <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '12px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
-                                          <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
+                                          <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '20px', transform: 'translateY(-50%)' }} />
                                           <div className={`relative z-10 ${canDragChild ? 'cursor-grab active:cursor-grabbing' : ''}`}>
                                             {renderTaskCard(ct, false)}
                                           </div>
@@ -2305,7 +2305,7 @@ export default function TaskSheet({
                                         onDragEnd={() => { setDraggedChildId(null); setDragOverChildId(null); }}
                                       >
                                         <div className={`absolute w-[2px] ${theme.line}`} style={{ left: '12px', top: idx === 0 ? '-8px' : '0px', bottom: isLast ? '50%' : '-8px' }} />
-                                        <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '32px', transform: 'translateY(-50%)' }} />
+                                        <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '20px', transform: 'translateY(-50%)' }} />
                                         <div className={`relative z-10 ${canDragChild ? 'cursor-grab active:cursor-grabbing' : ''}`}>
                                           {renderTaskCard(ct, false)}
                                         </div>
