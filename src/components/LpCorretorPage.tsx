@@ -356,10 +356,16 @@ function SecaoDesktop({ titulo, icone, children }: { titulo: string; icone: Reac
  * pointer-events desligado no trilho e ligado só no polegar, senão o de cima
  * cobriria o de baixo e uma das pontas nunca seria arrastável.
  */
-function FaixaSlider({ min, max, step, valor, onChange, formatar }: {
+function FaixaSlider({ min, max, step = 'any', valor, onChange, formatar }: {
   min: number;
   max: number;
-  step: number;
+  /**
+   * 'any' de propósito: as pontas são os valores reais das unidades (121,44 m²,
+   * R$ 678.273,82), e um passo fixo só aceita min + k×passo — o topo da escala
+   * ficaria inalcançável e a unidade mais cara sumiria do filtro justamente
+   * quando o corretor arrastasse o controle de volta para o fim.
+   */
+  step?: number | 'any';
   valor: Faixa;
   onChange: (f: Faixa) => void;
   formatar: (n: number) => string;
@@ -1055,7 +1061,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               <div className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Valor</span>
                 <FaixaSlider
-                  min={limiteValor[0]} max={limiteValor[1]} step={1000}
+                  min={limiteValor[0]} max={limiteValor[1]}
                   valor={faixaValor} onChange={setFaixaValor} formatar={formatMoeda}
                 />
               </div>
@@ -1064,9 +1070,11 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
               <div className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{colArea.label}</span>
                 <FaixaSlider
-                  min={limiteArea[0]} max={limiteArea[1]} step={1}
+                  min={limiteArea[0]} max={limiteArea[1]}
                   valor={faixaArea} onChange={setFaixaArea}
-                  formatar={n => `${n.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} m²`}
+                  // Duas casas, como a coluna de área da própria tabela: com
+                  // zero casas a ponta voltava a mentir a metragem.
+                  formatar={n => `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²`}
                 />
               </div>
             )}

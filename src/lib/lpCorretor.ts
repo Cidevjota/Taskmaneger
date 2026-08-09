@@ -173,10 +173,16 @@ export function valorNumerico(unidade: LpCorretorPublicUnidade, key: string): nu
   return isFinite(n) ? n : 0;
 }
 
-/** Faixa [min, max] de uma lista de números, arredondada para fora. */
+/**
+ * Faixa [min, max] exata de uma lista de números — sem arredondar para fora.
+ * Arredondar anunciava metragem que não existe: a menor loja de 121,44 m²
+ * aparecia como "121 m²" nas pontas do filtro, e o corretor procurava na tabela
+ * uma unidade que nunca foi cadastrada. As pontas do slider são leitura de
+ * catálogo tanto quanto controle, então precisam ser valores reais.
+ */
 export function faixaDe(valores: number[]): [number, number] {
   if (valores.length === 0) return [0, 0];
-  return [Math.floor(Math.min(...valores)), Math.ceil(Math.max(...valores))];
+  return [Math.min(...valores), Math.max(...valores)];
 }
 
 /** Ordenação natural das unidades (101, 102, ..., 1001). */
