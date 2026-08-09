@@ -64,7 +64,7 @@ const TASKS_LIST_COLS = [
   'project_id', 'created_at', 'due_date', 'reminder_date', 'reminder_type',
   'planned_date', 'assignee_id', 'parent_task_id', 'updated_by',
   'chat_messages', 'attachments', 'proposals', 'budget_approvals', 'social_media_approval', 'time_tracking',
-  'updated_at', 'status_history', 'rework_count'
+  'updated_at', 'status_history', 'rework_count', 'pending_deadline_change'
 ].join(', ');
 
 export async function fetchTasks(): Promise<Task[]> {
@@ -109,6 +109,7 @@ export async function fetchTasks(): Promise<Task[]> {
       updatedAt: t.updated_at,
       statusHistory: t.status_history || [],
       reworkCount: t.rework_count || 0,
+      pendingDeadlineChange: t.pending_deadline_change || null,
       subtasks: (t.subtasks || [])
         .map((st: any) => ({
           id: st.id,
@@ -196,7 +197,8 @@ export async function saveTask(task: Task) {
     time_tracking: task.timeTracking,
     updated_at: task.updatedAt || null,
     status_history: task.statusHistory || [],
-    rework_count: task.reworkCount || 0
+    rework_count: task.reworkCount || 0,
+    pending_deadline_change: task.pendingDeadlineChange || null
   });
   if (taskError) {
     console.error("Error saving task:", taskError);
@@ -305,6 +307,7 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
     if (updates.updatedAt !== undefined) dbUpdates.updated_at = updates.updatedAt;
     if (updates.statusHistory !== undefined) dbUpdates.status_history = updates.statusHistory;
     if (updates.reworkCount !== undefined) dbUpdates.rework_count = updates.reworkCount;
+    if ('pendingDeadlineChange' in updates) dbUpdates.pending_deadline_change = updates.pendingDeadlineChange ?? null;
 
     const guardDescription = dbUpdates.description !== undefined && opts.descriptionBase !== undefined;
 

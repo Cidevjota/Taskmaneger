@@ -863,6 +863,8 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                           role: 'designer',
                           type: 'submission',
                           content: data.creativeDefense || 'Nova entrega',
+                          authorId: currentUser?.id,
+                          authorName: currentUser?.name,
                           createdAt: now
                         }],
                         createdAt: now
@@ -940,6 +942,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
                       <DeliveryApproval
                         delivery={delivery}
                         index={i + 1}
+                        requesterFallbackId={task.assigneeId}
                         disabled={disabled || isSavingDelivery}
                         onUpdate={(id, updates) => {
                         saveDeliveryChange((base) => {

@@ -110,6 +110,8 @@ export default function Sidebar({
       case 'reminder': return <Bell size={size} className="text-zinc-400 shrink-0 fill-zinc-400" />;
       case 'deadline': return <Calendar size={size} className="text-zinc-400 shrink-0" />;
       case 'deadline_changed': return <Calendar size={size} className="text-zinc-400 shrink-0" />;
+      case 'deadline_change_requested': return <Calendar size={size} className="text-zinc-400 shrink-0" />;
+      case 'deadline_change_rejected': return <Calendar size={size} className="text-zinc-400 shrink-0" />;
       case 'chat_mention': return <MessageSquare size={size} className="text-blue-400 shrink-0" />;
       default: return <Bell size={size} className="text-zinc-400 shrink-0" />;
     }
@@ -278,7 +280,7 @@ export default function Sidebar({
                               const event = new CustomEvent('openTaskSection', { detail: { section: sectionName, targetId: n.targetId } });
                               window.dispatchEvent(event);
                             }, 400);
-                          } else if (n.type === 'deadline' || n.type === 'deadline_changed') {
+                          } else if (n.type === 'deadline' || n.type === 'deadline_changed' || n.type === 'deadline_change_requested' || n.type === 'deadline_change_rejected') {
                             setTimeout(() => {
                               const event = new CustomEvent('openTaskSection', { detail: { section: 'deadline', targetId: 'deadline' } });
                               window.dispatchEvent(event);

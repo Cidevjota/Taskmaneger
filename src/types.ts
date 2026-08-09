@@ -42,8 +42,11 @@ export interface DeliveryThreadMessage {
   imageUrls?: string[]; // Suporte para múltiplas imagens
   annotatedImageUrl?: string;
   annotatedImageUrls?: string[];
+  // Em submissions de copy: o HTML do editor. Em mensagens de chat: o trecho
+  // citado, quando o comentário responde a uma seleção do texto.
   copyText?: string;
   editorName?: string;
+  copyEditorId?: string;
   authorId?: string;
   authorName?: string;
   majorVersion?: number; // X in X.Y
@@ -143,7 +146,7 @@ export interface AppNotification {
   actorId: string;
   taskId?: string;
   siengeTitleId?: string;
-  type: 'task_assigned' | 'task_deleted' | 'status_changed' | 'assignee_replaced' | 'properties_changed' | 'feedback_received' | 'rejected' | 'review_requested' | 'approved' | 'reminder' | 'deadline' | 'deadline_changed' | 'approval_pending' | 'chat_mention' | 'alcada_pending';
+  type: 'task_assigned' | 'task_deleted' | 'status_changed' | 'assignee_replaced' | 'properties_changed' | 'feedback_received' | 'rejected' | 'review_requested' | 'approved' | 'reminder' | 'deadline' | 'deadline_changed' | 'deadline_change_requested' | 'deadline_change_rejected' | 'approval_pending' | 'chat_mention' | 'alcada_pending';
   status: 'unread' | 'read' | 'viewed' | 'postponed' | 'important';
   createdAt: string;
   viewedAt?: string;
@@ -261,6 +264,16 @@ export interface Task {
   updatedAt?: string;
   routine?: RoutineConfig;
   routineOriginId?: string;
+  pendingDeadlineChange?: PendingDeadlineChange | null;
+}
+
+export interface PendingDeadlineChange {
+  requestedDueDate: string | null; // null = pedido para remover o prazo
+  previousDueDate?: string | null;
+  reason: string;
+  requestedBy: string;
+  requestedByName?: string;
+  requestedAt: string;
 }
 
 export interface TaskHistoryEntry {

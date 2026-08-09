@@ -19,7 +19,13 @@
       "Bash(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 'getent hosts 143-95-223-48.sslip.io || echo \"NAO RESOLVEU\"')",
       "Bash(ssh -p 22022 -o BatchMode=yes root@143.95.223.48 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq > /dev/null 2>&1; apt-get install -y -qq nginx certbot python3-certbot-nginx > /tmp/apt.log 2>&1; echo \"--- VERSOES ---\"; nginx -v 2>&1; certbot --version 2>&1')",
       "Bash(ssh -p *)",
-      "Bash(node mcp.mjs sql \"select table_name, string_agg\\(column_name, ', ' order by ordinal_position\\) as cols from information_schema.columns where table_name in \\('sienge_calculo_regras','sienge_tabela_vendas'\\) and table_schema='public' group by table_name\")"
+      "Bash(node mcp.mjs sql \"select table_name, string_agg\\(column_name, ', ' order by ordinal_position\\) as cols from information_schema.columns where table_name in \\('sienge_calculo_regras','sienge_tabela_vendas'\\) and table_schema='public' group by table_name\")",
+      "Bash(rm src/components/CopyApprovalPanel.tsx)",
+      "Bash(npm uninstall *)",
+      "Bash(curl -s \"http://localhost:5199/src/components/DeliveryApproval.tsx\" -o /dev/null -w \"DeliveryApproval: %{http_code}\\\\n\")",
+      "Bash(curl -s \"http://localhost:5199/src/components/CopyProperties.tsx\" -o /dev/null -w \"CopyProperties: %{http_code}\\\\n\")",
+      "Bash(curl -s \"http://localhost:5199/src/components/DeliveryForm.tsx\" -o /dev/null -w \"DeliveryForm: %{http_code}\\\\n\")",
+      "Bash(pkill -f \"vite --port 5199\")"
     ]
   },
   "mcpServers": {

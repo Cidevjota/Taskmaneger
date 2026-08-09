@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Task, CopyBriefing, Delivery } from '../types';
-import { Edit2, Check, ChevronDown, ChevronRight, Send, Trash2 } from 'lucide-react';
+import { Task, CopyBriefing } from '../types';
+import { Edit2, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import DeliveryApproval from './DeliveryApproval';
-import CopyApprovalPanel from './CopyApprovalPanel';
 import DeliveryForm from './DeliveryForm';
 import RichTextEditor from './RichTextEditor';
 import { useAuth } from '../context/AuthContext';
@@ -90,8 +89,7 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
   const [activeTab, setActiveTab] = useState<TabId>('copy');
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
   const [isCreatingDelivery, setIsCreatingDelivery] = useState(false);
-  const [editingDeliveryId, setEditingDeliveryId] = useState<string | null>(null);
-  
+
   const { allUsers: USERS, currentUser } = useAuth();
   const { getPendingField, saveImmediately } = useSyncManager();
   const [isSavingDelivery, setIsSavingDelivery] = useState(false);
@@ -101,12 +99,6 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
     : USERS;
   const { addNotification } = useNotifications();
   
-  const [selectedCopyEditorId, setSelectedCopyEditorId] = useState<string>('');
-  const [isEditorSelectOpen, setIsEditorSelectOpen] = useState(false);
-  const [selectedApproverId, setSelectedApproverId] = useState<string>('');
-  const [isApproverSelectOpen, setIsApproverSelectOpen] = useState(false);
-  const [copyDefense, setCopyDefense] = useState('');
-  const [selectedApprovalDeliveryId, setSelectedApprovalDeliveryId] = useState<string | null>(null);
 
   const safeArray = (val: any): string[] => Array.isArray(val) ? val : (typeof val === 'string' && val ? [val] : []);
 
@@ -179,7 +171,6 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
     const handleOpenSection = (e: CustomEvent<{ section: string, targetId?: string }>) => {
       if (e.detail.section === 'copyProps' && e.detail.targetId && e.detail.targetId.startsWith('copy-delivery-')) {
         setActiveTab('aprovacao');
-        setSelectedApprovalDeliveryId(null);
       }
     };
     window.addEventListener('openTaskSection', handleOpenSection as EventListener);
@@ -686,263 +677,108 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
 
         {activeTab === 'aprovacao' && (
           <div className="flex flex-col gap-6 animate-fade-in">
-            {/* Botão de Adição (oculto se estiver vendo o painel) */}
-            {!selectedApprovalDeliveryId && (
-              <div className="flex flex-col">
-                {!isCreatingDelivery && !editingDeliveryId && (
-                  <div className="flex justify-start">
-                    <button 
-                      onClick={() => setIsCreatingDelivery(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 border border-zinc-800/80 rounded hover:bg-zinc-800/50 hover:border-zinc-700 transition-all text-xs font-medium text-zinc-300"
-                    >
-                      <span className="text-pink-500 font-bold">+</span>
-                      Nova Aprovação
-                    </button>
-                  </div>
-                )}
+            {!isCreatingDelivery && (
+              <div className="flex justify-start">
+                <button
+                  onClick={() => setIsCreatingDelivery(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 border border-zinc-800/80 rounded hover:bg-zinc-800/50 hover:border-zinc-700 transition-all text-xs font-medium text-zinc-300"
+                >
+                  <span className="text-pink-500 font-bold">+</span>
+                  Adicionar Copy
+                </button>
               </div>
             )}
             
-            {/* Formulário de Criação / Edição */}
-            {(isCreatingDelivery || editingDeliveryId) && (
-              <div className="flex flex-col gap-4 bg-[#0a0a0c] border border-zinc-800/80 p-5 rounded-lg animate-fade-in">
-                <h4 className="text-xs font-bold text-pink-400 uppercase tracking-widest">Nova Aprovação de Copy</h4>
-                
-                <div className="flex flex-col gap-2 relative">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Selecione o Editor</label>
-                  
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditorSelectOpen(!isEditorSelectOpen)}
-                      className={`w-full flex items-center justify-between bg-[#121214] border ${isEditorSelectOpen ? 'border-pink-500/50 shadow-[0_0_0_2px_rgba(236,72,153,0.1)]' : 'border-zinc-800/80'} hover:border-zinc-700/80 rounded-lg px-4 py-2.5 text-sm text-left transition-all outline-none`}
-                    >
-                      <span className={selectedCopyEditorId ? 'text-zinc-200 font-medium' : 'text-zinc-500'}>
-                        {selectedCopyEditorId 
-                          ? (briefingForm.copyEditors?.find(e => e.id === selectedCopyEditorId)?.name || 'Editor não encontrado')
-                          : 'Selecione um editor...'}
-                      </span>
-                      <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-200 ${isEditorSelectOpen ? 'rotate-180' : ''}`} />
-                    </button>
+            {/* Formulário de Criação */}
+            {isCreatingDelivery && (
+              <>
+                <DeliveryForm
+                  copyEditors={briefingForm.copyEditors || []}
+                  accent="pink"
+                  users={sortedUsers}
+                  onCancel={() => setIsCreatingDelivery(false)}
+                  onSave={async (data) => {
+                    const success = await saveDeliveryChange((base) => {
+                      const now = new Date().toISOString();
+                      const newDeliveries = [...(base.deliveries || [])];
+                      const newId = Date.now().toString();
 
-                    {isEditorSelectOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsEditorSelectOpen(false)} />
-                        <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-[#18181b] border border-zinc-800/80 rounded-lg shadow-xl overflow-hidden animate-fade-in flex flex-col py-1">
-                          <div className="px-3 py-2 border-b border-zinc-800/60 flex items-center">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Editores Disponíveis</span>
-                          </div>
-                          <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                            {(briefingForm.copyEditors || []).filter(ed => ed.name && ed.content).length === 0 && (
-                              <div className="px-3 py-4 text-center text-xs text-zinc-500 italic">
-                                Nenhum editor com conteúdo.
-                              </div>
-                            )}
-                            {(briefingForm.copyEditors || []).filter(ed => ed.name && ed.content).map(ed => (
-                              <button
-                                key={ed.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCopyEditorId(ed.id);
-                                  setIsEditorSelectOpen(false);
-                                }}
-                                className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
-                                  selectedCopyEditorId === ed.id 
-                                    ? 'bg-pink-500/10 text-pink-400 font-medium' 
-                                    : 'text-zinc-300 hover:bg-zinc-800/60'
-                                }`}
-                              >
-                                <span>{ed.name}</span>
-                                {selectedCopyEditorId === ed.id && <Check size={14} />}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 relative">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Selecione o Aprovador</label>
-                  
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsApproverSelectOpen(!isApproverSelectOpen)}
-                      className={`w-full flex items-center justify-between bg-[#121214] border ${isApproverSelectOpen ? 'border-pink-500/50 shadow-[0_0_0_2px_rgba(236,72,153,0.1)]' : 'border-zinc-800/80'} hover:border-zinc-700/80 rounded-lg px-4 py-2.5 text-sm text-left transition-all outline-none`}
-                    >
-                      <span className={selectedApproverId ? 'text-zinc-200 font-medium' : 'text-zinc-500'}>
-                        {selectedApproverId 
-                          ? (USERS.find(u => u.id === selectedApproverId)?.name || 'Usuário não encontrado')
-                          : 'Selecione um aprovador...'}
-                      </span>
-                      <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-200 ${isApproverSelectOpen ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {isApproverSelectOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsApproverSelectOpen(false)} />
-                        <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-[#18181b] border border-zinc-800/80 rounded-lg shadow-xl overflow-hidden animate-fade-in flex flex-col py-1">
-                          <div className="px-3 py-2 border-b border-zinc-800/60 flex items-center">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Aprovadores Disponíveis</span>
-                          </div>
-                          <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-                            {sortedUsers.map(u => (
-                              <button
-                                key={u.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedApproverId(u.id);
-                                  setIsApproverSelectOpen(false);
-                                }}
-                                className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
-                                  selectedApproverId === u.id 
-                                    ? 'bg-pink-500/10 text-pink-400 font-medium' 
-                                    : 'text-zinc-300 hover:bg-zinc-800/60'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <img src={u.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
-                                  <span>{u.name}</span>
-                                </div>
-                                {selectedApproverId === u.id && <Check size={14} />}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Defesa Criativa</label>
-                  <textarea
-                    value={copyDefense}
-                    onChange={(e) => setCopyDefense(e.target.value)}
-                    placeholder="Explique suas escolhas de copy..."
-                    className="bg-[#121214] border border-zinc-800/80 rounded-lg px-4 py-3 text-sm text-zinc-200 outline-none focus:border-pink-500/50 min-h-[100px] resize-y"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <button 
-                    onClick={() => {
-                      setIsCreatingDelivery(false);
-                      setEditingDeliveryId(null);
-                      setSelectedCopyEditorId('');
-                      setSelectedApproverId('');
-                      setCopyDefense('');
-                    }}
-                    className="px-4 py-2 text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors uppercase tracking-wider"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    disabled={!selectedCopyEditorId || isSavingDelivery}
-                    onClick={async () => {
-                      const editor = briefingForm.copyEditors?.find(e => e.id === selectedCopyEditorId);
-                      if (!editor) return;
-
-                      const success = await saveDeliveryChange((base) => {
-                        const now = new Date().toISOString();
-                        let newDeliveries = [...(base.deliveries || [])];
-                        let notify: (() => void) | undefined;
-
-                        if (editingDeliveryId) {
-                          // Normally not editing existing copy submissions like this, but kept for compatibility
-                          newDeliveries = newDeliveries.map(d =>
-                            d.id === editingDeliveryId ? { ...d } : d
-                          );
-                        } else {
-                          const newId = Date.now().toString();
-                          newDeliveries.push({
-                            id: newId,
-                            status: 'pending',
-                            approverId: selectedApproverId || undefined,
-                            thread: [{
-                              id: newId + '-sub',
-                              role: 'designer',
-                              type: 'submission',
-                              content: copyDefense || 'Nova entrega de copy',
-                              copyText: editor.content,
-                              editorName: editor.name,
-                              createdAt: now
-                            }],
-                            createdAt: now
-                          });
-
-                          if (selectedApproverId) {
-                            // Deferred: only sent once saveDeliveryChange confirms the
-                            // delivery was persisted, so an approver never gets pinged
-                            // for a copy that isn't in the DB yet.
-                            notify = () => addNotification({
-                              userId: selectedApproverId,
-                              actorId: currentUser?.id || 'system',
-                              taskId: task.id,
-                              type: 'review_requested',
-                              message: 'Aprovação de Copy',
-                              details: `Você foi selecionado para aprovar a copy "${editor.name}" na tarefa "${task.title}".`,
-                              targetId: `copy-delivery-${newId}`
-                            });
-                          }
-                        }
-
-                        const taskUpdates: Partial<Task> = {};
-                        if (task.status !== 'approval') {
-                          taskUpdates.status = 'approval';
-                        }
-
-                        return { partial: { deliveries: newDeliveries }, taskUpdates, notify };
+                      newDeliveries.push({
+                        id: newId,
+                        status: 'pending',
+                        figmaLink: data.figmaLink,
+                        approverId: data.approverId,
+                        thread: [{
+                          id: newId + '-sub',
+                          role: 'designer',
+                          type: 'submission',
+                          content: data.creativeDefense || 'Nova entrega de copy',
+                          copyText: data.copyText,
+                          editorName: data.editorName,
+                          copyEditorId: data.copyEditorId,
+                          authorId: currentUser?.id,
+                          authorName: currentUser?.name,
+                          createdAt: now
+                        }],
+                        createdAt: now
                       });
 
-                      if (success) {
-                        setIsCreatingDelivery(false);
-                        setEditingDeliveryId(null);
-                        setSelectedCopyEditorId('');
-                        setSelectedApproverId('');
-                        setCopyDefense('');
+                      let notify: (() => void) | undefined;
+                      if (data.approverId) {
+                        // Deferred: only sent once saveDeliveryChange confirms the
+                        // delivery was persisted, so an approver never gets pinged
+                        // for a copy that isn't in the DB yet.
+                        notify = () => addNotification({
+                          userId: data.approverId!,
+                          actorId: currentUser?.id || 'system',
+                          taskId: task.id,
+                          type: 'review_requested',
+                          message: 'Aprovação de Copy',
+                          details: `Você foi selecionado para aprovar a copy "${data.editorName}" na tarefa "${task.title}".`,
+                          targetId: `copy-delivery-${newId}`
+                        });
                       }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded border border-pink-500/50 bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 disabled:opacity-50 transition-colors"
-                  >
-                    {isSavingDelivery
-                      ? <><span className="w-3.5 h-3.5 border-2 border-pink-400/40 border-t-pink-400 rounded-full animate-spin" /> Salvando...</>
-                      : <><Send size={14} /> Enviar copy para aprovação</>}
-                  </button>
-                </div>
+
+                      const taskUpdates: Partial<Task> = {};
+                      if (task.status !== 'approval') {
+                        taskUpdates.status = 'approval';
+                      }
+
+                      return { partial: { deliveries: newDeliveries }, taskUpdates, notify };
+                    });
+
+                    if (success) setIsCreatingDelivery(false);
+                    return success;
+                  }}
+                />
                 {deliverySaveError && (
                   <div className="text-xs text-red-400">{deliverySaveError}</div>
                 )}
-              </div>
+              </>
             )}
 
-            {/* Lista de Cards ou Painel */}
-            {!isCreatingDelivery && !editingDeliveryId && (
-              <div className="flex flex-col gap-4">
-                {selectedApprovalDeliveryId ? (
-                  <div className="flex flex-col gap-4 animate-fade-in">
-                    <button 
-                      onClick={() => setSelectedApprovalDeliveryId(null)}
-                      className="text-xs font-bold text-pink-500 hover:text-pink-400 self-start mb-2 tracking-wider flex items-center gap-1"
-                    >
-                      &larr; VOLTAR PARA LISTA
-                    </button>
-                    {selectedApprovalDeliveryId && briefingForm.deliveries && (
-                      <CopyApprovalPanel
-                        delivery={briefingForm.deliveries.find(d => d.id === selectedApprovalDeliveryId)!}
-                        disabled={disabled || isSavingDelivery}
-                        currentText={
-                          briefingForm.copyEditors?.find(e => {
-                              const delivery = briefingForm.deliveries!.find(d => d.id === selectedApprovalDeliveryId)!;
-                              const subs = delivery.thread?.filter(t => t.type === 'submission') || [];
-                              const lastSub = subs.length > 0 ? subs[subs.length - 1] : null;
-                              return e.name === lastSub?.editorName;
-                          })?.content
-                        }
-                        onClose={() => setSelectedApprovalDeliveryId(null)}
-                        onUpdate={(id, updates) => {
+            {/* Lista de Copies */}
+            {!isCreatingDelivery && briefingForm.deliveries && briefingForm.deliveries.length > 0 && (
+              <div className="flex flex-col gap-6">
+                {isSavingDelivery && (
+                  <div className="flex items-center gap-2 text-xs text-pink-400/80">
+                    <span className="w-3 h-3 border-2 border-pink-400/40 border-t-pink-400 rounded-full animate-spin" />
+                    Salvando alterações...
+                  </div>
+                )}
+                {briefingForm.deliveries.map((delivery, i) => (
+                  <div key={delivery.id} id={`target-copy-delivery-${delivery.id}`}>
+                    <DeliveryApproval
+                      delivery={delivery}
+                      index={i + 1}
+                      label="Copy"
+                      accent="pink"
+                      taskTitle={task.title}
+                      requesterFallbackId={task.assigneeId}
+                      copyEditors={briefingForm.copyEditors || []}
+                      disabled={disabled || isSavingDelivery}
+                      onDelete={(id) => setDeleteConfirmId(id)}
+                      onUpdate={(id, updates) => {
                           saveDeliveryChange((base) => {
                             const oldDelivery = base.deliveries?.find(d => d.id === id);
                             const newDeliveries = (base.deliveries || []).map(d =>
@@ -1014,75 +850,10 @@ export default function CopyProperties({ task, saveChange, themeColor = 'text-pi
 
                             return { partial: { deliveries: newDeliveries }, taskUpdates, notify };
                           });
-                        }}
-                      />
-                    )}
+                      }}
+                    />
                   </div>
-                ) : (
-                  briefingForm.deliveries?.map((delivery) => {
-                    const latestSubmission = delivery.thread?.filter(t => t.type === 'submission').pop();
-                    const editorName = latestSubmission?.editorName || 'COPY SEM NOME';
-                    const createdAtDate = new Date(latestSubmission?.createdAt || delivery.createdAt);
-                    const formattedDate = createdAtDate.toLocaleDateString('pt-BR') + ' às ' + createdAtDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                    const submissions = delivery.thread?.filter(t => t.type === 'submission') || [];
-                    const revisionNumber = submissions.length || 1;
-
-                    let statusDisplay = 'Aguardando avaliação';
-                    let statusColor = 'text-pink-500';
-                    let statusBg = 'bg-pink-500/10 border-pink-500/20';
-
-                    if (delivery.status === 'reworking') {
-                      statusDisplay = 'Em Ajustes';
-                      statusColor = 'text-yellow-500';
-                      statusBg = 'bg-yellow-500/10 border-yellow-500/20';
-                    } else if (delivery.status === 'approved') {
-                      statusDisplay = 'Aprovado';
-                      statusColor = 'text-emerald-500';
-                      statusBg = 'bg-emerald-500/10 border-emerald-500/20';
-                    } else if (delivery.status === 'rejected') {
-                      statusDisplay = 'Reprovado';
-                      statusColor = 'text-red-500';
-                      statusBg = 'bg-red-500/10 border-red-500/20';
-                    }
-
-                    return (
-                      <div 
-                        id={`target-copy-delivery-${delivery.id}`}
-                        key={delivery.id} 
-                        onClick={() => setSelectedApprovalDeliveryId(delivery.id)}
-                        className="group flex items-center justify-between p-3 rounded-md border border-zinc-800/40 bg-transparent hover:bg-zinc-800/30 hover:border-zinc-700/50 cursor-pointer transition-all"
-                      >
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="h-6 px-2 rounded bg-[#1C1C21] flex items-center justify-center text-[10px] font-mono text-zinc-500 shrink-0 border border-zinc-800/50">
-                            REV {revisionNumber}
-                          </div>
-                          <div className={`h-6 px-2 rounded-sm border flex items-center justify-center text-[10px] font-medium shrink-0 ${statusColor} ${statusBg}`}>
-                            {statusDisplay}
-                          </div>
-                          <div className="flex flex-col gap-0.5 ml-2">
-                            <span className="text-zinc-200 font-medium text-sm truncate" title={editorName}>{editorName}</span>
-                            <span className="text-zinc-500 text-xs">Responsável | {formattedDate}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center shrink-0 gap-2">
-                           <div className="text-zinc-500 group-hover:text-pink-400 transition-colors opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs font-medium pr-2">
-                             Abrir Painel &rarr;
-                           </div>
-                           {!disabled && (
-                             <button 
-                               onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(delivery.id); }} 
-                               className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors" 
-                               title="Excluir Aprovação"
-                             >
-                               <Trash2 size={14} />
-                             </button>
-                           )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                ))}
               </div>
             )}
           </div>

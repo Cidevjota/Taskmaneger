@@ -1,21 +1,39 @@
 import React, { useState } from 'react';
-import { Delivery } from '../types';
+import { Delivery, CopyEditorItem } from '../types';
 import { User } from '../lib/users';
 import { Check, X, Image as ImageIcon, Link as LinkIcon, FileText, User as UserIcon, ChevronDown, Plus } from 'lucide-react';
+import { DeliveryAccent, accentClasses } from '../lib/deliveryAccent';
+
+export interface DeliveryFormResult extends Partial<Delivery> {
+  // Preenchidos apenas no modo copy — o pai os grava na mensagem de submission.
+  copyEditorId?: string;
+  copyText?: string;
+  editorName?: string;
+}
 
 interface DeliveryFormProps {
   initialData?: Delivery;
   users?: User[];
-  onSave: (deliveryData: Partial<Delivery>) => void | Promise<boolean | void>;
+  /** Presente = modo copy: o campo de imagens vira um seletor de editor. */
+  copyEditors?: CopyEditorItem[];
+  /** Cor da classe da tarefa: amarelo em design, rosa em copy. */
+  accent?: DeliveryAccent;
+  onSave: (deliveryData: DeliveryFormResult) => void | Promise<boolean | void>;
   onCancel: () => void;
 }
 
-export default function DeliveryForm({ initialData, users = [], onSave, onCancel }: DeliveryFormProps) {
+export default function DeliveryForm({ initialData, users = [], copyEditors, accent, onSave, onCancel }: DeliveryFormProps) {
+  const isCopyMode = !!copyEditors;
+  const c = accentClasses(accent);
+  const availableEditors = (copyEditors || []).filter(ed => ed.name && ed.content);
+
   const [imageUrls, setImageUrls] = useState<string[]>(() => {
     if (initialData?.imageUrls && initialData.imageUrls.length > 0) return initialData.imageUrls;
     if (initialData?.imageUrl) return [initialData.imageUrl];
     return [''];
   });
+  const [copyEditorId, setCopyEditorId] = useState('');
+  const [isEditorSelectOpen, setIsEditorSelectOpen] = useState(false);
   const [figmaLink, setFigmaLink] = useState(initialData?.figmaLink || '');
   const [creativeDefense, setCreativeDefense] = useState(initialData?.creativeDefense || '');
   const [approverId, setApproverId] = useState(initialData?.approverId || '');
@@ -24,25 +42,38 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const validImageUrls = imageUrls.filter(url => url.trim() !== '');
+  const needsApprover = users.length > 0 && !approverId;
+  const isIncomplete = isCopyMode
+    ? (!copyEditorId || needsApprover)
+    : (validImageUrls.length === 0 || needsApprover);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
-
-    const validImageUrls = imageUrls.filter(url => url.trim() !== '');
-    if (validImageUrls.length === 0 || (users && users.length > 0 && !approverId)) return;
+    if (isSubmitting || isIncomplete) return;
 
     let finalLink = figmaLink.trim();
     if (finalLink && !/^https?:\/\//i.test(finalLink)) {
       finalLink = 'https://' + finalLink;
     }
 
+    const selectedEditor = availableEditors.find(ed => ed.id === copyEditorId);
+
     setIsSubmitting(true);
     setSubmitError(null);
     try {
       const result = await onSave({
-        imageUrl: validImageUrls[0], // Backwards compatibility
-        imageUrls: validImageUrls,
-        thumbnailUrl: validImageUrls[0], // Em um cenário real, o backend geraria a miniatura
+        ...(isCopyMode
+          ? {
+              copyEditorId,
+              copyText: selectedEditor?.content,
+              editorName: selectedEditor?.name,
+            }
+          : {
+              imageUrl: validImageUrls[0], // Backwards compatibility
+              imageUrls: validImageUrls,
+              thumbnailUrl: validImageUrls[0], // Em um cenário real, o backend geraria a miniatura
+            }),
         figmaLink: finalLink,
         creativeDefense,
         approverId: approverId || undefined,
@@ -50,7 +81,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
       // If onSave reports failure explicitly (result === false), keep the form
       // open so the user doesn't lose their input and can retry.
       if (result === false) {
-        setSubmitError('Falha ao salvar o criativo. Tente novamente.');
+        setSubmitError(`Falha ao salvar ${isCopyMode ? 'a copy' : 'o criativo'}. Tente novamente.`);
         setIsSubmitting(false);
       }
       // On success the parent is expected to unmount this form.
@@ -64,7 +95,9 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
     <div className="flex flex-col gap-5 p-5 bg-[#0a0a0c] border border-zinc-800/80 rounded-lg animate-slide-down">
       <div className="flex items-center justify-between border-b border-zinc-800/50 pb-3">
         <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-widest">
-          {initialData ? 'Editar Criativo' : 'Adicionar Novo Criativo'}
+          {isCopyMode
+            ? (initialData ? 'Editar Copy' : 'Adicionar Nova Copy')
+            : (initialData ? 'Editar Criativo' : 'Adicionar Novo Criativo')}
         </h4>
         <button onClick={onCancel} className="text-zinc-500 hover:text-zinc-300 transition-colors">
           <X size={16} />
@@ -73,6 +106,63 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <fieldset disabled={isSubmitting} className="contents">
+        {isCopyMode ? (
+          <div className="flex flex-col gap-2">
+            <label className="text-[10px] font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
+              <FileText size={12} /> Copy *
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsEditorSelectOpen(!isEditorSelectOpen)}
+                className={`w-full flex items-center justify-between bg-[#121214] border ${isEditorSelectOpen ? c.selectOpen : 'border-zinc-800'} hover:border-zinc-700 rounded-md px-3 py-2.5 text-xs text-left transition-all outline-none`}
+              >
+                <span className={copyEditorId ? 'text-zinc-200 font-medium' : 'text-zinc-500'}>
+                  {copyEditorId
+                    ? (availableEditors.find(ed => ed.id === copyEditorId)?.name || 'Editor não encontrado')
+                    : 'Selecione um editor...'}
+                </span>
+                <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-200 ${isEditorSelectOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isEditorSelectOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsEditorSelectOpen(false)} />
+                  <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-[#18181b] border border-zinc-800/80 rounded-lg shadow-xl overflow-hidden animate-fade-in flex flex-col py-1">
+                    <div className="px-3 py-2 border-b border-zinc-800/60 flex items-center">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Editores Disponíveis</span>
+                    </div>
+                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-1">
+                      {availableEditors.length === 0 && (
+                        <div className="px-3 py-4 text-center text-xs text-zinc-500 italic">
+                          Nenhum editor com conteúdo.
+                        </div>
+                      )}
+                      {availableEditors.map(ed => (
+                        <button
+                          key={ed.id}
+                          type="button"
+                          onClick={() => {
+                            setCopyEditorId(ed.id);
+                            setIsEditorSelectOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
+                            copyEditorId === ed.id
+                              ? `${c.optionActive} font-medium`
+                              : 'text-zinc-300 hover:bg-zinc-800/60'
+                          }`}
+                        >
+                          <span>{ed.name}</span>
+                          {copyEditorId === ed.id && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="flex flex-col gap-3">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
             <ImageIcon size={12} /> {imageUrls.length > 1 ? 'Imagens do Criativo *' : 'Imagem do Criativo *'}
@@ -81,7 +171,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
             {imageUrls.map((url, idx) => (
               <div 
                 key={idx}
-                className={`bg-[#121214] border ${url ? 'border-zinc-800' : 'border-zinc-800 border-dashed'} rounded-md p-4 flex flex-col items-center justify-center gap-2 transition-colors focus-within:border-yellow-500/50 relative`}
+                className={`bg-[#121214] border ${url ? 'border-zinc-800' : 'border-zinc-800 border-dashed'} rounded-md p-4 flex flex-col items-center justify-center gap-2 transition-colors ${c.focusWithin} relative`}
                 onPaste={(e) => {
                   const items = e.clipboardData?.items;
                   if (!items) return;
@@ -110,7 +200,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
                     {url.startsWith('data:image') || url.startsWith('http') ? (
                       <img src={url} alt={`Preview ${idx + 1}`} className="max-h-40 object-contain rounded" />
                     ) : (
-                      <span className="text-xs text-yellow-400 break-all">{url}</span>
+                      <span className={`text-xs ${c.text} break-all`}>{url}</span>
                     )}
                     <button 
                       type="button" 
@@ -141,7 +231,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
                         setImageUrls(newUrls);
                       }}
                       placeholder="https://exemplo.com/imagem.png"
-                      className="w-full max-w-sm mt-2 bg-[#0a0a0c] border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500 transition-colors"
+                      className={`w-full max-w-sm mt-2 bg-[#0a0a0c] border border-zinc-800 rounded px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none ${c.focusBorder} transition-colors`}
                     />
                   </>
                 )}
@@ -163,13 +253,14 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
             <button
               type="button"
               onClick={() => setImageUrls([...imageUrls, ''])}
-              className="self-start flex items-center gap-1.5 text-[11px] font-medium text-zinc-400 hover:text-yellow-400 py-1.5 px-3 rounded border border-zinc-800 hover:border-yellow-500/30 hover:bg-yellow-500/5 transition-all"
+              className={`self-start flex items-center gap-1.5 text-[11px] font-medium text-zinc-400 ${c.ghost} py-1.5 px-3 rounded border border-zinc-800 transition-all`}
             >
               <Plus size={12} />
               Adicionar mais uma imagem
             </button>
           </div>
         </div>
+        )}
 
         <div className="flex flex-col gap-2">
           <label className="text-[10px] font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
@@ -180,7 +271,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
             value={figmaLink}
             onChange={(e) => setFigmaLink(e.target.value)}
             placeholder="https://drive.google.com/..."
-            className="bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50 transition-colors"
+            className={`bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none ${c.focusBorder} transition-colors`}
           />
         </div>
 
@@ -193,7 +284,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
               <button
                 type="button"
                 onClick={() => setIsApproverSelectOpen(!isApproverSelectOpen)}
-                className={`w-full flex items-center justify-between bg-[#121214] border ${isApproverSelectOpen ? 'border-yellow-500/50 shadow-[0_0_0_2px_rgba(234,179,8,0.1)]' : 'border-zinc-800'} hover:border-zinc-700 rounded-md px-3 py-2.5 text-xs text-left transition-all outline-none`}
+                className={`w-full flex items-center justify-between bg-[#121214] border ${isApproverSelectOpen ? c.selectOpen : 'border-zinc-800'} hover:border-zinc-700 rounded-md px-3 py-2.5 text-xs text-left transition-all outline-none`}
               >
                 <span className={approverId ? 'text-zinc-200 font-medium' : 'text-zinc-500'}>
                   {approverId 
@@ -221,7 +312,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
                           }}
                           className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
                             approverId === u.id 
-                              ? 'bg-yellow-500/10 text-yellow-500 font-medium' 
+                              ? `${c.optionActive} font-medium`
                               : 'text-zinc-300 hover:bg-zinc-800/60'
                           }`}
                         >
@@ -248,7 +339,7 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
             value={creativeDefense}
             onChange={(e) => setCreativeDefense(e.target.value)}
             placeholder="Explique o conceito por trás deste criativo..."
-            className="bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50 transition-colors min-h-[80px] resize-y"
+            className={`bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none ${c.focusBorder} transition-colors min-h-[80px] resize-y`}
           />
         </div>
         </fieldset>
@@ -270,12 +361,12 @@ export default function DeliveryForm({ initialData, users = [], onSave, onCancel
           </button>
           <button
             type="submit"
-            disabled={imageUrls.filter(u => u.trim() !== '').length === 0 || isSubmitting}
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider rounded border border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={isIncomplete || isSubmitting}
+            className={`flex items-center gap-1.5 px-5 py-2 text-xs font-bold uppercase tracking-wider rounded border ${c.outline} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
           >
             {isSubmitting
-              ? <><span className="w-3.5 h-3.5 border-2 border-yellow-400/40 border-t-yellow-400 rounded-full animate-spin" /> Salvando...</>
-              : <><Check size={14} /> {initialData ? 'Salvar Edição' : 'Cadastrar Criativo'}</>}
+              ? <><span className={`w-3.5 h-3.5 border-2 ${c.spinner} rounded-full animate-spin`} /> Salvando...</>
+              : <><Check size={14} /> {initialData ? 'Salvar Edição' : (isCopyMode ? 'Cadastrar Copy' : 'Cadastrar Criativo')}</>}
           </button>
         </div>
       </form>

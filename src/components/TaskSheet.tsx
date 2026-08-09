@@ -59,7 +59,7 @@ import RoutineProperties from './RoutineProperties';
 import SocialMediaApproval from './SocialMediaApproval';
 import TaskChat from './TaskChat';
 import TaskHistoryPanel from './TaskHistoryPanel';
-import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment } from '../types';
+import { Task, Subtask, TaskStatus, TaskPriority, Label, Project, Attachment, PendingDeadlineChange } from '../types';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import { uploadToStorage, UPLOAD_LIMITS, sanitizeFileName } from '../lib/storage';
@@ -701,6 +701,7 @@ export default function TaskSheet({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [descColumns, setDescColumns] = useState(1);
+  const [deadlineRequestDraft, setDeadlineRequestDraft] = useState<{ date: string | undefined; reason: string } | null>(null);
 
   const plainDesc = (descriptionRef.current || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').trim();
   const missingTitle = !(titleRef.current && titleRef.current.trim());
@@ -1007,6 +1008,92 @@ export default function TaskSheet({
   const saveChange = (updates: Partial<Task>) => {
     if (!task || effectiveLock) return;
     onUpdateTask({ ...updates, id: task.id } as Task);
+  };
+
+  const isDeadlineAdmin = Number(currentUser?.permissionLevel) === 1;
+  const pendingDeadlineChange = task?.pendingDeadlineChange || null;
+
+  const formatDeadlineForNotif = (d: string | null | undefined) =>
+    d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : 'sem prazo';
+
+  const handleDeadlinePicked = (newDate: string | undefined) => {
+    if (!task || effectiveLock) return;
+    if (isDeadlineAdmin) {
+      let newStatus = status;
+      if (status === 'no_forecast' && newDate) newStatus = 'todo';
+      else if (status === 'todo' && !newDate) newStatus = 'no_forecast';
+      setDueDate(newDate);
+      setStatus(newStatus);
+      saveChange({ dueDate: newDate, status: newStatus });
+      return;
+    }
+    // Não-admins não alteram o prazo direto: precisam justificar e enviar para aprovação do Cidnei.
+    setDeadlineRequestDraft({ date: newDate, reason: '' });
+  };
+
+  const submitDeadlineChangeRequest = () => {
+    if (!task || !currentUser || !deadlineRequestDraft) return;
+    const reason = deadlineRequestDraft.reason.trim();
+    if (!reason) return;
+
+    const pending: PendingDeadlineChange = {
+      requestedDueDate: deadlineRequestDraft.date || null,
+      previousDueDate: task.dueDate || null,
+      reason,
+      requestedBy: currentUser.id,
+      requestedByName: currentUser.name,
+      requestedAt: new Date().toISOString()
+    };
+    onUpdateTask({ id: task.id, pendingDeadlineChange: pending } as Task);
+
+    const admin = USERS.find(u => Number(u.permissionLevel) === 1);
+    if (admin) {
+      addNotification({
+        userId: admin.id,
+        actorId: currentUser.id,
+        taskId: task.id,
+        type: 'deadline_change_requested',
+        message: `${currentUser.name} solicitou alteração de prazo em "${task.title || 'Tarefa'}"`,
+        details: `De ${formatDeadlineForNotif(pending.previousDueDate)} para ${formatDeadlineForNotif(pending.requestedDueDate)}. Motivo: ${reason}`,
+        targetId: 'deadline'
+      });
+    }
+    setDeadlineRequestDraft(null);
+  };
+
+  const approveDeadlineChange = () => {
+    if (!task || !currentUser || !pendingDeadlineChange) return;
+    const p = pendingDeadlineChange;
+    let newStatus = status;
+    if (status === 'no_forecast' && p.requestedDueDate) newStatus = 'todo';
+    else if (status === 'todo' && !p.requestedDueDate) newStatus = 'no_forecast';
+    setDueDate(p.requestedDueDate || undefined);
+    setStatus(newStatus);
+    onUpdateTask({ id: task.id, dueDate: p.requestedDueDate || undefined, status: newStatus, pendingDeadlineChange: null } as Task);
+    addNotification({
+      userId: p.requestedBy,
+      actorId: currentUser.id,
+      taskId: task.id,
+      type: 'deadline_changed',
+      message: `Sua solicitação de alteração de prazo em "${task.title || 'Tarefa'}" foi aprovada`,
+      details: `Novo prazo: ${formatDeadlineForNotif(p.requestedDueDate)}`,
+      targetId: 'deadline'
+    });
+  };
+
+  const rejectDeadlineChange = () => {
+    if (!task || !currentUser || !pendingDeadlineChange) return;
+    const p = pendingDeadlineChange;
+    onUpdateTask({ id: task.id, pendingDeadlineChange: null } as Task);
+    addNotification({
+      userId: p.requestedBy,
+      actorId: currentUser.id,
+      taskId: task.id,
+      type: 'deadline_change_rejected',
+      message: `O prazo de "${task.title || 'Tarefa'}" não pode ser alterado`,
+      details: `Sua solicitação (motivo: "${p.reason}") foi recusada pelo Cidnei. O prazo permanece ${formatDeadlineForNotif(p.previousDueDate)}.`,
+      targetId: 'deadline'
+    });
   };
 
   const stripHtml = (html: string) =>
@@ -1535,21 +1622,38 @@ export default function TaskSheet({
                 <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><CalendarIcon size={13} className="opacity-60" /> Prazo</span>
                 <DatePicker
                   value={dueDate}
-                  disabled={!!effectiveLock}
-                  onChange={(newDate) => {
-                    if (effectiveLock) return;
-                    setDueDate(newDate);
-                    let newStatus = status;
-                    if (status === 'no_forecast' && newDate) {
-                      newStatus = 'todo';
-                      setStatus('todo');
-                    } else if (status === 'todo' && !newDate) {
-                      newStatus = 'no_forecast';
-                      setStatus('no_forecast');
-                    }
-                    saveChange({ dueDate: newDate, status: newStatus });
-                  }}
+                  disabled={!!effectiveLock || !!pendingDeadlineChange}
+                  onChange={handleDeadlinePicked}
                 />
+                {pendingDeadlineChange && (
+                  <div className="mt-1.5 flex flex-col gap-1.5 p-2 rounded-md border border-amber-500/30 bg-amber-500/5 max-w-[260px]">
+                    <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">
+                      {isDeadlineAdmin ? 'Solicitação de alteração de prazo' : 'Aguardando aprovação do Cidnei'}
+                    </span>
+                    <span className="text-[10px] text-zinc-400">
+                      {pendingDeadlineChange.requestedByName || 'Alguém'} pediu para mudar de{' '}
+                      <b className="text-zinc-300">{formatDeadlineForNotif(pendingDeadlineChange.previousDueDate)}</b> para{' '}
+                      <b className="text-zinc-300">{formatDeadlineForNotif(pendingDeadlineChange.requestedDueDate)}</b>.
+                    </span>
+                    <span className="text-[10px] text-zinc-500 italic">"{pendingDeadlineChange.reason}"</span>
+                    {isDeadlineAdmin && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <button
+                          onClick={approveDeadlineChange}
+                          className="flex-1 py-1 text-[10px] font-bold uppercase tracking-wider rounded border border-emerald-500/50 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+                        >
+                          Aprovar
+                        </button>
+                        <button
+                          onClick={rejectDeadlineChange}
+                          className="flex-1 py-1 text-[10px] font-bold uppercase tracking-wider rounded border border-red-500/50 bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                        >
+                          Recusar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div id="section-planned" className="flex flex-col gap-1.5 min-w-[120px]">
@@ -2445,6 +2549,58 @@ export default function TaskSheet({
                 className="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 rounded-lg transition-colors"
               >
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Justificativa para Solicitação de Alteração de Prazo */}
+      {deadlineRequestDraft && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDeadlineRequestDraft(null);
+          }}
+        >
+          <div
+            className="bg-[#18181b] border border-zinc-800/80 rounded-xl p-5 flex flex-col gap-3 w-full max-w-[380px] shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-zinc-100">
+              Solicitar alteração de prazo
+            </h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Novo prazo: <b className="text-zinc-200">{formatDeadlineForNotif(deadlineRequestDraft.date)}</b>.
+              Essa mudança precisa da aprovação do Cidnei — explique o motivo antes de enviar.
+            </p>
+            <textarea
+              value={deadlineRequestDraft.reason}
+              onChange={(e) => setDeadlineRequestDraft(prev => prev ? { ...prev, reason: e.target.value } : prev)}
+              placeholder="Motivo da alteração de prazo..."
+              autoFocus
+              className="w-full bg-[#121214] border border-zinc-700 rounded-md p-2.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none min-h-[80px]"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeadlineRequestDraft(null);
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!deadlineRequestDraft.reason.trim()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  submitDeadlineChangeRequest();
+                }}
+                className="px-3 py-1.5 text-sm font-medium text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/30 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Enviar para aprovação
               </button>
             </div>
           </div>

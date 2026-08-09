@@ -1,24 +1,38 @@
-import React, { useState } from 'react';
-import { Check, X, ExternalLink, Image as ImageIcon, Send, Pencil, Trash2, RotateCcw, Maximize2, MessageSquare, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Delivery, DeliveryThreadMessage } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Check, X, ExternalLink, Image as ImageIcon, Send, Pencil, Trash2, RotateCcw, Maximize2, Minimize2, MessageSquare, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Quote } from 'lucide-react';
+import { Delivery, DeliveryThreadMessage, CopyEditorItem } from '../types';
 import DeliveryForm from './DeliveryForm';
 import FullscreenImageEditor from './FullscreenImageEditor';
 import { useAuth } from '../context/AuthContext';
+import { DeliveryAccent, accentClasses } from '../lib/deliveryAccent';
 
 interface DeliveryApprovalProps {
   delivery: Delivery;
   index: number;
   taskTitle?: string;
+  /** Copies são criadas por outro fluxo e usam este rótulo no lugar de "Criativo". */
+  label?: string;
+  /** Usado como solicitante quando a submission é antiga e não gravou authorId. */
+  requesterFallbackId?: string;
+  /** Editores disponíveis para reenviar uma copy em refação. */
+  copyEditors?: CopyEditorItem[];
+  /** Cor da classe da tarefa: amarelo em design, rosa em copy. */
+  accent?: DeliveryAccent;
   onUpdate: (id: string, updates: Partial<Delivery>) => void;
   onDelete: (id: string) => void;
   disabled?: boolean;
 }
 
-export default function DeliveryApproval({ 
-  delivery, 
+export default function DeliveryApproval({
+  delivery,
   index,
   taskTitle,
-  onUpdate, 
+  label = 'Criativo',
+  requesterFallbackId,
+  copyEditors,
+  accent,
+  onUpdate,
   onDelete,
   disabled = false
 }: DeliveryApprovalProps) {
@@ -27,9 +41,14 @@ export default function DeliveryApproval({
   const [replyText, setReplyText] = useState('');
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [chatText, setChatText] = useState('');
-  
-  const { currentUser } = useAuth();
-  
+  const [quotedSnippet, setQuotedSnippet] = useState<string | null>(null);
+  const [selectionPrompt, setSelectionPrompt] = useState<{ text: string; top: number; left: number } | null>(null);
+  const [isCopyFullscreen, setIsCopyFullscreen] = useState(false);
+  const copyContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const { currentUser, allUsers } = useAuth();
+  const c = accentClasses(accent);
+
   const [isFullscreenEditorOpen, setIsFullscreenEditorOpen] = useState(false);
   const [annotatedImages, setAnnotatedImages] = useState<string[]>([]);
   const [isSubmittingNewVersion, setIsSubmittingNewVersion] = useState(false);
@@ -72,6 +91,31 @@ export default function DeliveryApproval({
     });
   }
 
+  // --- Papéis e de quem é a vez ---
+  // Deliveries antigos não têm approverId. Nesse caso ninguém é travado: manter o
+  // comportamento anterior é preferível a deixar entregas legadas inacessíveis.
+  const approverId = delivery.approverId;
+  const firstSubmission = thread.find(t => t.type === 'submission');
+  const requesterId = firstSubmission?.authorId || requesterFallbackId;
+
+  const turn: 'approver' | 'requester' | null =
+    delivery.status === 'pending' || delivery.status === 'review_requested' ? 'approver'
+    : delivery.status === 'rejected' || delivery.status === 'reworking' ? 'requester'
+    : null;
+
+  const isApprover = !approverId || currentUser?.id === approverId;
+  const isRequester = !requesterId || currentUser?.id === requesterId;
+
+  const canApprove = !disabled && !isExpired && turn === 'approver' && isApprover;
+  const canReply = !disabled && !isExpired && turn === 'requester' && isRequester;
+  const canWrite = canApprove || canReply;
+
+  const waitingForName = turn === 'approver'
+    ? allUsers.find(u => u.id === approverId)?.name
+    : allUsers.find(u => u.id === requesterId)?.name;
+
+  const isCopy = thread.some(t => t.type === 'submission' && !!t.copyText);
+
   const currentMajorVersion = thread.length > 0 ? Math.max(...thread.map(t => t.majorVersion || 1)) : 1;
   const currentMajorThread = thread.filter(t => (t.majorVersion || 1) === currentMajorVersion);
   const currentMinorVersion = currentMajorThread.length > 0 ? Math.max(...currentMajorThread.map(t => t.minorVersion || 0)) : 0;
@@ -99,15 +143,47 @@ export default function DeliveryApproval({
 
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatText.trim()) return;
+    if (!chatText.trim() || !canWrite) return;
     const newThread = addMessage({
-      role: 'designer', // fallback
+      role: turn === 'approver' ? 'manager' : 'designer',
       type: 'chat',
-      content: chatText
+      content: chatText,
+      copyText: quotedSnippet || undefined
     });
     onUpdate(delivery.id, { thread: newThread });
     setChatText('');
+    setQuotedSnippet(null);
   };
+
+  // Seleção de trecho da copy → citação no campo de mensagem. Diferente do
+  // marcador antigo, isto não injeta <mark> no documento: só copia o texto.
+  // O listener é global porque o mouseup costuma cair fora do container quando
+  // o usuário arrasta além do texto; o que delimita a seleção é o contains().
+  useEffect(() => {
+    if (!isCopy || !canWrite) return;
+
+    const evaluate = () => {
+      const selection = window.getSelection();
+      const container = copyContainerRef.current;
+      if (!selection || selection.isCollapsed || !container) return setSelectionPrompt(null);
+      if (!container.contains(selection.anchorNode) || !container.contains(selection.focusNode)) {
+        return setSelectionPrompt(null);
+      }
+
+      const text = selection.toString().trim();
+      if (!text || text.length > 500) return setSelectionPrompt(null);
+
+      // Coordenadas de viewport: o prompt vai num portal com position fixed, para
+      // não ser recortado pelos ancestrais com overflow-hidden do card.
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      setSelectionPrompt({ text, top: rect.bottom + 8, left: rect.left });
+    };
+
+    // Um tick depois do mouseup: no Chrome a seleção só está final após o evento.
+    const onMouseUp = () => window.setTimeout(evaluate, 0);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => document.removeEventListener('mouseup', onMouseUp);
+  }, [isCopy, canWrite]);
 
   const handleApprove = () => {
     const newThread = addMessage({
@@ -178,21 +254,23 @@ export default function DeliveryApproval({
     }
   };
 
-  return (
+  const card = (
     <div className={`flex flex-col animate-fade-in py-6 ${
-      !isExpanded && delivery.status === 'approved' 
-        ? 'border border-emerald-500/20 bg-emerald-500/[0.02] rounded-lg px-5 mb-4 shadow-[0_0_15px_rgba(16,185,129,0.03)]' 
-        : 'border-b border-zinc-800/60 last:border-0'
+      isCopyFullscreen
+        ? ''
+        : !isExpanded && delivery.status === 'approved'
+          ? 'border border-emerald-500/20 bg-emerald-500/[0.02] rounded-lg px-5 mb-4 shadow-[0_0_15px_rgba(16,185,129,0.03)]'
+          : 'border-b border-zinc-800/60 last:border-0'
     }`}>
       
       {/* Header */}
       <div className="flex items-center justify-between pb-3">
         <div className="flex items-center gap-2.5">
           <h4 className="text-[13px] font-medium text-zinc-200 tracking-tight">
-            Criativo {index.toString().padStart(2, '0')}
+            {label} {index.toString().padStart(2, '0')}
           </h4>
           {delivery.status === 'pending' && (
-            <span className="px-1.5 py-0.5 border border-yellow-500/20 text-yellow-500/80 text-[10px] uppercase rounded">
+            <span className={`px-1.5 py-0.5 border ${c.badge} text-[10px] uppercase rounded`}>
               Pendente
             </span>
           )}
@@ -220,7 +298,7 @@ export default function DeliveryApproval({
         
         <div className="flex items-center gap-2">
           {onDelete && !disabled && (
-            <button onClick={() => onDelete(delivery.id)} className="p-1.5 text-zinc-500 hover:text-red-400 bg-zinc-900/50 hover:bg-red-500/10 rounded transition-colors" title="Excluir Criativo">
+            <button onClick={() => onDelete(delivery.id)} className="p-1.5 text-zinc-500 hover:text-red-400 bg-zinc-900/50 hover:bg-red-500/10 rounded transition-colors" title={`Excluir ${label}`}>
               <Trash2 size={14} />
             </button>
           )}
@@ -252,7 +330,7 @@ export default function DeliveryApproval({
                   <div key={idx} className="flex items-start flex-shrink-0">
                     <div className="flex flex-col">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <div className={`w-1.5 h-1.5 rounded-full ${isLast ? 'bg-yellow-500 shadow-[0_0_5px_rgba(234,179,8,0.5)]' : 'bg-zinc-700'}`} />
+                        <div className={`w-1.5 h-1.5 rounded-full ${isLast ? c.dot : 'bg-zinc-700'}`} />
                         <span className={`text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${isLast ? 'text-zinc-200' : 'text-zinc-500'}`}>
                           {event.label}
                         </span>
@@ -273,7 +351,7 @@ export default function DeliveryApproval({
               {delivery.status === 'reworking' && !isExpired && !disabled && (
                 <button
                   onClick={() => setIsSubmittingNewVersion(true)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-yellow-950 uppercase tracking-wider rounded transition-colors whitespace-nowrap shrink-0"
+                  className={`flex items-center justify-center gap-2 px-4 py-2 text-[10px] font-bold ${c.solid} uppercase tracking-wider rounded transition-colors whitespace-nowrap shrink-0`}
                 >
                   + Adicionar novo arquivo
                 </button>
@@ -305,7 +383,7 @@ export default function DeliveryApproval({
       })()}
 
       {isExpanded && (
-        <div className="flex flex-col md:flex-row gap-8 items-stretch md:h-[500px]">
+        <div className={`flex flex-col md:flex-row gap-8 items-stretch ${isCopyFullscreen ? 'md:h-[calc(100vh-190px)]' : 'md:h-[500px]'}`}>
         
         {/* Left Column: Image Preview */}
         <div className="w-full md:w-5/12 flex flex-col gap-2 shrink-0 h-full">
@@ -375,7 +453,7 @@ export default function DeliveryApproval({
                               }}
                               className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider backdrop-blur-sm border shadow-sm transition-colors ${
                                 isSelected 
-                                  ? 'bg-yellow-500 text-yellow-950 border-yellow-500' 
+                                  ? c.pill
                                   : 'bg-zinc-900/90 text-zinc-300 border-zinc-700/50 hover:bg-zinc-800'
                               }`}
                             >
@@ -386,8 +464,11 @@ export default function DeliveryApproval({
                       </div>
                       
                       {isCopyDelivery ? (
-                        <div className="w-full h-full p-6 overflow-y-auto max-h-full text-zinc-300 text-sm prose prose-invert prose-p:my-1 prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-left mt-8">
-                          <div className="mb-4 font-bold text-pink-400 uppercase tracking-widest text-[10px]">
+                        <div
+                          ref={copyContainerRef}
+                          className="relative w-full h-full px-6 pb-6 pt-14 overflow-y-auto text-zinc-300 text-sm prose prose-invert prose-p:my-1 prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-left select-text"
+                        >
+                          <div className={`mb-4 font-bold ${c.text} uppercase tracking-widest text-[10px]`}>
                             {activeSubmission?.editorName || 'Copy'}
                           </div>
                           <div dangerouslySetInnerHTML={{ __html: activeSubmission?.copyText || '' }} />
@@ -438,7 +519,15 @@ export default function DeliveryApproval({
                     </>
                   );
                 })()}
-                {(delivery.status === 'pending' || delivery.status === 'review_requested' || delivery.status === 'rejected') && (
+                {isCopy ? (
+                  <button
+                    onClick={() => setIsCopyFullscreen(!isCopyFullscreen)}
+                    title={isCopyFullscreen ? 'Reduzir' : 'Expandir em tela cheia'}
+                    className="absolute top-3 right-3 z-30 p-2 bg-zinc-900/90 border border-zinc-700/50 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 rounded-md backdrop-blur-sm transition-colors"
+                  >
+                    {isCopyFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </button>
+                ) : (delivery.status === 'pending' || delivery.status === 'review_requested' || delivery.status === 'rejected') && (
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                     <div className="bg-black/60 p-3 rounded-full text-white backdrop-blur-sm">
                       <Maximize2 size={24} />
@@ -478,9 +567,9 @@ export default function DeliveryApproval({
               const renderEventLine = () => {
                 if (!isEvent) return null;
                 let title = '';
-                if (msg.type === 'submission') title = 'Criativo Enviado para Aprovação';
-                else if (msg.action === 'rejected') title = 'Criativo Reprovado';
-                else if (msg.action === 'approved') title = 'Criativo Aprovado';
+                if (msg.type === 'submission') title = 'Enviado para Aprovação';
+                else if (msg.action === 'rejected') title = 'Reprovado';
+                else if (msg.action === 'approved') title = 'Aprovado';
                 else if (msg.action === 'request_review') title = 'Revisão Solicitada';
                 else if (msg.action === 'will_rework') title = 'Em Refação';
                 
@@ -517,7 +606,12 @@ export default function DeliveryApproval({
                           ? 'bg-zinc-800 text-zinc-200 rounded-tr-sm' 
                           : 'bg-zinc-900/60 border border-zinc-800/80 text-zinc-300 rounded-tl-sm'
                       }`}>
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        {msg.type === 'chat' && msg.copyText && (
+                          <div className={`mb-2 pl-2.5 border-l-2 ${c.quoteBar} text-[11px] italic text-zinc-400 whitespace-pre-wrap break-words`}>
+                            {msg.copyText}
+                          </div>
+                        )}
+                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                       </div>
                     </div>
                   )}
@@ -530,7 +624,7 @@ export default function DeliveryApproval({
           <div className="mt-auto pt-4 border-t border-zinc-800/50 flex flex-col gap-3">
 
             {/* GESTOR: APROVAR/REPROVAR */}
-            {(delivery.status === 'pending' || delivery.status === 'review_requested') && !isExpired && !disabled && (
+            {canApprove && (
               <div className="flex flex-col gap-4">
                 {showFeedbackInput && (
                   <div className="flex flex-col gap-2 animate-slide-down">
@@ -578,7 +672,7 @@ export default function DeliveryApproval({
                         onClick={handleApprove}
                         className="flex items-center justify-center gap-1.5 flex-1 py-2 text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-md transition-colors"
                       >
-                        <Check size={14} /> Aprovar Arte
+                        <Check size={14} /> {isCopy ? 'Aprovar Copy' : 'Aprovar Arte'}
                       </button>
                     </>
                   )}
@@ -586,28 +680,51 @@ export default function DeliveryApproval({
               </div>
             )}
 
-            {/* Chat Input */}
-            <form onSubmit={handleChatSubmit} className="flex gap-2">
-              <input 
-                type="text" 
-                value={chatText}
-                disabled={disabled}
-                onChange={(e) => setChatText(e.target.value)}
-                placeholder={disabled ? "Tarefa em modo leitura" : "Mensagem..."}
-                className="flex-1 bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-[13px] text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <button 
-                type="submit" 
-                disabled={disabled || !chatText.trim()}
-                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Enviar mensagem"
-              >
-                <Send size={14} />
-              </button>
-            </form>
+            {/* Chat Input — só para quem está na vez */}
+            {canWrite ? (
+              <div className="flex flex-col gap-2">
+                {quotedSnippet && (
+                  <div className={`flex items-start gap-2 pl-2.5 py-1.5 border-l-2 ${c.quoteBar} bg-zinc-900/40 rounded-r`}>
+                    <p className="flex-1 text-[11px] italic text-zinc-400 line-clamp-3 break-words">{quotedSnippet}</p>
+                    <button
+                      onClick={() => setQuotedSnippet(null)}
+                      className="p-1 text-zinc-500 hover:text-red-400 transition-colors shrink-0"
+                      title="Remover citação"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
+                <form onSubmit={handleChatSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={chatText}
+                    onChange={(e) => setChatText(e.target.value)}
+                    placeholder={isCopy ? 'Comente a copy ou selecione um trecho...' : 'Mensagem...'}
+                    className="flex-1 bg-[#121214] border border-zinc-800 rounded-md px-3 py-2 text-[13px] text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatText.trim()}
+                    className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Enviar mensagem"
+                  >
+                    <Send size={14} />
+                  </button>
+                </form>
+              </div>
+            ) : delivery.status !== 'approved' && (
+              <div className="flex items-center justify-center gap-2 py-2 px-3 bg-zinc-900/40 text-zinc-500 text-[11px] rounded-md border border-zinc-800/60 text-center">
+                {disabled
+                  ? 'Tarefa em modo leitura'
+                  : isExpired
+                    ? 'Entrega expirada'
+                    : `Aguardando ${waitingForName || (turn === 'approver' ? 'o aprovador' : 'o solicitante')}`}
+              </div>
+            )}
 
             {/* DESIGNER: REPROVADO -> ESCOLHER AÇÃO */}
-            {(delivery.status === 'rejected' || delivery.status === 'reworking') && !disabled && (
+            {canReply && (
               <div className="flex flex-col gap-4">
                 {showReplyInput ? (
                   <div className="flex flex-col gap-2 animate-slide-down">
@@ -618,7 +735,7 @@ export default function DeliveryApproval({
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Justifique por que a alteração não é necessária..."
-                      className="w-full bg-[#121214] border border-zinc-700/50 rounded-md p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-yellow-500/50 resize-none min-h-[80px]"
+                      className={`w-full bg-[#121214] border border-zinc-700/50 rounded-md p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none ${c.focusBorder} resize-none min-h-[80px]`}
                     />
                     <div className="flex items-center gap-2 mt-2">
                       <button 
@@ -651,7 +768,7 @@ export default function DeliveryApproval({
                         }
                         setIsSubmittingNewVersion(true);
                       }}
-                      className="flex-1 py-3 flex items-center justify-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-yellow-950 text-xs font-bold border border-transparent rounded-md transition-colors shadow-[0_0_15px_rgba(234,179,8,0.2)]"
+                      className={`flex-1 py-3 flex items-center justify-center gap-2 ${c.solid} text-xs font-bold border border-transparent rounded-md transition-colors`}
                     >
                       <RefreshCw size={14} /> Refazer
                     </button>
@@ -662,13 +779,30 @@ export default function DeliveryApproval({
 
             {delivery.status === 'approved' && (
               <div className="flex items-center justify-center gap-2 py-2 px-3 bg-emerald-500/10 text-emerald-400 text-xs font-medium rounded-md border border-emerald-500/20">
-                <Check size={14} /> Arte Aprovada e Finalizada
+                <Check size={14} /> {isCopy ? 'Copy Aprovada e Finalizada' : 'Arte Aprovada e Finalizada'}
               </div>
             )}
 
           </div>
         </div>
         </div>
+      )}
+
+      {/* Prompt de citação: portal + fixed, fora de qualquer overflow-hidden */}
+      {selectionPrompt && createPortal(
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setQuotedSnippet(selectionPrompt.text);
+            setSelectionPrompt(null);
+            window.getSelection()?.removeAllRanges();
+          }}
+          style={{ position: 'fixed', top: selectionPrompt.top, left: selectionPrompt.left }}
+          className={`z-[200] flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${c.solid} shadow-lg transition-colors`}
+        >
+          <Quote size={11} /> Comentar
+        </button>,
+        document.body
       )}
 
       {isFullscreenEditorOpen && (
@@ -689,24 +823,36 @@ export default function DeliveryApproval({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="w-full max-w-3xl my-auto">
             <DeliveryForm
+              copyEditors={isCopy ? (copyEditors || []) : undefined}
+              accent={accent}
               onSave={(data) => {
                 const newThread = addMessage({
                   role: 'designer',
                   type: 'submission',
                   content: data.creativeDefense || 'Nova versão enviada',
-                  imageUrl: data.imageUrls?.[0] || data.imageUrl,
-                  imageUrls: data.imageUrls,
-                  editorName: currentUser?.name || 'Designer'
+                  ...(isCopy
+                    ? {
+                        copyText: data.copyText,
+                        editorName: data.editorName,
+                        copyEditorId: data.copyEditorId,
+                      }
+                    : {
+                        imageUrl: data.imageUrls?.[0] || data.imageUrl,
+                        imageUrls: data.imageUrls,
+                        editorName: currentUser?.name || 'Designer',
+                      })
                 });
-                
-                onUpdate(delivery.id, { 
-                  status: 'pending', 
-                  imageUrl: data.imageUrls?.[0] || data.imageUrl,
-                  imageUrls: data.imageUrls,
+
+                onUpdate(delivery.id, {
+                  status: 'pending',
+                  ...(isCopy ? {} : {
+                    imageUrl: data.imageUrls?.[0] || data.imageUrl,
+                    imageUrls: data.imageUrls,
+                    annotatedImageUrl: undefined,
+                    annotatedImageUrls: undefined,
+                  }),
                   figmaLink: data.figmaLink,
-                  annotatedImageUrl: undefined,
-                  annotatedImageUrls: undefined,
-                  thread: newThread 
+                  thread: newThread
                 });
                 setIsSubmittingNewVersion(false);
               }}
@@ -717,4 +863,15 @@ export default function DeliveryApproval({
       )}
     </div>
   );
+
+  // Em tela cheia o mesmo card vai para um portal: o TaskSheet tem ancestrais com
+  // transform/overflow, onde um `fixed` interno não cobriria a viewport.
+  if (isCopyFullscreen) {
+    return createPortal(
+      <div className="fixed inset-0 z-[100] bg-[#08080a] overflow-y-auto px-8 py-4">{card}</div>,
+      document.body
+    );
+  }
+
+  return card;
 }

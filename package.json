@@ -34,7 +34,6 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "framer-motion": "^12.42.0",
-    "htmldiff-js": "^1.0.5",
     "jsdom": "^29.1.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",

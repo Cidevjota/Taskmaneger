@@ -28,6 +28,8 @@ export const NOTIFICATION_GROUPS: NotificationTypeGroup[] = [
       { type: 'assignee_replaced', label: 'Troca de responsável' },
       { type: 'properties_changed', label: 'Alteração de propriedades' },
       { type: 'deadline_changed', label: 'Alteração de prazo' },
+      { type: 'deadline_change_requested', label: 'Solicitação de alteração de prazo' },
+      { type: 'deadline_change_rejected', label: 'Alteração de prazo recusada' },
     ],
   },
   {

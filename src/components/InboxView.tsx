@@ -46,6 +46,8 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
       case 'reminder': return <Bell {...props} className="text-zinc-500 shrink-0 fill-zinc-500" />;
       case 'deadline': return <Calendar {...props} />;
       case 'deadline_changed': return <Calendar {...props} />;
+      case 'deadline_change_requested': return <Calendar {...props} />;
+      case 'deadline_change_rejected': return <Calendar {...props} />;
       default: return <Bell {...props} />;
     }
   };
@@ -67,7 +69,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
     
     // Type Filter
     if (filterType !== 'all') {
-      if (filterType === 'deadline' && !['deadline', 'deadline_changed'].includes(n.type)) return false;
+      if (filterType === 'deadline' && !['deadline', 'deadline_changed', 'deadline_change_requested', 'deadline_change_rejected'].includes(n.type)) return false;
       else if (filterType !== 'deadline' && n.type !== filterType) return false;
     }
 
@@ -156,7 +158,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
                 const event = new CustomEvent('openTaskSection', { detail: { section: sectionName, targetId: n.targetId } });
                 window.dispatchEvent(event);
               }, 100);
-            } else if (n.type === 'deadline' || n.type === 'deadline_changed') {
+            } else if (n.type === 'deadline' || n.type === 'deadline_changed' || n.type === 'deadline_change_requested' || n.type === 'deadline_change_rejected') {
               setTimeout(() => {
                 const event = new CustomEvent('openTaskSection', { detail: { section: 'deadline', targetId: 'deadline' } });
                 window.dispatchEvent(event);
