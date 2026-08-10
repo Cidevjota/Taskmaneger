@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Task, Proposal, BudgetApprovalRound, BudgetProposalDecision, BudgetDecisionStatus } from '../types';
-import { Plus, X, Building2, DollarSign, Handshake, Link2, AlignLeft, Check, Edit2, Upload, ExternalLink, Clock, CheckCircle2, XCircle, MessageCircle, Send, Tag, Grid, Loader2, ChevronLeft, ChevronRight, ChevronDown, Lock, RotateCcw, Users, Trash2 } from 'lucide-react';
+import { Plus, X, Building2, DollarSign, Handshake, Link2, AlignLeft, Check, Edit2, Upload, ExternalLink, Clock, CheckCircle2, XCircle, MessageCircle, Send, Tag, Grid, Loader2, ChevronLeft, ChevronRight, ChevronDown, Lock, RotateCcw, Users, Trash2, Image as ImageIcon } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -24,6 +24,73 @@ const formatCurrencyValue = (value: string | undefined) => {
   if (isNaN(parsed)) return value;
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parsed);
 };
+
+// Junta o campo legado `documento` (string única) com o array novo `documentos`, sem
+// duplicar. Toda leitura de links passa por aqui para que propostas antigas continuem
+// aparecendo mesmo depois de migrarmos para o array.
+const docLinks = (p: Pick<Proposal, 'documento' | 'documentos'>): string[] => {
+  const arr = (p.documentos || []).filter(Boolean);
+  if (p.documento && !arr.includes(p.documento)) return [p.documento, ...arr];
+  return arr;
+};
+
+const proposalImages = (p: Pick<Proposal, 'imagens'>): string[] => (p.imagens || []).filter(Boolean);
+
+const linkHref = (doc: string) =>
+  doc.startsWith('http') || doc.startsWith('blob:') ? doc : `https://${doc}`;
+
+// URLs de arquivos anexados (blob local ou storage) mostram um rótulo curto em vez do
+// endereço enorme; links colados pelo usuário aparecem por inteiro.
+const linkLabel = (doc: string) =>
+  doc.startsWith('blob:') || doc.includes('/attachments/') ? 'Documento Anexado' : doc;
+
+// Lista somente-leitura de links + grade de prints. Compartilhada entre o card da aba
+// Propostas e o resumo da aba Aprovação.
+function DocsAndImagesView({ p }: { p: Proposal }) {
+  const links = docLinks(p);
+  const images = proposalImages(p);
+
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+          <Link2 size={10} /> Documentos / Links
+        </label>
+        {links.length > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            {links.map((doc, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <a href={linkHref(doc)} target="_blank" rel="noreferrer" className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline truncate flex-1 min-w-0">
+                  {linkLabel(doc)}
+                </a>
+                <a href={linkHref(doc)} target="_blank" rel="noreferrer" className="shrink-0 flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors text-[9px] font-semibold uppercase tracking-wider">
+                  <ExternalLink size={10} /> Abrir
+                </a>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <span className="text-[11px] text-zinc-600">-</span>
+        )}
+      </div>
+
+      {images.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+            <ImageIcon size={10} /> Prints / Imagens
+          </label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {images.map((src, i) => (
+              <a key={i} href={src} target="_blank" rel="noreferrer" className="block aspect-square rounded-md overflow-hidden border border-zinc-800/80 hover:border-zinc-600 transition-colors">
+                <img src={src} alt={`Print ${i + 1}`} className="w-full h-full object-cover" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 // Sempre deriva a lista de decisões a partir de proposalIds. Rodadas gravadas antes de
 // `decisions` existir (ou com o array incompleto) voltam a funcionar em vez de ficarem
@@ -117,10 +184,6 @@ function ProposalSummary({ p }: { p: Proposal }) {
     </div>
   );
 
-  const href = p.documento
-    ? (p.documento.startsWith('http') || p.documento.startsWith('blob:') ? p.documento : `https://${p.documento}`)
-    : '';
-
   return (
     <div className="p-3 flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-2">
@@ -133,23 +196,7 @@ function ProposalSummary({ p }: { p: Proposal }) {
       </div>
       <Field icon={<DollarSign size={10} />} label="Valor Mensal" value={p.valorMensal} />
 
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-          <Link2 size={10} /> Documento / Link
-        </label>
-        {p.documento ? (
-          <div className="flex items-center gap-2">
-            <a href={href} target="_blank" rel="noreferrer" className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline truncate max-w-[65%] shrink-0">
-              {p.documento.startsWith('blob:') ? 'Documento Anexado' : p.documento}
-            </a>
-            <a href={href} target="_blank" rel="noreferrer" className="shrink-0 flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors text-[9px] font-semibold uppercase tracking-wider">
-              <ExternalLink size={10} /> Abrir
-            </a>
-          </div>
-        ) : (
-          <span className="text-[11px] text-zinc-600">-</span>
-        )}
-      </div>
+      <DocsAndImagesView p={p} />
 
       <div className="flex flex-col gap-1">
         <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
@@ -195,7 +242,69 @@ function EditableProposalFields({ draft, onChange }: { draft: Proposal; onChange
         <EditableField icon={<Grid size={10} />} label="Valor m²" value={draft.valorM2} onValue={v => onChange({ valorM2: v })} placeholder="R$ 0,00 / m²" />
       </div>
       <EditableField icon={<DollarSign size={10} />} label="Valor Mensal" value={draft.valorMensal} onValue={v => onChange({ valorMensal: v })} placeholder="R$ 0,00 / mês" />
-      <EditableField icon={<Link2 size={10} />} label="Documento / Link" value={draft.documento} onValue={v => onChange({ documento: v })} placeholder="Link (https://...)" />
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+          <Link2 size={10} /> Documentos / Links
+        </label>
+        {(() => {
+          const links = docLinks(draft);
+          const rows = links.length > 0 ? links : [''];
+          const commit = (next: string[]) => onChange({ documentos: next.filter(l => l.trim() !== ''), documento: '' });
+          return (
+            <>
+              {rows.map((doc, idx) => (
+                <div key={idx} className="flex items-center gap-2 w-full">
+                  <input
+                    type="text"
+                    value={doc}
+                    onChange={e => { const next = [...rows]; next[idx] = e.target.value; commit(next); }}
+                    placeholder="Link (https://...)"
+                    className="bg-zinc-950/50 border border-zinc-800/80 rounded p-1.5 text-[11px] text-zinc-300 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder-zinc-700 transition-all flex-1 min-w-0"
+                  />
+                  {rows.length > 1 && (
+                    <button
+                      onClick={() => commit(rows.filter((_, i) => i !== idx))}
+                      className="shrink-0 p-1.5 text-zinc-500 hover:text-red-400 bg-zinc-800/50 hover:bg-zinc-800 rounded transition-colors"
+                      title="Remover link"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => commit([...links, ''])}
+                className="self-start flex items-center gap-1 px-2 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors"
+              >
+                <Plus size={10} /> Adicionar link
+              </button>
+            </>
+          );
+        })()}
+      </div>
+
+      {proposalImages(draft).length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+            <ImageIcon size={10} /> Prints / Imagens
+          </label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {proposalImages(draft).map((src, idx) => (
+              <div key={idx} className="relative aspect-square rounded-md overflow-hidden border border-zinc-800/80 group/img">
+                <img src={src} alt={`Print ${idx + 1}`} className="w-full h-full object-cover" />
+                <button
+                  onClick={() => onChange({ imagens: proposalImages(draft).filter((_, i) => i !== idx) })}
+                  className="absolute top-1 right-1 p-0.5 rounded bg-black/70 text-zinc-300 hover:text-red-400 opacity-0 group-hover/img:opacity-100 transition-opacity"
+                  title="Remover imagem"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
           <AlignLeft size={10} /> Observações
@@ -611,22 +720,66 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
   };
 
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [uploadingImgFor, setUploadingImgFor] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Escreve os links no array novo e zera o campo legado — evita duplicar o mesmo link
+  // (que docLinks() juntaria de volta) depois da migração.
+  const setDocLinks = (id: string, links: string[]) =>
+    handleUpdateProposal(id, { documentos: links.filter(l => l.trim() !== ''), documento: '' });
+
+  const updateDocLinkAt = (p: Proposal, idx: number, value: string) => {
+    const links = docLinks(p);
+    links[idx] = value;
+    handleUpdateProposal(p.id, { documentos: links, documento: '' });
+  };
+
+  const addDocLink = (p: Proposal) => setDocLinks(p.id, [...docLinks(p).filter(l => l.trim() !== ''), '']);
+
+  const removeDocLinkAt = (p: Proposal, idx: number) =>
+    handleUpdateProposal(p.id, { documentos: docLinks(p).filter((_, i) => i !== idx), documento: '' });
 
   const handleFileUpload = async (id: string, file: File) => {
     setUploadingFor(id);
     setUploadError(null);
     try {
       const safeName = sanitizeFileName(file.name);
-      const path = `proposals/${task.id}/${id}_${safeName}`;
+      const path = `proposals/${task.id}/${id}_${Date.now()}_${safeName}`;
       const url = await uploadToStorage('attachments', path, file, UPLOAD_LIMITS.proposal);
-      handleUpdateProposal(id, { documento: url });
+      const p = proposalsRef.current.find(x => x.id === id);
+      const existing = p ? docLinks(p).filter(l => l.trim() !== '') : [];
+      handleUpdateProposal(id, { documentos: [...existing, url], documento: '' });
     } catch (err: any) {
       setUploadError(err.message || 'Erro ao enviar arquivo.');
     } finally {
       setUploadingFor(null);
     }
   };
+
+  // Aceita um ou mais prints/imagens do computador. Cada arquivo vale no máximo 1MB;
+  // tudo vira link no Storage para não inchar a linha da tarefa no banco.
+  const handleImageUpload = async (id: string, files: FileList) => {
+    setUploadingImgFor(id);
+    setUploadError(null);
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) throw new Error('Selecione apenas imagens.');
+        const safeName = sanitizeFileName(file.name);
+        const path = `proposals/${task.id}/${id}_img_${Date.now()}_${safeName}`;
+        urls.push(await uploadToStorage('attachments', path, file, UPLOAD_LIMITS.proposalImage));
+      }
+      const p = proposalsRef.current.find(x => x.id === id);
+      handleUpdateProposal(id, { imagens: [...(p ? proposalImages(p) : []), ...urls] });
+    } catch (err: any) {
+      setUploadError(err.message || 'Erro ao enviar imagem.');
+    } finally {
+      setUploadingImgFor(null);
+    }
+  };
+
+  const removeImageAt = (p: Proposal, idx: number) =>
+    handleUpdateProposal(p.id, { imagens: proposalImages(p).filter((_, i) => i !== idx) });
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>, proposalId: string) => {
     const val = e.target.value;
@@ -1112,59 +1265,107 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                     </div>
                   </div>
 
-                  {/* Row 3: Documento */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                      <Link2 size={10} /> Documento / Link
-                    </label>
-                    {editingId === p.id ? (
-                      <div className="flex items-center gap-2 w-full">
-                        <input 
-                          type="text" 
-                          value={p.documento} 
-                          onChange={(e) => handleUpdateProposal(p.id, { documento: e.target.value })} 
-                          placeholder="Link (https://...)" 
-                          className="bg-zinc-950/50 border border-zinc-800/80 rounded p-1.5 text-[11px] text-zinc-300 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder-zinc-700 transition-all flex-1 min-w-0" 
-                        />
-                        <label className={`flex items-center gap-1.5 px-2 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors shrink-0 ${uploadingFor === p.id ? 'opacity-60 pointer-events-none' : ''}`}>
-                          {uploadingFor === p.id ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
-                          {uploadingFor === p.id ? '...' : 'Upload'}
+                  {/* Row 3: Documentos / Links + Prints */}
+                  {editingId === p.id ? (
+                    <>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                          <Link2 size={10} /> Documentos / Links
+                        </label>
+                        {(() => {
+                          const links = docLinks(p);
+                          const rows = links.length > 0 ? links : [''];
+                          return rows.map((doc, idx) => (
+                            <div key={idx} className="flex items-center gap-2 w-full">
+                              <input
+                                type="text"
+                                value={doc}
+                                onChange={(e) => updateDocLinkAt(p, idx, e.target.value)}
+                                placeholder="Link (https://...)"
+                                className="bg-zinc-950/50 border border-zinc-800/80 rounded p-1.5 text-[11px] text-zinc-300 outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 placeholder-zinc-700 transition-all flex-1 min-w-0"
+                              />
+                              {rows.length > 1 && (
+                                <button
+                                  onClick={() => removeDocLinkAt(p, idx)}
+                                  className="shrink-0 p-1.5 text-zinc-500 hover:text-red-400 bg-zinc-800/50 hover:bg-zinc-800 rounded transition-colors"
+                                  title="Remover link"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          ));
+                        })()}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => addDocLink(p)}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors"
+                          >
+                            <Plus size={10} /> Adicionar link
+                          </button>
+                          <label className={`flex items-center gap-1.5 px-2 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors ${uploadingFor === p.id ? 'opacity-60 pointer-events-none' : ''}`}>
+                            {uploadingFor === p.id ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                            {uploadingFor === p.id ? '...' : 'Upload'}
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  handleFileUpload(p.id, e.target.files[0]);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                          <ImageIcon size={10} /> Prints / Imagens
+                          <span className="text-zinc-600 normal-case font-normal tracking-normal">(máx. 1MB cada)</span>
+                        </label>
+                        {proposalImages(p).length > 0 && (
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {proposalImages(p).map((src, idx) => (
+                              <div key={idx} className="relative aspect-square rounded-md overflow-hidden border border-zinc-800/80 group/img">
+                                <img src={src} alt={`Print ${idx + 1}`} className="w-full h-full object-cover" />
+                                <button
+                                  onClick={() => removeImageAt(p, idx)}
+                                  className="absolute top-1 right-1 p-0.5 rounded bg-black/70 text-zinc-300 hover:text-red-400 opacity-0 group-hover/img:opacity-100 transition-opacity"
+                                  title="Remover imagem"
+                                >
+                                  <X size={11} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <label className={`flex items-center justify-center gap-1.5 px-2 py-2 bg-zinc-800/50 hover:bg-zinc-800 border border-dashed border-zinc-700 rounded cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors ${uploadingImgFor === p.id ? 'opacity-60 pointer-events-none' : ''}`}>
+                          {uploadingImgFor === p.id ? <Loader2 size={10} className="animate-spin" /> : <ImageIcon size={10} />}
+                          {uploadingImgFor === p.id ? 'Enviando...' : 'Adicionar print(s) / imagem(ns)'}
                           <input
                             type="file"
+                            accept="image/*"
+                            multiple
                             className="hidden"
                             onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleFileUpload(p.id, e.target.files[0]);
+                              if (e.target.files && e.target.files.length > 0) {
+                                handleImageUpload(p.id, e.target.files);
+                                e.target.value = '';
                               }
                             }}
                           />
                         </label>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        {p.documento ? (
-                          <>
-                            <a href={p.documento.startsWith('http') || p.documento.startsWith('blob:') ? p.documento : `https://${p.documento}`} target="_blank" rel="noreferrer" className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline truncate max-w-[65%] shrink-0 flex items-center gap-1.5">
-                              {p.documento.startsWith('blob:') ? 'Documento Anexado' : p.documento}
-                            </a>
-                            <a 
-                              href={p.documento.startsWith('http') || p.documento.startsWith('blob:') ? p.documento : `https://${p.documento}`} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="shrink-0 flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors text-[9px] font-semibold uppercase tracking-wider"
-                            >
-                              <ExternalLink size={10} /> Abrir
-                            </a>
-                          </>
-                        ) : (
-                          <span className="text-[11px] text-zinc-600">-</span>
-                        )}
-                      </div>
-                    )}
-                    {uploadError && uploadingFor === null && editingId === p.id && (
-                      <p className="text-[10px] text-red-400 mt-0.5">{uploadError}</p>
-                    )}
-                  </div>
+
+                      {uploadError && uploadingFor === null && uploadingImgFor === null && (
+                        <p className="text-[10px] text-red-400 -mt-1">{uploadError}</p>
+                      )}
+                    </>
+                  ) : (
+                    <DocsAndImagesView p={p} />
+                  )}
 
                   {/* Row 4: Observação */}
                   <div className="flex flex-col gap-1 flex-1">

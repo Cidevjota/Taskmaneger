@@ -2220,17 +2220,22 @@ export default function TaskSheet({
                                 {renderTaskCard(parentTask, true)}
                               </div>
 
-                              <div className="flex flex-col pl-8 mt-2 relative">
-                                {/* Level 1: Current Task */}
-                                <div className={`absolute top-[-8px] bottom-1/2 w-[2px] ${theme.line}`} style={{ left: '12px' }} />
-                                <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '20px', transform: 'translateY(-50%)' }} />
+                              <div className="flex flex-col pl-8 mt-2">
+                                {/* Level 1: Current Task — as linhas ficam num wrapper que
+                                    envolve só este card, senão top-1/2/bottom-1/2 tomam como
+                                    referência a altura do bloco inteiro (com os filhos) e a
+                                    conexão com "Esta Tarefa" some. */}
+                                <div className="relative">
+                                  <div className={`absolute top-[-8px] bottom-1/2 w-[2px] ${theme.line}`} style={{ left: '12px' }} />
+                                  <div className={`absolute top-1/2 h-[2px] ${theme.line}`} style={{ left: '12px', width: '20px', transform: 'translateY(-50%)' }} />
 
-                                <div className="group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 shadow-md relative z-10">
-                                  <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
-                                    <div className={`w-[12px] h-[12px] rounded-full ${theme.dotBg} border ${theme.dotBorder} flex items-center justify-center shrink-0`}>
-                                      <div className={`w-1 h-1 rounded-full ${theme.dotInner}`} />
+                                  <div className="group flex items-center justify-between text-xs text-zinc-200 bg-zinc-800/40 p-1.5 rounded-lg border border-zinc-700/50 shadow-md relative z-10">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                                      <div className={`w-[12px] h-[12px] rounded-full ${theme.dotBg} border ${theme.dotBorder} flex items-center justify-center shrink-0`}>
+                                        <div className={`w-1 h-1 rounded-full ${theme.dotInner}`} />
+                                      </div>
+                                      <span className={`font-medium tracking-widest text-[11px] uppercase ${theme.text} truncate`}>Esta Tarefa</span>
                                     </div>
-                                    <span className={`font-medium tracking-widest text-[11px] uppercase ${theme.text} truncate`}>Esta Tarefa</span>
                                   </div>
                                 </div>
 

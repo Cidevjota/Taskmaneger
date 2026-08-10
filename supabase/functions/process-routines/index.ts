@@ -138,11 +138,77 @@ async function retryWhatsAppOutbox() {
   }
 }
 
-// @ts-ignore
-Deno.cron("Process Routines", "*/15 * * * *", async () => {
-  await processRoutines();
-  await retryWhatsAppOutbox();
-});
+/**
+ * Política de retenção das imagens do kanban (60 dias por padrão, ver
+ * `storage_retention_config`). Apaga pela Storage API — remover a linha de
+ * `storage.objects` no SQL deixaria o arquivo órfão no bucket — e só limpa as
+ * referências no JSONB depois que a exclusão é confirmada, nessa ordem: um
+ * arquivo apagado sem referência limpa vira imagem quebrada no card, enquanto
+ * uma referência limpa sem arquivo apagado só desperdiça storage.
+ */
+async function purgeExpiredImages() {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const { data: expired, error } = await supabase.rpc('list_expired_attachment_images');
+  if (error) {
+    console.error('[purge-images] falha ao listar expirados:', error);
+    await supabase.from('storage_retention_log').insert([{ error: error.message }]);
+    return;
+  }
+  if (!expired || expired.length === 0) {
+    console.log('[purge-images] nada a expirar.');
+    return;
+  }
+
+  const bySize = new Map<string, number>(
+    expired.map((r: any) => [r.path as string, Number(r.size_bytes) || 0])
+  );
+  const paths: string[] = expired.map((r: any) => r.path);
+
+  // A Storage API rejeita remoções muito grandes de uma vez.
+  const removed: string[] = [];
+  let failure: string | null = null;
+  for (let i = 0; i < paths.length; i += 100) {
+    const batch = paths.slice(i, i + 100);
+    const { data: res, error: rmErr } = await supabase.storage.from('attachments').remove(batch);
+    if (rmErr) {
+      console.error('[purge-images] falha ao apagar lote:', rmErr);
+      failure = rmErr.message;
+      continue;
+    }
+    removed.push(...(res ?? []).map((o: any) => o.name));
+  }
+
+  let refsCleared = 0;
+  if (removed.length > 0) {
+    const { data: cleared, error: clearErr } = await supabase.rpc('clear_expired_image_refs', {
+      expired: removed,
+    });
+    if (clearErr) {
+      console.error('[purge-images] falha ao limpar referências:', clearErr);
+      failure = clearErr.message;
+    } else {
+      refsCleared = cleared ?? 0;
+    }
+  }
+
+  const bytesFreed = removed.reduce((sum, p) => sum + (bySize.get(p) ?? 0), 0);
+  console.log(`[purge-images] ${removed.length} arquivo(s), ${bytesFreed} bytes, ${refsCleared} tarefa(s) limpa(s).`);
+
+  await supabase.from('storage_retention_log').insert([{
+    files_deleted: removed.length,
+    bytes_freed: bytesFreed,
+    refs_cleared: refsCleared,
+    error: failure,
+  }]);
+}
+
+// O agendamento vive no pg_cron (ver a migration `expiracao_imagens_kanban`), e não
+// aqui: `Deno.cron` não existe no Edge Runtime da Supabase e sua mera presença no
+// módulo derrubava o boot — a function inteira respondia 500, então nem as rotinas
+// nem o retry do WhatsApp chegavam a rodar. O cron do Postgres chama este endpoint
+// via pg_net: `*/15 * * * *` sem body para as rotinas, `30 6 * * *` com
+// `{"job":"purge-images"}` para a expiração das imagens.
 
 // Also expose as standard Edge Function for manual triggers or pg_cron
 serve(async (req: Request) => {
@@ -157,6 +223,14 @@ serve(async (req: Request) => {
        }
     }
     
+    // A purga é destrutiva, então fica fora do disparo genérico: só roda quando
+    // pedida explicitamente (`{"job":"purge-images"}`) ou pelo cron diário.
+    const body = await req.json().catch(() => ({}));
+    if (body?.job === 'purge-images') {
+      await purgeExpiredImages();
+      return new Response(JSON.stringify({ success: true, job: 'purge-images' }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
     await processRoutines();
     await retryWhatsAppOutbox();
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });

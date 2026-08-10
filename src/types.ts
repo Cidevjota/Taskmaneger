@@ -161,7 +161,12 @@ export interface Proposal {
   empresa: string;
   valor: string;
   negociado: string;
+  // Campo legado de link único. Mantido por compatibilidade com propostas antigas;
+  // novos links vão para `documentos`. Use o helper docLinks() para ler os dois juntos.
   documento: string;
+  // Múltiplos links/documentos e prints anexados (URLs no Storage).
+  documentos?: string[];
+  imagens?: string[];
   observacao: string;
   valorUnitario?: string;
   valorM2?: string;

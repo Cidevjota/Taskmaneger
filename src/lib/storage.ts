@@ -7,6 +7,7 @@ export const UPLOAD_LIMITS = {
   task:    15 * MB,
   sienge:   2 * MB,
   proposal: 2 * MB,
+  proposalImage: 1 * MB,
 } as const;
 
 export function sanitizeFileName(name: string): string {
