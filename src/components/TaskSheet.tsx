@@ -44,6 +44,7 @@ import {
   Columns,
   Search,
   Lock,
+  Unlock,
   Repeat,
   GripVertical,
   History as HistoryIcon
@@ -1436,6 +1437,26 @@ export default function TaskSheet({
               <HistoryIcon size={15} />
             </button>
 
+            {/* Tarefa privada — só nível 1 alterna. Quem não é nível 1 nem chega
+                a ver uma tarefa privada (a RLS filtra), então o botão só aparece
+                para quem pode usá-lo. */}
+            {Number(currentUser?.permissionLevel) === 1 && (
+              <button
+                onClick={() => saveChange({ isPrivate: !task.isPrivate })}
+                disabled={!!effectiveLock}
+                className={`p-1.5 rounded transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                  task.isPrivate
+                    ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40'
+                }`}
+                title={task.isPrivate
+                  ? 'Tarefa privada — visível somente para você. Clique para torná-la visível ao time.'
+                  : 'Tornar tarefa privada (oculta para todo o time)'}
+              >
+                {task.isPrivate ? <Lock size={15} /> : <Unlock size={15} />}
+              </button>
+            )}
+
             <div className="w-[1px] h-4 bg-zinc-800 mx-1"></div>
 
             {Number(currentUser?.permissionLevel) === 1 && (
@@ -1455,6 +1476,13 @@ export default function TaskSheet({
             </button>
           </div>
         </div>
+
+        {task.isPrivate && (
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-500/30 bg-amber-500/10 text-xs font-medium text-amber-400">
+            <Lock size={11} />
+            <span>Tarefa privada — visível somente para administradores.</span>
+          </div>
+        )}
 
         {effectiveLock && (
           <div

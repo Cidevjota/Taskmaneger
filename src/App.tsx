@@ -557,6 +557,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let adminChannel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;
 
     const invalidateTasksDebounced = () => {
@@ -587,7 +588,20 @@ export default function App() {
           if (delId) queryClient.setQueryData<Task[]>(['tasks'], (old) => old?.filter(t => t.id !== delId) ?? []);
         } else if (op === 'UPDATE') {
           const raw = record;
-          if (!raw) return;
+          // Tarefa virou privada: o trigger manda o evento sem conteúdo, só com o id,
+          // para quem perdeu acesso descartá-la na hora em vez de deixá-la fantasma
+          // na tela até o próximo refetch.
+          if (!raw) {
+            const goneId = oldRecord?.id;
+            if (goneId) {
+              queryClient.setQueryData<Task[]>(['tasks'], (old) => old?.filter(t => t.id !== goneId) ?? []);
+              if (selectedTaskRef.current?.id === goneId) {
+                setSelectedTask(null);
+                setIsTaskSheetOpen(false);
+              }
+            }
+            return;
+          }
 
           // Patch dos campos presentes no cache da lista. Inclui attachments/proposals/
           // socialMediaApproval/chatMessages/timeTracking — antes ficavam de fora, então
@@ -610,6 +624,7 @@ export default function App() {
             ...(sm.isFieldDirty(id, 'budgetApprovals')     ? {} : { budgetApprovals:     raw.budget_approvals || [] }),
             ...(sm.isFieldDirty(id, 'socialMediaApproval') ? {} : { socialMediaApproval: raw.social_media_approval }),
             ...(sm.isFieldDirty(id, 'timeTracking')        ? {} : { timeTracking:        raw.time_tracking }),
+            ...(sm.isFieldDirty(id, 'isPrivate')           ? {} : { isPrivate:           raw.is_private ?? false }),
             updatedBy: raw.updated_by,
           });
 
@@ -671,13 +686,30 @@ export default function App() {
           }
           queryClient.invalidateQueries({ queryKey: ['tasks'] });
         });
+
+      // Tarefas privadas são publicadas num tópico à parte, entregue só a quem tem
+      // nível 1 (policy em realtime.messages). Assinar aqui é inofensivo para os
+      // demais: eles simplesmente não recebem nada.
+      if (Number(currentUser?.permissionLevel) === 1) {
+        adminChannel = supabase
+          .channel('tasks-changes-admin', { config: { private: true } })
+          .on('broadcast', { event: 'INSERT' }, applyBroadcast)
+          .on('broadcast', { event: 'UPDATE' }, applyBroadcast)
+          .on('broadcast', { event: 'DELETE' }, applyBroadcast)
+          .subscribe((status, err) => {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              console.warn(`[Realtime] tasks-changes-admin (broadcast): ${status}`, err ?? '');
+            }
+          });
+      }
     })();
 
     return () => {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
+      if (adminChannel) supabase.removeChannel(adminChannel);
     };
-  }, [queryClient, currentUser?.id]);
+  }, [queryClient, currentUser?.id, currentUser?.permissionLevel]);
 
   // Track task changes to generate notifications
   useEffect(() => {

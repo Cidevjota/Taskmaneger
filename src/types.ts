@@ -262,6 +262,7 @@ export interface Task {
   assigneeId?: string;
   parentTaskId?: string;
   hierarchyOrder?: number;
+  isPrivate?: boolean;
   reminderDate?: string;
   reminderType?: '3h' | '1d' | 'custom' | 'seen';
   timeTracking?: TaskTimeTracking;
