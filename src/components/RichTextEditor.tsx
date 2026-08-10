@@ -12,6 +12,7 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { TableCell } from '@tiptap/extension-table-cell';
 import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
+import { isDataUrlImage, uploadDescriptionImage, fileToDataUrl, imageFilesFrom } from '../lib/descriptionImages';
 import {
   Bold,
   Italic,
@@ -504,6 +505,68 @@ interface SingleEditorProps {
 
 function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, placeholderText = 'Escreva sobre o que é essa tarefa...', readOnly, syncToken = 0 }: SingleEditorProps) {
   const localRef = useRef<Editor | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(0);
+  // Evita que a varredura dispare em cima de si mesma: cada swap de src conta como
+  // um update do editor, que reentraria aqui antes do upload anterior terminar.
+  const sweepingRef = useRef(false);
+
+  // Rede de segurança: HTML colado (Word, Docs, e-mail) pode trazer <img src="data:...">
+  // embutido, e transformPastedHTML é síncrono — não dá para subir o arquivo lá.
+  // Aqui trocamos qualquer base64 que tenha entrado no doc por um link do Storage.
+  const sweepDataUrlImages = async () => {
+    const ed = localRef.current;
+    if (!ed || sweepingRef.current) return;
+
+    const pending: string[] = [];
+    ed.state.doc.descendants((node) => {
+      if (node.type.name === 'image' && isDataUrlImage(node.attrs.src)) {
+        pending.push(node.attrs.src as string);
+      }
+    });
+    if (pending.length === 0) return;
+
+    sweepingRef.current = true;
+    setUploadingImages(n => n + pending.length);
+    try {
+      for (const dataUrl of pending) {
+        try {
+          const url = await uploadDescriptionImage(taskId, dataUrl);
+          const editor = localRef.current;
+          if (!editor) break;
+          // A posição pode ter mudado durante o upload, então procuramos o nó de novo.
+          let pos: number | null = null;
+          editor.state.doc.descendants((node, nodePos) => {
+            if (pos === null && node.type.name === 'image' && node.attrs.src === dataUrl) pos = nodePos;
+          });
+          if (pos !== null) {
+            editor.chain().setNodeSelection(pos).updateAttributes('image', { src: url }).run();
+          }
+        } catch (e) {
+          console.error('Falha ao subir imagem da descrição:', e);
+        } finally {
+          setUploadingImages(n => Math.max(0, n - 1));
+        }
+      }
+    } finally {
+      sweepingRef.current = false;
+    }
+  };
+
+  // Sobe os arquivos e insere já como link — assim o base64 nunca chega ao banco.
+  const insertImageFiles = async (files: File[]) => {
+    setUploadingImages(n => n + files.length);
+    for (const file of files) {
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        const url = await uploadDescriptionImage(taskId, dataUrl);
+        localRef.current?.chain().focus().setImage({ src: url }).run();
+      } catch (e) {
+        console.error('Falha ao subir imagem da descrição:', e);
+      } finally {
+        setUploadingImages(n => Math.max(0, n - 1));
+      }
+    }
+  };
 
   const editor = useEditor({
     editable: !readOnly,
@@ -536,6 +599,7 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
     content: content || '',
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
+      void sweepDataUrlImages();
     },
     onFocus: () => {
       onFocus();
@@ -565,6 +629,22 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
         } catch (e) {
           return html;
         }
+      },
+      handlePaste(_view, event) {
+        if (readOnly) return false;
+        const files = imageFilesFrom(event.clipboardData);
+        if (files.length === 0) return false;
+        event.preventDefault();
+        void insertImageFiles(files);
+        return true;
+      },
+      handleDrop(_view, event) {
+        if (readOnly) return false;
+        const files = imageFilesFrom((event as DragEvent).dataTransfer);
+        if (files.length === 0) return false;
+        event.preventDefault();
+        void insertImageFiles(files);
+        return true;
       },
       handleKeyDown(_view, event) {
         const ed = localRef.current;
@@ -645,7 +725,16 @@ function SingleEditor({ taskId, content, onChange, onFocus, editorRefCallback, p
     editor.commands.setContent(content || '', { emitUpdate: false });
   }, [syncToken, content, readOnly, editor]);
 
-  return <EditorContent editor={editor} className="h-full min-h-[150px]" />;
+  return (
+    <div className="relative h-full">
+      <EditorContent editor={editor} className="h-full min-h-[150px]" />
+      {uploadingImages > 0 && (
+        <div className="absolute bottom-2 right-2 z-20 rounded-md border border-zinc-700/50 bg-zinc-900/90 px-2 py-1 text-[11px] text-zinc-300 shadow-md">
+          Enviando {uploadingImages === 1 ? 'imagem' : `${uploadingImages} imagens`}…
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function RichTextEditor({ taskId, content, onChange, variant = 'default', wrapperClassName = '', columns = 1, onColumnsChange, readOnly, syncToken = 0 }: RichTextEditorProps) {

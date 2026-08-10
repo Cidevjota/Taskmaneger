@@ -328,19 +328,25 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
       }
 
       const base = opts.descriptionBase;
-      let query = supabase.from('tasks').update({ description }).eq('id', taskId);
       // Descrição vazia pode estar gravada como '' ou NULL — para o usuário é a
       // mesma coisa, então o guard aceita as duas formas.
-      query = (base === null || base === '')
-        ? query.or('description.is.null,description.eq.')
-        : query.eq('description', base);
-
-      const { data, error } = await query.select('id');
+      const baseEmpty = base === null || base === '';
+      // O compare-and-swap roda numa RPC: base e novo texto vão no corpo do POST.
+      // Fazer .eq('description', base) mandava a descrição inteira como filtro na
+      // URL — descrições grandes (imagem base64 embutida) estouravam o limite de
+      // tamanho de URL, casavam 0 linhas e geravam um conflito falso que apagava
+      // o que o usuário digitou.
+      const { data, error } = await supabase.rpc('update_task_description_cas', {
+        p_task_id: taskId,
+        p_new_description: description,
+        p_base_description: baseEmpty ? '' : base,
+        p_base_empty: baseEmpty,
+      });
       if (error) {
         console.error("Error patching task description:", error);
         throw error;
       }
-      if (!data || data.length === 0) throw new TaskConflictError(taskId);
+      if (data !== true) throw new TaskConflictError(taskId);
     } else if (Object.keys(dbUpdates).length > 0) {
       const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', taskId);
       if (error) {

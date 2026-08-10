@@ -28,17 +28,3 @@ select cron.schedule(
   $$
 );
 
--- Expiração das imagens do kanban. Diária e de madrugada: varrer o bucket é caro e
--- a retenção é contada em dias, então uma passada por dia basta.
-select cron.schedule(
-  'purge-expired-images',
-  '30 6 * * *',
-  $$
-    select net.http_post(
-      url := 'https://quyoeoftqackmrjxpreb.supabase.co/functions/v1/process-routines',
-      headers := '{"Content-Type": "application/json", "X-Cron-Trigger": "true"}'::jsonb,
-      body := '{"job": "purge-images"}'::jsonb,
-      timeout_milliseconds := 60000
-    );
-  $$
-);
