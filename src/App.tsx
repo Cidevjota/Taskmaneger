@@ -352,6 +352,33 @@ export default function App() {
       rebuildEditingMap();
     });
 
+    // presence sync: reconcilia o viewerMap contra a lista real de conectados.
+    // Sem isso, um `leave`/`task_close` perdido (ex.: a máquina do outro usuário
+    // foi desligada enquanto esta aba estava desconectada/dormindo) deixava o selo
+    // "fulano está editando" grudado indefinidamente, até dar F5. O `leave` só é
+    // entregue ao vivo; o `sync` chega em toda (re)conexão e é a única fonte
+    // confiável de quem está realmente presente agora.
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState() as Record<string, any[]>;
+      const connectedIds = new Set<string>();
+      for (const presences of Object.values(state)) {
+        for (const p of (presences || []) as any[]) {
+          const uid = p.userId || p.key;
+          if (uid) connectedIds.add(uid);
+        }
+      }
+      let changed = false;
+      for (const [tid, viewers] of Object.entries(viewerMapRef.current)) {
+        const kept = viewers.filter(v => connectedIds.has(v.userId));
+        if (kept.length !== viewers.length) {
+          changed = true;
+          if (kept.length === 0) delete viewerMapRef.current[tid];
+          else viewerMapRef.current[tid] = kept;
+        }
+      }
+      if (changed) rebuildEditingMap();
+    });
+
     ch.subscribe(async (status, err) => {
       if (status !== 'SUBSCRIBED') {
         // Sem log aqui, uma falha nesse canal se manifestava como "o indicador de
