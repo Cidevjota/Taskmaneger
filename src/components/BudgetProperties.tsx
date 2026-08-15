@@ -758,7 +758,7 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
 
   // Aceita um ou mais prints/imagens do computador. Cada arquivo vale no máximo 1MB;
   // tudo vira link no Storage para não inchar a linha da tarefa no banco.
-  const handleImageUpload = async (id: string, files: FileList) => {
+  const handleImageUpload = async (id: string, files: FileList | File[]) => {
     setUploadingImgFor(id);
     setUploadError(null);
     try {
@@ -780,6 +780,20 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
 
   const removeImageAt = (p: Proposal, idx: number) =>
     handleUpdateProposal(p.id, { imagens: proposalImages(p).filter((_, i) => i !== idx) });
+
+  // Print colado (Ctrl+V) em qualquer campo do card de edição vira imagem da proposta,
+  // igual ao upload manual. Só age no card que está de fato em edição — colar em outro
+  // lugar da página (ex. campo de comentário) não deve disparar upload.
+  const handlePasteImages = (id: string, e: React.ClipboardEvent) => {
+    if (editingId !== id) return;
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter((f): f is File => !!f);
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleImageUpload(id, files);
+  };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>, proposalId: string) => {
     const val = e.target.value;
@@ -1102,6 +1116,7 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                 id={`target-proposal-${p.id}`}
                 key={p.id}
                 data-carousel-card
+                onPaste={(e) => handlePasteImages(p.id, e)}
                 className="w-[300px] flex-shrink-0 bg-zinc-900/40 border border-zinc-800/80 rounded-xl flex flex-col relative group snap-start transition-all hover:border-zinc-700/80 overflow-hidden"
               >
                 {/* Header */}
@@ -1323,7 +1338,7 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
                           <ImageIcon size={10} /> Prints / Imagens
-                          <span className="text-zinc-600 normal-case font-normal tracking-normal">(máx. 1MB cada)</span>
+                          <span className="text-zinc-600 normal-case font-normal tracking-normal">(máx. 1MB cada · Ctrl+V para colar)</span>
                         </label>
                         {proposalImages(p).length > 0 && (
                           <div className="grid grid-cols-3 gap-1.5">
@@ -1504,18 +1519,24 @@ export default function BudgetProperties({ task, saveChange, themeColor }: Budge
                 <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-widest">Fluxo de Aprovação</h4>
                 <p className="text-[11px] text-zinc-500 mt-0.5">Envie um conjunto de propostas — o aprovador decide cada uma separadamente.</p>
               </div>
-              {activePendingRound ? (
-                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-3 py-1.5 rounded-md text-[11px] font-semibold">
-                  <Clock size={12} /> Aguardando {allUsers.find(u => u.id === activePendingRound.approverId)?.name || 'aprovador'}
-                </div>
-              ) : sendableProposals.length > 0 ? (
-                <button
-                  onClick={() => openSendForm()}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded-md text-[11px] font-semibold text-zinc-300 hover:text-zinc-100 transition-colors"
-                >
-                  <Send size={12} /> Enviar Propostas para Aprovação
-                </button>
-              ) : null}
+              {/* O selo "Aguardando" é só informativo: mesmo com uma rodada em aberto,
+                  ainda é possível abrir uma nova rodada para as propostas que nunca foram
+                  enviadas (sendableProposals já exclui tudo que está travado em algum fluxo). */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {activePendingRound && (
+                  <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-3 py-1.5 rounded-md text-[11px] font-semibold">
+                    <Clock size={12} /> Aguardando {allUsers.find(u => u.id === activePendingRound.approverId)?.name || 'aprovador'}
+                  </div>
+                )}
+                {sendableProposals.length > 0 && (
+                  <button
+                    onClick={() => openSendForm()}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 rounded-md text-[11px] font-semibold text-zinc-300 hover:text-zinc-100 transition-colors"
+                  >
+                    <Send size={12} /> Enviar Propostas para Aprovação
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
