@@ -257,7 +257,6 @@ export interface Task {
   budgetApprovals?: BudgetApprovalRound[];
   chatMessages?: ChatMessage[];
   dueDate?: string; // ISO date format like '2026-06-20'
-  plannedDate?: string; // Weekly Planner allocation date (YYYY-MM-DD)
   createdAt: string;
   assigneeId?: string;
   parentTaskId?: string;
@@ -302,6 +301,22 @@ export interface Project {
   coverImage?: string | null;
   code?: string | null;
   buildProgress?: number | null; // 0-100, evolução da obra
+}
+
+export type UserDocumentKind = 'link' | 'note' | 'document';
+
+// Item particular do usuário na seção "Meus Documentos" da Home.
+export interface UserDocument {
+  id: string;
+  userId: string;
+  kind: UserDocumentKind;
+  title: string;
+  url?: string;      // link externo ou URL pública do arquivo no Storage
+  content?: string;  // HTML da anotação
+  fileName?: string;
+  fileSize?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ViewType = 'home' | 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge' | 'dashboard';

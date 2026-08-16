@@ -63,7 +63,6 @@ export default function CalendarView({
     ? [currentUser, ...USERS.filter(u => u.id !== currentUser.id)]
     : USERS;
   
-  const [isPlanningMode, setIsPlanningMode] = useState(false);
   const [filterAssigneeId, setFilterAssigneeId] = useState<string | 'all'>(currentUser?.id || 'all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
   const [sortPriority, setSortPriority] = useState<'none' | 'asc' | 'desc'>('none');
@@ -75,34 +74,7 @@ export default function CalendarView({
     if (currentProjectFilter && t.projectId !== currentProjectFilter) return false;
     if (filterAssigneeId !== 'all' && t.assigneeId !== filterAssigneeId) return false;
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
-    return !!t.dueDate || !!t.plannedDate;
-  });
-
-  const unplannedTasks = tasks.filter(t => {
-    if (currentProjectFilter && t.projectId !== currentProjectFilter) return false;
-    if (filterAssigneeId !== 'all' && t.assigneeId !== filterAssigneeId) return false;
-    if (filterPriority !== 'all' && t.priority !== filterPriority) return false;
-    
-    // Check if task is unplanned and its dueDate matches the currently viewed calendar month
-    // OR if it's within the first 15 days of the next month.
-    if (t.status === 'done') return false;
-    if (t.plannedDate) return false;
-    if (!t.dueDate) return false;
-
-    const [tYear, tMonth, tDay] = t.dueDate.split('-').map(Number);
-    const isCurrentMonth = (tYear === year && tMonth === month + 1);
-    
-    let nextMonth = month + 2;
-    let nextYear = year;
-    if (nextMonth > 12) {
-      nextMonth = 1;
-      nextYear++;
-    }
-    const isNextMonthFirstHalf = (tYear === nextYear && tMonth === nextMonth && tDay <= 15);
-    
-    if (!isCurrentMonth && !isNextMonthFirstHalf) return false;
-
-    return true;
+    return !!t.dueDate;
   });
 
   // Sort tasks by priority / due date
@@ -210,7 +182,6 @@ export default function CalendarView({
   // DRAG AND DROP (GHOST) LOGIC
   // ─────────────────────────────────────────────────
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
-  const [hoveredUnplannedTaskId, setHoveredUnplannedTaskId] = useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -317,14 +288,8 @@ export default function CalendarView({
     const matchedTask = tasks.find(t => t.id === taskId);
     if (!matchedTask) return;
 
-    if (isPlanningMode) {
-      if (matchedTask.plannedDate !== targetDateStr) {
-        onUpdateTask({ ...matchedTask, plannedDate: targetDateStr });
-      }
-    } else {
-      if (matchedTask.dueDate !== targetDateStr) {
-        onUpdateTask({ ...matchedTask, dueDate: targetDateStr });
-      }
+    if (matchedTask.dueDate !== targetDateStr) {
+      onUpdateTask({ ...matchedTask, dueDate: targetDateStr });
     }
 
     // Snap animation
@@ -344,7 +309,7 @@ export default function CalendarView({
         }, 220);
       });
     }, 40);
-  }, [tasks, onUpdateTask, removeGhost, isPlanningMode]);
+  }, [tasks, onUpdateTask, removeGhost]);
 
   // ─────────────────────────────────────────────────
 
@@ -477,12 +442,6 @@ export default function CalendarView({
           <h2 className="text-xs font-semibold text-zinc-350 uppercase tracking-widest font-mono">
             {MONTH_NAMES[month]} {year}
           </h2>
-          <button
-            onClick={() => setIsPlanningMode(!isPlanningMode)}
-            className={`ml-4 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${isPlanningMode ? 'bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-zinc-900/40 text-zinc-500 border-zinc-800/50 hover:text-zinc-300'}`}
-          >
-            Modo Planejamento
-          </button>
         </div>
 
         <div className="flex items-center gap-1">
@@ -493,54 +452,6 @@ export default function CalendarView({
       </div>
 
       <div className="flex-1 flex gap-4 min-h-[460px] overflow-hidden">
-        {isPlanningMode && (
-          <div className="w-[260px] flex flex-col border border-zinc-900 rounded-lg bg-[#121214]/30 overflow-hidden shrink-0">
-             <div className="h-10 border-b border-zinc-900 flex items-center px-4 bg-zinc-950 shrink-0">
-               <span className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">Aguardando Planejamento</span>
-               <span className="ml-auto text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-full">{unplannedTasks.length}</span>
-             </div>
-             <div className="flex-1 overflow-y-auto p-3 space-y-2.5 scrollbar-thin">
-                {unplannedTasks.length === 0 ? (
-                  <div className="text-center p-4 text-xs text-zinc-600">Nenhuma tarefa pendente.</div>
-                ) : (
-                  unplannedTasks.map(task => {
-                    const primaryLabelId = task.labels.length > 0 ? task.labels[0]?.id : null;
-                    const primaryLabelData = primaryLabelId ? labels.find(l => l.id === primaryLabelId) : null;
-                    
-                    return (
-                      <div
-                        key={`unplanned-${task.id}`}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
-                        onDragEnd={handleDragEnd}
-                        onMouseEnter={() => setHoveredUnplannedTaskId(task.id)}
-                        onMouseLeave={() => setHoveredUnplannedTaskId(null)}
-                        onClick={() => onSelectTask(task)}
-                        className="group flex items-center justify-between bg-[#121214] hover:bg-[#161619] rounded-lg transition-all duration-150 cursor-grab active:cursor-grabbing shadow-sm px-3 py-2.5 border border-transparent hover:border-zinc-800"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {(() => {
-                            if (task.priority === 'urgent') return <ChevronsUp size={12} className="text-red-500 shrink-0" />;
-                            if (task.priority === 'high') return <ChevronUp size={12} className="text-orange-500 shrink-0" />;
-                            if (task.priority === 'medium') return <Minus size={12} className="text-blue-500 shrink-0" />;
-                            if (task.priority === 'low') return <ChevronDown size={12} className="text-emerald-500 shrink-0" />;
-                            return null;
-                          })()}
-                          <h4 className="text-[11.5px] font-semibold text-zinc-200 truncate">{task.title}</h4>
-                        </div>
-                        {task.dueDate && (
-                          <span className="text-[10px] text-[#3b82f6]/80 font-mono font-medium shrink-0 ml-3">
-                            {task.dueDate.split('-')[2]}/{task.dueDate.split('-')[1]}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-             </div>
-          </div>
-        )}
-
         <div className="flex-1 border border-zinc-900 rounded-lg overflow-hidden bg-[#121214]/30 flex flex-col min-w-0">
           {/* Days of the week header - sticky */}
           <div className="grid grid-cols-7 h-10 border-b border-zinc-900 text-center items-center font-mono text-[9px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-950 select-none shrink-0 z-10">
@@ -558,30 +469,7 @@ export default function CalendarView({
             const isToday = isCurrentMonth && dayNum === currentDayNum && !cell.isOtherMonth;
             const isTarget = dragOverDate === dateStr;
             
-            const getHighlightedDate = () => {
-              if (draggingCardId) {
-                const draggingTask = tasks.find(t => t.id === draggingCardId);
-                if (draggingTask && !draggingTask.plannedDate) return draggingTask.dueDate;
-              }
-              if (hoveredUnplannedTaskId) {
-                const hoveredTask = tasks.find(t => t.id === hoveredUnplannedTaskId);
-                if (hoveredTask && !hoveredTask.plannedDate) return hoveredTask.dueDate;
-              }
-              return null;
-            };
-            const highlightedDueDate = getHighlightedDate();
-            const isHighlightedDue = isPlanningMode && highlightedDueDate === dateStr;
-
-            const dayTasks = filteredTasks.flatMap(t => {
-              const occurrences = [];
-              if (!isPlanningMode && t.dueDate === dateStr) {
-                occurrences.push(t);
-              }
-              if (isPlanningMode && t.plannedDate === dateStr) {
-                occurrences.push(t);
-              }
-              return occurrences;
-            });
+            const dayTasks = filteredTasks.filter(t => t.dueDate === dateStr);
 
             return (
               <div 
@@ -591,7 +479,7 @@ export default function CalendarView({
                 onDrop={(e) => handleDrop(e, dateStr)}
                 className={`p-1.5 min-h-[150px] hover:bg-zinc-900/40 flex flex-col transition-colors group relative ${
                   isTarget ? 'bg-blue-500/10' : isToday ? 'bg-zinc-900/10' : ''
-                } ${isHighlightedDue ? 'ring-2 ring-blue-500/50 bg-blue-500/5' : ''}`}
+                }`}
               >
                 {/* Cell title header */}
                 <div className="flex items-center justify-between mb-1 shrink-0">
@@ -662,29 +550,6 @@ export default function CalendarView({
                     };
                     const progress = getProgress(task.status);
 
-                    let alertType = null;
-                    let alertBgClass = '';
-                    let AlertIcon: any = null;
-                    
-                    if (isPlanningMode) {
-                      const todayISO = new Date().toISOString().split('T')[0];
-                      const dueStr = task.dueDate ? task.dueDate.split('T')[0] : null;
-                      
-                      if (task.status === 'done' || task.status === 'implementation') {
-                        alertType = 'completo';
-                        alertBgClass = 'bg-[#1a7a4c]'; // Dark green
-                        AlertIcon = CheckCircle2;
-                      } else if (dueStr && dueStr < todayISO) {
-                        alertType = 'alerta';
-                        alertBgClass = 'bg-[#7b1919]'; // Dark red
-                        AlertIcon = AlertTriangle;
-                      } else if (todayISO > dateStr) {
-                        alertType = 'atencao';
-                        alertBgClass = 'bg-[#9a7b1b]'; // Dark gold/amber
-                        AlertIcon = AlertCircle;
-                      }
-                    }
-
                     return (
                       <div
                         key={task.id}
@@ -693,30 +558,25 @@ export default function CalendarView({
                         onDragStart={(e) => handleDragStart(e, task.id, e.currentTarget as HTMLElement)}
                         onDragEnd={handleDragEnd}
                         onClick={() => onSelectTask(task)}
-                        className={`group flex items-stretch ${alertBgClass || 'bg-[#121214]'} hover:${alertBgClass || 'bg-[#161619]'} rounded-md transition-all duration-300 cursor-grab active:cursor-grabbing shadow-sm overflow-hidden border ${alertBgClass ? 'border-transparent' : 'border-zinc-900/60 hover:border-zinc-800'} ${isDragging ? 'opacity-30' : ''} ${task.status === 'done' && !isDragging ? 'opacity-60 grayscale' : ''}`}
+                        className={`group flex items-stretch bg-[#121214] hover:bg-[#161619] rounded-md transition-all duration-300 cursor-grab active:cursor-grabbing shadow-sm overflow-hidden border border-zinc-900/60 hover:border-zinc-800 ${isDragging ? 'opacity-30' : ''} ${task.status === 'done' && !isDragging ? 'opacity-60 grayscale' : ''}`}
                       >
-                          {alertType && AlertIcon && (
-                            <div className={`${isPlanningMode ? 'w-5' : 'w-8'} shrink-0 flex items-center justify-center transition-all duration-500 animate-slide-in-right`}>
-                              <AlertIcon size={isPlanningMode ? 11 : 14} className="text-white" />
-                            </div>
-                          )}
-                          <div className={`flex flex-col ${isPlanningMode ? 'gap-1 px-1.5 py-1' : 'gap-1.5 px-2 py-1.5'} w-full bg-[#121214] group-hover:bg-[#161619] transition-colors ${alertType ? 'rounded-l-md border-l border-zinc-900/80' : ''}`}>
+                          <div className="flex flex-col gap-1.5 px-2 py-1.5 w-full bg-[#121214] group-hover:bg-[#161619] transition-colors">
                             <div className="flex items-center gap-2 w-full">
                             {/* Theme Icon */}
                             {ThemeIcon && (
                               <div className={`shrink-0 ${themeTextColor}`}>
-                                <ThemeIcon size={isPlanningMode ? 10 : 12} />
+                                <ThemeIcon size={12} />
                               </div>
                             )}
 
                             {/* Title */}
-                            <span className={`flex-1 ${isPlanningMode ? 'text-[9.5px]' : 'text-[11px]'} font-medium truncate min-w-0 ${task.status === 'done' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`} title={task.title}>
+                            <span className={`flex-1 text-[11px] font-medium truncate min-w-0 ${task.status === 'done' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`} title={task.title}>
                               {task.title}
                             </span>
 
                             {/* Priority */}
                             {(() => {
-                              const pSize = isPlanningMode ? 10 : 13;
+                              const pSize = 13;
                               const map: Record<string, { icon: React.ReactNode; cls: string }> = {
                                 urgent: { icon: <ChevronsUp size={pSize} />, cls: 'text-red-400' },
                                 high:   { icon: <ChevronUp size={pSize} />, cls: 'text-orange-400' },
@@ -744,26 +604,24 @@ export default function CalendarView({
                                   }}
                                   trigger={
                                     <button type="button" className={`flex items-center justify-center transition-colors ${task.reminderDate ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`} title={task.reminderDate ? 'Desativar lembrete' : 'Ativar lembrete'}>
-                                      <Bell size={isPlanningMode ? 10 : 12} className={task.reminderDate ? 'fill-amber-400' : ''} />
+                                      <Bell size={12} className={task.reminderDate ? 'fill-amber-400' : ''} />
                                     </button>
                                   }
                                 />
                               </div>
                           </div>
                           {/* Status Progress Bar */}
-                          {!isPlanningMode && (
-                            <div className="w-full pt-1.5 pb-0.5 relative px-1">
-                              <div className="w-full h-[2px] bg-zinc-900 rounded-full" />
-                              <div 
-                                className="absolute top-[6px] left-1 h-[2px] bg-zinc-600 rounded-full transition-all duration-300" 
-                                style={{ width: `calc(${progress}% - 8px)` }}
-                              />
-                              <div 
-                                className="absolute top-[6px] -mt-[3px] w-[8px] h-[8px] bg-zinc-600 rounded-full flex items-center justify-center transition-all duration-300"
-                                style={{ left: `calc(${progress}% - 4px)` }}
-                              />
-                            </div>
-                          )}
+                          <div className="w-full pt-1.5 pb-0.5 relative px-1">
+                            <div className="w-full h-[2px] bg-zinc-900 rounded-full" />
+                            <div
+                              className="absolute top-[6px] left-1 h-[2px] bg-zinc-600 rounded-full transition-all duration-300"
+                              style={{ width: `calc(${progress}% - 8px)` }}
+                            />
+                            <div
+                              className="absolute top-[6px] -mt-[3px] w-[8px] h-[8px] bg-zinc-600 rounded-full flex items-center justify-center transition-all duration-300"
+                              style={{ left: `calc(${progress}% - 4px)` }}
+                            />
+                          </div>
                           </div>
                       </div>
                     );

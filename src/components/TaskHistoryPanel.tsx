@@ -18,7 +18,6 @@ const FIELD_LABELS: Record<string, string> = {
   project_id: 'Projeto',
   due_date: 'Prazo',
   assignee_id: 'Responsável',
-  planned_date: 'Data planejada',
   reminder_date: 'Lembrete',
   parent_task_id: 'Tarefa pai',
   description: 'Descrição',

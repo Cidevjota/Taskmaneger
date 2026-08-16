@@ -641,7 +641,6 @@ export default function App() {
             ...(sm.isFieldDirty(id, 'title')               ? {} : { title:               raw.title }),
             ...(sm.isFieldDirty(id, 'assigneeId')          ? {} : { assigneeId:          raw.assignee_id }),
             ...(sm.isFieldDirty(id, 'dueDate')             ? {} : { dueDate:             raw.due_date }),
-            ...(sm.isFieldDirty(id, 'plannedDate')         ? {} : { plannedDate:         raw.planned_date }),
             ...(sm.isFieldDirty(id, 'reminderDate')        ? {} : { reminderDate:        raw.reminder_date }),
             ...(sm.isFieldDirty(id, 'reminderType')        ? {} : { reminderType:        raw.reminder_type }),
             ...(sm.isFieldDirty(id, 'projectId')           ? {} : { projectId:           raw.project_id }),
@@ -1422,11 +1421,7 @@ export default function App() {
               tasks={tasks}
               projects={projects}
               labels={labels}
-              currentProjectFilter={currentProjectFilter}
-              socialMediaFilter={socialMediaFilter}
-              setSocialMediaFilter={setSocialMediaFilter}
               onUpdateTask={handleUpdateTask}
-              onAddTask={handleAddTask}
               onSelectTask={handleSelectTask}
             />
           )}

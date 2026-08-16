@@ -690,7 +690,6 @@ export default function TaskSheet({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [taskLabels, setTaskLabels] = useState<Label[]>(task?.labels || []);
   const [dueDate, setDueDate] = useState<string | undefined>(task?.dueDate);
-  const [plannedDate, setPlannedDate] = useState<string | undefined>(task?.plannedDate);
   const [reminderDate, setReminderDate] = useState<string | undefined>(task?.reminderDate);
   const [assigneeId, setAssigneeId] = useState<string | undefined>(task?.assigneeId);
   const [subtasks, setSubtasks] = useState<Subtask[]>(task?.subtasks || []);
@@ -868,7 +867,6 @@ export default function TaskSheet({
     setProjectId(task?.projectId || '');
     setTaskLabels(task?.labels || []);
     setDueDate(task?.dueDate || '');
-    setPlannedDate(task?.plannedDate || '');
     setReminderDate(task?.reminderDate || '');
     setAssigneeId(task?.assigneeId);
     setSubtasks(task?.subtasks || []);
@@ -1703,19 +1701,6 @@ export default function TaskSheet({
                     )}
                   </div>
                 )}
-              </div>
-
-              <div id="section-planned" className="flex flex-col gap-1.5 min-w-[120px]">
-                <span className="text-zinc-500 font-medium font-sans flex items-center gap-1.5"><CalendarIcon size={13} className="opacity-60" /> Planejado</span>
-                <DatePicker
-                  value={plannedDate}
-                  disabled={!!effectiveLock}
-                  onChange={(newDate) => {
-                    if (effectiveLock) return;
-                    setPlannedDate(newDate);
-                    saveChange({ plannedDate: newDate });
-                  }}
-                />
               </div>
 
               <div className="flex flex-col gap-1.5 relative min-w-[140px]">

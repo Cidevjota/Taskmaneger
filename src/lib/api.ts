@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao, UserDocument } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -62,7 +62,7 @@ export async function fetchTaskHistory(taskId: string): Promise<TaskHistoryEntry
 const TASKS_LIST_COLS = [
   'id', 'task_code', 'title', 'description', 'status', 'priority',
   'project_id', 'created_at', 'due_date', 'reminder_date', 'reminder_type',
-  'planned_date', 'assignee_id', 'parent_task_id', 'hierarchy_order', 'is_private', 'updated_by',
+  'assignee_id', 'parent_task_id', 'hierarchy_order', 'is_private', 'updated_by',
   'chat_messages', 'attachments', 'proposals', 'budget_approvals', 'social_media_approval', 'time_tracking',
   'updated_at', 'status_history', 'rework_count', 'pending_deadline_change'
 ].join(', ');
@@ -96,7 +96,6 @@ export async function fetchTasks(): Promise<Task[]> {
       dueDate: t.due_date,
       reminderDate: t.reminder_date,
       reminderType: t.reminder_type,
-      plannedDate: t.planned_date,
       assigneeId: t.assignee_id,
       parentTaskId: t.parent_task_id,
       hierarchyOrder: t.hierarchy_order ?? undefined,
@@ -184,7 +183,6 @@ export async function saveTask(task: Task) {
     due_date: task.dueDate || null,
     reminder_date: task.reminderDate || null,
     reminder_type: task.reminderType || null,
-    planned_date: task.plannedDate || null,
     assignee_id: task.assigneeId || null,
     parent_task_id: task.parentTaskId || null,
     hierarchy_order: task.hierarchyOrder ?? null,
@@ -295,7 +293,6 @@ export async function patchTask(taskId: string, updates: Partial<Task>, opts: Pa
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate || null;
     if ('reminderDate' in updates) dbUpdates.reminder_date = updates.reminderDate ?? null;
     if ('reminderType' in updates) dbUpdates.reminder_type = updates.reminderType ?? null;
-    if (updates.plannedDate !== undefined) dbUpdates.planned_date = updates.plannedDate || null;
     if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId;
     if ('parentTaskId' in updates) dbUpdates.parent_task_id = updates.parentTaskId ?? null;
     if ('hierarchyOrder' in updates) dbUpdates.hierarchy_order = updates.hierarchyOrder ?? null;
@@ -476,6 +473,55 @@ export async function deleteArchivedNotifications(userId: string) {
     .delete()
     .eq('user_id', userId)
     .eq('status', 'viewed');
+  if (error) throw error;
+}
+
+// ─── Meus Documentos (privado por usuário) ───────────────────────────
+
+export async function fetchUserDocuments(userId: string): Promise<UserDocument[]> {
+  const { data, error } = await supabase
+    .from('user_documents')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((d: any): UserDocument => ({
+    id: d.id,
+    userId: d.user_id,
+    kind: d.kind,
+    title: d.title,
+    url: d.url || undefined,
+    content: d.content || undefined,
+    fileName: d.file_name || undefined,
+    fileSize: d.file_size ?? undefined,
+    createdAt: d.created_at,
+    updatedAt: d.updated_at
+  }));
+}
+
+export async function saveUserDocument(doc: UserDocument) {
+  const { error } = await supabase.from('user_documents').upsert({
+    id: doc.id,
+    user_id: doc.userId,
+    kind: doc.kind,
+    title: doc.title,
+    url: doc.url || null,
+    content: doc.content || null,
+    file_name: doc.fileName || null,
+    file_size: doc.fileSize ?? null,
+    created_at: doc.createdAt,
+    updated_at: new Date().toISOString()
+  });
+  if (error) {
+    console.error('Error saving user document', error);
+    throw error;
+  }
+}
+
+export async function deleteUserDocument(id: string) {
+  const { error } = await supabase.from('user_documents').delete().eq('id', id);
   if (error) throw error;
 }
 

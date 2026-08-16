@@ -1,7 +1,6 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Bell, Flag, Calendar, Search, Plus, ChevronLeft, ChevronRight, 
+import {
+  Bell, Flag, Calendar, Search, Plus, ChevronLeft, ChevronRight,
   CheckCircle2, AlertTriangle, AlertCircle, Edit, Clock, Target, ArrowUpRight, Bookmark,
   PenTool, Type, CheckSquare, DollarSign, Share2, TagIcon, Star,
   ChevronsUp, ChevronUp, Minus, ChevronDown
@@ -9,8 +8,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { Task, Project, Label } from '../types';
-import WeeklyPlanner from './WeeklyPlanner';
-import KanbanView from './KanbanView';
+import MyDocuments from './MyDocuments';
 import DatePicker from './DatePicker';
 
 interface HomeViewProps {
@@ -19,27 +17,19 @@ interface HomeViewProps {
   labels?: Label[];
   onUpdateTask?: (updates: Partial<Task> & { id: string }) => void;
   onSelectTask?: (task: Task) => void;
-  onAddTask?: (task: Task) => void;
-  currentProjectFilter?: string | null;
-  socialMediaFilter?: boolean;
-  setSocialMediaFilter?: (val: boolean) => void;
 }
 
-export default function HomeView({ 
-  tasks = [], 
+export default function HomeView({
+  tasks = [],
   projects = [],
   labels = [],
-  onUpdateTask = () => {}, 
-  onSelectTask = () => {},
-  onAddTask = () => {},
-  currentProjectFilter = null,
-  socialMediaFilter = false,
-  setSocialMediaFilter = () => {}
+  onUpdateTask = () => {},
+  onSelectTask = () => {}
 }: HomeViewProps) {
   const { currentUser } = useAuth();
   const { notifications, markAsViewed, postpone, markAsImportant } = useNotifications();
   const userName = currentUser?.name?.split(' ')[0] || 'Ana';
-  const [activeTab, setActiveTab] = React.useState<'planejador' | 'alertas'>('alertas');
+  const [docsExpanded, setDocsExpanded] = React.useState(false);
 
   // ---------------------------------------------------------
   // Helpers de Data e Agregações Reais
@@ -109,16 +99,7 @@ export default function HomeView({
     ['in_progress', 'approval', 'rework', 'paused'].includes(t.status)
   );
 
-  // 4. Planejado vs. concluído
-  // Planejadas: Tarefas agendadas para esta semana
-  // Concluídas: Tarefas dentre essas planejadas que FORAM concluídas nesta semana
-  const planejadasNaSemana = myTasks.filter(t => isDateInCurrentWeek(t.plannedDate));
-  const planejadasEConcluidas = planejadasNaSemana.filter(t => reachedConcludedThisWeek(t));
-  const planejadoVsConcluidoRatio = planejadasNaSemana.length > 0 
-    ? Math.round((planejadasEConcluidas.length / planejadasNaSemana.length) * 100) 
-    : 0;
-
-  // 5. Foco da semana (Urgente mais recente ou em andamento mais recente)
+  // 4. Foco da semana (Urgente mais recente ou em andamento mais recente)
   const focoSemana = emAndamento.sort((a, b) => {
     if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
     if (b.priority === 'urgent' && a.priority !== 'urgent') return 1;
@@ -159,21 +140,6 @@ export default function HomeView({
               <h1 className="text-xs font-bold tracking-[0.2em] text-zinc-400 uppercase">HOME</h1>
             </div>
             
-            <div className="flex bg-[#121214] border border-zinc-900 p-1 rounded-full shadow-inner">
-              <button 
-                onClick={() => setActiveTab('planejador')}
-                className={`px-5 py-1.5 text-[10px] font-bold tracking-[0.15em] uppercase rounded-full transition-colors ${activeTab === 'planejador' ? 'bg-[#27272a] text-zinc-100 shadow-sm' : 'text-zinc-600 hover:text-zinc-400'}`}
-              >
-                Planejador
-              </button>
-              <button 
-                onClick={() => setActiveTab('alertas')}
-                className={`px-5 py-1.5 text-[10px] font-bold tracking-[0.15em] uppercase rounded-full transition-colors ${activeTab === 'alertas' ? 'bg-[#27272a] text-zinc-100 shadow-sm' : 'text-zinc-600 hover:text-zinc-400'}`}
-              >
-                Alertas
-              </button>
-            </div>
-
             {/* USER PROFILE */}
             <div className="hidden lg:flex items-center gap-3 ml-2 border-l border-zinc-800/80 pl-6">
               {currentUser?.avatarUrl ? (
@@ -198,7 +164,7 @@ export default function HomeView({
         </div>
 
         {/* TOP STATS / KPIS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm group">
             <div className="w-10 h-10 rounded-full border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/10 transition-colors">
               <CheckCircle2 size={16} className="text-emerald-500" />
@@ -236,22 +202,6 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
-              <Target size={16} className="text-purple-400" />
-            </div>
-            <div className="flex flex-col flex-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-zinc-400 font-medium">Planejado vs. concluído</span>
-                <span className="text-[10px] font-medium text-zinc-500">{planejadasEConcluidas.length} de {planejadasNaSemana.length}</span>
-              </div>
-              <span className="text-xl font-bold text-zinc-100 leading-none mt-0.5">{planejadoVsConcluidoRatio}%</span>
-              <div className="h-1 w-full bg-[#08080a] border border-zinc-900 rounded-full mt-2 overflow-hidden">
-                <div className="h-full bg-purple-500 rounded-full" style={{ width: `${planejadoVsConcluidoRatio}%` }} />
-              </div>
-            </div>
-          </div>
-
           <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm group">
             <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/20 transition-colors">
               <Target size={16} className="text-indigo-400" />
@@ -264,52 +214,9 @@ export default function HomeView({
           </div>
         </div>
 
-        <AnimatePresence mode="wait">
-          {activeTab === 'planejador' ? (
-            <motion.div
-              key="planejador"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="flex-1 min-h-0 flex flex-col gap-6 -mx-6 lg:-mx-10 px-6 lg:px-10 overflow-hidden"
-            >
-            {/* Top Kanban */}
-            <div className="h-[360px] flex-shrink-0 border-b border-zinc-900/60 pb-6 pt-0 flex flex-col">
-              <div className="h-full flex flex-col min-h-0 overflow-hidden relative">
-                <KanbanView 
-                  tasks={myTasks}
-                  projects={projects}
-                  labels={labels}
-                  onSelectTask={() => {}} // Disabled task opening in mirrored kanban
-                  onUpdateTask={onUpdateTask}
-                  onAddTask={onAddTask}
-                  currentProjectFilter={currentProjectFilter}
-                  socialMediaFilter={socialMediaFilter}
-                  setSocialMediaFilter={setSocialMediaFilter}
-                  hideFilters={true}
-                  maxCardsPerColumn={5}
-                  defaultCompact={true}
-                  hideNewTaskButton={true}
-                />
-              </div>
-            </div>
-
-            {/* Bottom Weekly Planner */}
-            <div className="flex-1 min-h-0">
-              <WeeklyPlanner tasks={myTasks} onUpdateTask={onUpdateTask} onSelectTask={onSelectTask} />
-            </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="alertas"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="flex-1 min-h-0 flex flex-col"
-            >
+        <div className="flex-1 min-h-0 flex flex-col">
             {/* THREE COLUMNS */}
+            {!docsExpanded && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-4">
           
           {/* Notificações */}
@@ -528,14 +435,13 @@ export default function HomeView({
           </div>
 
           </div>
+          )}
 
-          {/* AGENDAMENTO SEMANAL NO MODO ALERTAS */}
-          <div className="mt-4">
-            <WeeklyPlanner tasks={myTasks} onUpdateTask={onUpdateTask} onSelectTask={onSelectTask} />
+          {/* MEUS DOCUMENTOS */}
+          <div className={`mt-4 min-h-0 ${docsExpanded ? 'flex-1 flex flex-col' : ''}`}>
+            <MyDocuments expanded={docsExpanded} onToggleExpand={() => setDocsExpanded(v => !v)} />
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </div>
   </div>
     </div>
   );
