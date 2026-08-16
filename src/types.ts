@@ -419,6 +419,27 @@ export interface SiengeTitle {
   motivoRecusaResolvidoEm?: string; // ISO timestamp of when the rejection was marked resolved
   motivoRecusaObservacao?: string; // Optional note recorded when marking the rejection as resolved
   paidAt?: string; // ISO timestamp gravado pelo trigger set_paid_at no instante em que status entra em 'pago'
+  mensalidadeId?: string; // Preenchido quando o título foi gerado automaticamente por uma mensalidade
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Molde de título recorrente. Não aparece no kanban: todo dia 01 o job
+// `gerar_titulos_mensalidades` copia cada mensalidade ativa para um SiengeTitle real.
+export interface SiengeMensalidade {
+  id: string;
+  titulo?: string;
+  descricao?: string;
+  valor: number;
+  empreendimento?: string;
+  centroCusto?: SiengeCentroCusto;
+  categoria?: string;
+  subcategoria?: string;
+  diaVencimento: number; // 1..31 — reduzido ao último dia nos meses mais curtos
+  loteId?: string;       // opcional, diferente do título
+  assigneeId?: string;
+  motivoDetalhado?: string;
+  ativa: boolean;        // false = recorrência cancelada, sem apagar o histórico
   createdAt: string;
   updatedAt: string;
 }

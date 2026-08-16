@@ -1010,7 +1010,10 @@ export default function SiengeTitleModal({
 
           {/* Categoria + Subcategoria selectors (dependem do Centro de Custo / Categoria) */}
           <div className="flex gap-3">
-            <div className="flex flex-col gap-1.5 flex-1 relative">
+            {/* min-w-0: sem isso o item flex não encolhe abaixo do min-content do texto,
+                e o `truncate` do span não surte efeito — nomes longos de subcategoria
+                empurravam a coluna para fora da largura do modal. */}
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0 relative">
               <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
                 <Tag size={11} /> Categoria <span className="text-red-400">*</span>
               </label>
@@ -1023,7 +1026,7 @@ export default function SiengeTitleModal({
                     errors.categoria ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
                   }`}
                 >
-                  <span className={categoria ? 'text-zinc-100 font-medium truncate' : 'text-zinc-500 truncate'}>
+                  <span className={`min-w-0 truncate text-left ${categoria ? 'text-zinc-100 font-medium' : 'text-zinc-500'}`}>
                     {categoria || (centroCusto ? 'Selecione a categoria' : 'Selecione o centro de custo primeiro')}
                   </span>
                   <ChevronDown size={14} className={`text-zinc-500 shrink-0 transition-transform ${isCategoriaDropdownOpen ? 'rotate-180' : ''}`} />
@@ -1056,7 +1059,7 @@ export default function SiengeTitleModal({
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 flex-1 relative">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0 relative">
               <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
                 <Tag size={11} /> Subcategoria <span className="text-red-400">*</span>
               </label>
@@ -1069,7 +1072,7 @@ export default function SiengeTitleModal({
                     errors.subcategoria ? 'border-red-500/60 focus:ring-1 focus:ring-red-500/30' : 'border-zinc-800 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/50'
                   }`}
                 >
-                  <span className={subcategoria ? 'text-zinc-100 font-medium truncate' : 'text-zinc-500 truncate'}>
+                  <span className={`min-w-0 truncate text-left ${subcategoria ? 'text-zinc-100 font-medium' : 'text-zinc-500'}`}>
                     {subcategoria || (categoria ? 'Selecione a subcategoria' : 'Selecione a categoria primeiro')}
                   </span>
                   <ChevronDown size={14} className={`text-zinc-500 shrink-0 transition-transform ${isSubcategoriaDropdownOpen ? 'rotate-180' : ''}`} />

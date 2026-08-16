@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Project, Label, AppNotification, SiengeTitle, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao } from '../types';
+import { Task, Project, Label, AppNotification, SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, SiengeAlcadaConfig, DesignBriefing, CopyBriefing, PlanningBriefing, TaskHistoryEntry, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeCentroCustoDef, SiengeCategoriaDef, SiengeSubcategoriaDef, WhatsAppConfig, WhatsAppOutboxItem, LpCorretorConfig, LpCorretorPublicData, SiengeVendaSituacao } from '../types';
 
 export async function fetchProjects(): Promise<Project[]> {
   const { data, error } = await supabase.from('projects').select('*');
@@ -481,7 +481,7 @@ export async function deleteArchivedNotifications(userId: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, centro_custo, categoria, subcategoria, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, paid_at, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, centro_custo, categoria, subcategoria, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, paid_at, mensalidade_id, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -519,6 +519,7 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     motivoRecusaObservacao: r.motivo_recusa_observacao,
     chatMessages: r.chat_messages,
     paidAt: r.paid_at,
+    mensalidadeId: r.mensalidade_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -637,6 +638,67 @@ export async function saveSiengeTitle(title: SiengeTitle) {
 
 export async function deleteSiengeTitle(id: string) {
   const { error } = await supabase.from('sienge_titles').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Mensalidades (títulos recorrentes) ───────────
+
+function mapSiengeMensalidade(r: any): SiengeMensalidade {
+  return {
+    id: r.id,
+    titulo: r.titulo,
+    descricao: r.descricao,
+    valor: Number(r.valor),
+    empreendimento: r.empreendimento,
+    centroCusto: r.centro_custo,
+    categoria: r.categoria,
+    subcategoria: r.subcategoria,
+    diaVencimento: r.dia_vencimento,
+    loteId: r.lote_id,
+    assigneeId: r.assignee_id,
+    motivoDetalhado: r.motivo_detalhado,
+    ativa: r.ativa,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function fetchSiengeMensalidades(): Promise<SiengeMensalidade[]> {
+  const { data, error } = await supabase
+    .from('sienge_mensalidades')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapSiengeMensalidade);
+}
+
+export async function saveSiengeMensalidade(m: SiengeMensalidade): Promise<SiengeMensalidade> {
+  const payload = {
+    id: m.id,
+    titulo: m.titulo || null,
+    descricao: m.descricao || null,
+    valor: m.valor,
+    empreendimento: m.empreendimento || null,
+    centro_custo: m.centroCusto || null,
+    categoria: m.categoria || null,
+    subcategoria: m.subcategoria || null,
+    dia_vencimento: m.diaVencimento,
+    lote_id: m.loteId || null,
+    assignee_id: m.assigneeId || null,
+    motivo_detalhado: m.motivoDetalhado || null,
+    ativa: m.ativa,
+  };
+  const { data, error } = await supabase
+    .from('sienge_mensalidades')
+    .upsert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return mapSiengeMensalidade(data);
+}
+
+export async function deleteSiengeMensalidade(id: string) {
+  const { error } = await supabase.from('sienge_mensalidades').delete().eq('id', id);
   if (error) throw error;
 }
 

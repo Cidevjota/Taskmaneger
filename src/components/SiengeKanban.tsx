@@ -4,10 +4,12 @@ import {
   Plus, Hash, DollarSign, Building2, Calendar, Tag, Receipt,
   ChevronRight, AlertTriangle, CheckCircle2, Clock, XCircle,
   Banknote, ArrowRight, Search, SlidersHorizontal, User,
-  LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy, Settings, Table as TableIcon,
+  LayoutGrid, AlignJustify, Check, ChevronDown, Paperclip, Copy, Settings, Table as TableIcon, Repeat,
 } from 'lucide-react';
-import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig } from '../types';
+import { SiengeTitle, SiengeStatus, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeMensalidade } from '../types';
 import SiengeTitleModal from './SiengeTitleModal';
+import SiengeMensalidadeModal from './SiengeMensalidadeModal';
+import SiengeMensalidadesList from './SiengeMensalidadesList';
 import SiengeTitleTable from './SiengeTitleTable';
 import SiengeConfigPanel from './SiengeConfigPanel';
 import ReminderBell from './ReminderBell';
@@ -52,6 +54,9 @@ interface SiengeKanbanProps {
   onDeleteCategoria: (id: string) => Promise<void> | void;
   onAddSubcategoria: (categoriaId: string, subcategoria: string) => Promise<void> | void;
   onDeleteSubcategoria: (id: string) => Promise<void> | void;
+  mensalidades: SiengeMensalidade[];
+  onSaveMensalidade: (m: SiengeMensalidade) => void;
+  onDeleteMensalidade: (id: string) => void;
 }
 
 const COLUMNS: { id: ColumnId; label: string; shortLabel: string; color: string; dotColor: string; bg: string; border: string; icon: React.ReactNode }[] = [
@@ -458,6 +463,14 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
           {formatCurrencyDisplay(title.valor)}
         </span>
         <div className="flex items-center gap-2">
+          {title.mensalidadeId && (
+            <span
+              title="Gerado automaticamente por uma mensalidade"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 border-blue-500/25"
+            >
+              <Repeat size={9} /> Mensalidade
+            </span>
+          )}
           {(positiveAction || showReject) && (
             <div className="flex items-center gap-0.5">
               {positiveAction && (
@@ -594,7 +607,7 @@ function LoteFilterDropdown({ openLotes, value, onChange }: { openLotes: SiengeL
   );
 }
 
-export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig, editingMap = {}, onTitlePresence, taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria }: SiengeKanbanProps) {
+export default function SiengeKanban({ titles, openLotes, openFaturas, projects, currentProjectFilter, alcadaConfig, onSave, onDelete, onSaveAlcadaConfig, editingMap = {}, onTitlePresence, taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria, mensalidades, onSaveMensalidade, onDeleteMensalidade }: SiengeKanbanProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState<SiengeTitle | null>(null);
   const [modalInitialStatus, setModalInitialStatus] = useState<SiengeStatus>('a_lancar');
@@ -603,7 +616,9 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
   const [dropTarget, setDropTarget] = useState<ColumnId | null>(null);
   const [search, setSearch] = useState('');
   const [isCompact, setIsCompact] = useState(false);
-  const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'mensalidades'>('kanban');
+  const [mensalidadeModalOpen, setMensalidadeModalOpen] = useState(false);
+  const [editingMensalidade, setEditingMensalidade] = useState<SiengeMensalidade | null>(null);
   const [filterLoteId, setFilterLoteId] = useState<string | 'all'>('all');
   const [filterMonth, setFilterMonth] = useState<MonthFilterValue>(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
@@ -694,6 +709,11 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
     setEditingTitle(null);
     setModalInitialStatus(colId === ATRASADOS_COL ? 'aguardando_pagamento' : colId);
     setModalOpen(true);
+  };
+
+  const openNewMensalidade = () => {
+    setEditingMensalidade(null);
+    setMensalidadeModalOpen(true);
   };
 
   // Horizontal Pan Handlers
@@ -874,6 +894,14 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
               <TableIcon size={12} />
               <span className="hidden sm:inline">Tabela</span>
             </button>
+            <button
+              onClick={() => setViewMode('mensalidades')}
+              title="Mensalidades (títulos recorrentes)"
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${viewMode === 'mensalidades' ? 'bg-blue-500/15 text-blue-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              <Repeat size={12} />
+              <span className="hidden sm:inline">Mensalidade</span>
+            </button>
           </div>
           {viewMode === 'kanban' && (
             <button
@@ -893,10 +921,10 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
             <Settings size={14} />
           </button>
           <button
-            onClick={() => openNew('a_lancar')}
+            onClick={() => viewMode === 'mensalidades' ? openNewMensalidade() : openNew('a_lancar')}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
           >
-            <Plus size={13} /> Novo Título
+            <Plus size={13} /> {viewMode === 'mensalidades' ? 'Nova Mensalidade' : 'Novo Título'}
           </button>
         </div>
       </div>
@@ -910,6 +938,17 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
           onSave={handleTableSave}
           onOpenFull={openEdit}
           taxonomy={taxonomy}
+        />
+      )}
+
+      {/* Mensalidades (títulos recorrentes) */}
+      {viewMode === 'mensalidades' && (
+        <SiengeMensalidadesList
+          mensalidades={mensalidades}
+          openLotes={openLotes}
+          onSave={onSaveMensalidade}
+          onDelete={onDeleteMensalidade}
+          onEdit={(m) => { setEditingMensalidade(m); setMensalidadeModalOpen(true); }}
         />
       )}
 
@@ -1015,6 +1054,16 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
         openFaturas={openFaturas}
         projects={projects}
         editingBy={editingTitle ? editingMap[editingTitle.id] : undefined}
+        taxonomy={taxonomy}
+      />
+
+      <SiengeMensalidadeModal
+        isOpen={mensalidadeModalOpen}
+        onClose={() => { setMensalidadeModalOpen(false); setEditingMensalidade(null); }}
+        onSave={(m) => { onSaveMensalidade(m); setMensalidadeModalOpen(false); setEditingMensalidade(null); }}
+        initialData={editingMensalidade}
+        openLotes={openLotes}
+        projects={projects}
         taxonomy={taxonomy}
       />
     </div>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SiengeTitle, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeVendaSituacao } from '../types';
+import { SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, Project, SiengeAlcadaConfig, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeTitleStatusHistoryEntry, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeTabelaVendaConfig, SiengeTabelaVendaColuna, SiengeTabelaVendaRevisao, SiengeVenda, SiengeOrcamentoConfig, SiengeCalculoRegra, SiengeValidacao, SiengeVendaSituacao } from '../types';
 import { SiengeTaxonomy } from '../lib/siengeCategorias';
 import SiengeKanban from './SiengeKanban';
 import SiengeLotes from './SiengeLotes';
@@ -79,6 +79,9 @@ interface SiengeViewProps {
   onDeleteCategoria: (id: string) => Promise<void> | void;
   onAddSubcategoria: (categoriaId: string, subcategoria: string) => Promise<void> | void;
   onDeleteSubcategoria: (id: string) => Promise<void> | void;
+  mensalidades: SiengeMensalidade[];
+  onSaveMensalidade: (m: SiengeMensalidade) => void;
+  onDeleteMensalidade: (id: string) => void;
 }
 
 export default function SiengeView({
@@ -91,6 +94,7 @@ export default function SiengeView({
   tabelaVendaColunas, onSaveTabelaVendaColuna, onDeleteTabelaVendaColuna, calculoRegras, onSaveCalculoRegra, onDeleteCalculoRegra,
   validacoes, onSaveValidacao, onDeleteValidacao,
   taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria,
+  mensalidades, onSaveMensalidade, onDeleteMensalidade,
 }: SiengeViewProps) {
   const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas' | 'vendas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
@@ -204,6 +208,9 @@ export default function SiengeView({
             onDeleteCategoria={onDeleteCategoria}
             onAddSubcategoria={onAddSubcategoria}
             onDeleteSubcategoria={onDeleteSubcategoria}
+            mensalidades={mensalidades}
+            onSaveMensalidade={onSaveMensalidade}
+            onDeleteMensalidade={onDeleteMensalidade}
           />
         ) : activeTab === 'lotes' ? (
           <SiengeLotes
