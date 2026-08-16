@@ -133,23 +133,56 @@ export default function SiengeMetasDashboard({
 
   const controleInicio = orcamentoConfig?.controleInicio || now.toISOString().slice(0, 10);
 
+  // Filtro de centro de custo — escopa o dashboard inteiro (cards, gráfico e
+  // categorias). Títulos sem centro de custo preenchido ficam de fora enquanto
+  // houver filtro ativo; por isso "Visão Geral" existe e não filtra nada.
+  const [filterCentroCusto, setFilterCentroCusto] = useState<'marketing' | 'comercial' | 'todos'>('marketing');
+
+  const scopedTitles = useMemo(
+    () => filterCentroCusto === 'todos' ? titles : titles.filter(t => t.centroCusto === filterCentroCusto),
+    [titles, filterCentroCusto]
+  );
+
+  // Alocações do centro filtrado — o orçamento projetado/real do recorte é a soma
+  // dos percentuais desse centro, não os 2% cheios do VGV.
+  const scopedCategoriaOrcamento = useMemo(
+    () => filterCentroCusto === 'todos' ? categoriaOrcamento : categoriaOrcamento.filter(c => c.centroCusto === filterCentroCusto),
+    [categoriaOrcamento, filterCentroCusto]
+  );
+
   // Categorias percorridas pela análise: as configuradas em "Alocação de Orçamento"
   // (taxonomia do banco) + as que aparecem em títulos já lançados, para que nenhum
   // gasto fique fora da quebra por categoria.
   const categoriasBase = useMemo(
-    () => buildCategoriasBase(taxonomy?.categoriasPorCentro, titles),
-    [taxonomy, titles]
+    () => buildCategoriasBase(taxonomy?.categoriasPorCentro, scopedTitles)
+      .filter(c => filterCentroCusto === 'todos' || c.centroCusto === filterCentroCusto),
+    [taxonomy, scopedTitles, filterCentroCusto]
   );
 
+  // Fatia do VGV alocada ao centro filtrado, por empreendimento. Sem filtro vale a
+  // regra geral dos 2%.
+  const pctOrcamentoFor = useMemo(() => {
+    const map = new Map<string, number>();
+    if (filterCentroCusto !== 'todos') {
+      scopedCategoriaOrcamento.forEach(c => map.set(c.projectId, (map.get(c.projectId) || 0) + (c.percentual || 0)));
+    }
+    return (projectId: string) =>
+      filterCentroCusto === 'todos' ? ORCAMENTO_PCT : (map.get(projectId) || 0) / 100;
+  }, [scopedCategoriaOrcamento, filterCentroCusto]);
+
   const analysis = useMemo(
-    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase),
-    [scopedProjects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase]
+    () => analyzeProjectsForPeriod(scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase),
+    [scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase]
   );
 
   // Orçamento Projetado (Meta): sempre 2% da meta de VGV do período, independente
   // de como as categorias estão alocadas — mesmo % fixo usado no Teto do Produto
   // e no Orçamento Real Acumulado, para os três serem comparáveis entre si.
-  const totalBudget = analysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT;
+  // Com filtro ativo o projetado é a soma do que está alocado ao centro (a.totalOrcamento
+  // já é % × VGV meta); sem filtro segue os 2% cheios do VGV.
+  const totalBudget = filterCentroCusto === 'todos'
+    ? analysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT
+    : analysis.reduce((s, a) => s + a.totalOrcamento, 0);
 
   // Camada 1 (real): até a data de hoje, ou o fim do período filtrado se ele já
   // tiver passado — nunca no futuro (não dá pra "acumular" vendas que ainda não aconteceram).
@@ -160,8 +193,8 @@ export default function SiengeMetasDashboard({
   }, [year, month]);
 
   const budgetReal = useMemo(
-    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, ateData, categoriasBase)),
-    [scopedProjects, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, ateData, categoriasBase]
+    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, scopedTitles, scopedCategoriaOrcamento, controleInicio, ateData, categoriasBase, pctOrcamentoFor(p.id))),
+    [scopedProjects, tabelaVendas, vendas, scopedTitles, scopedCategoriaOrcamento, controleInicio, ateData, categoriasBase, pctOrcamentoFor]
   );
   const budgetRealByProjectId = useMemo(() => new Map(budgetReal.map(b => [b.project.id, b])), [budgetReal]);
 
@@ -176,9 +209,11 @@ export default function SiengeMetasDashboard({
   }, [year, month, controleInicio]);
 
   const budgetPeriodo = useMemo(
-    () => scopedProjects.map(p => analyzeProjectBudgetPeriodo(p, vendas, titles, deData, ateData)),
-    [scopedProjects, vendas, titles, deData, ateData]
+    () => scopedProjects.map(p => analyzeProjectBudgetPeriodo(p, vendas, scopedTitles, deData, ateData, pctOrcamentoFor(p.id))),
+    [scopedProjects, vendas, scopedTitles, deData, ateData, pctOrcamentoFor]
   );
+
+  const budgetPeriodoByProjectId = useMemo(() => new Map(budgetPeriodo.map(b => [b.project.id, b])), [budgetPeriodo]);
 
   const mesOrcamentoReal = budgetPeriodo.reduce((s, b) => s + b.orcamentoRealPeriodo, 0);
   const mesGastoReal = budgetPeriodo.reduce((s, b) => s + b.gastoRealPeriodo, 0);
@@ -198,10 +233,12 @@ export default function SiengeMetasDashboard({
   // específico está selecionado, a segunda fileira de cards abaixo é que reflete
   // o mês filtrado.
   const yearlyAnalysis = useMemo(
-    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, year, null, tabelaVendas, controleInicio, categoriasBase),
-    [scopedProjects, titles, projectMetas, categoriaOrcamento, year, tabelaVendas, controleInicio, categoriasBase]
+    () => analyzeProjectsForPeriod(scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, year, null, tabelaVendas, controleInicio, categoriasBase),
+    [scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, year, tabelaVendas, controleInicio, categoriasBase]
   );
-  const yearlyTotalBudget = yearlyAnalysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT;
+  const yearlyTotalBudget = filterCentroCusto === 'todos'
+    ? yearlyAnalysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT
+    : yearlyAnalysis.reduce((s, a) => s + a.totalOrcamento, 0);
 
   const yearlyAteData = useMemo(() => {
     const periodEnd = new Date(year, 11, 31, 23, 59, 59);
@@ -210,8 +247,8 @@ export default function SiengeMetasDashboard({
   }, [year]);
 
   const yearlyBudgetReal = useMemo(
-    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, yearlyAteData, categoriasBase)),
-    [scopedProjects, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, yearlyAteData, categoriasBase]
+    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, scopedTitles, scopedCategoriaOrcamento, controleInicio, yearlyAteData, categoriasBase, pctOrcamentoFor(p.id))),
+    [scopedProjects, tabelaVendas, vendas, scopedTitles, scopedCategoriaOrcamento, controleInicio, yearlyAteData, categoriasBase, pctOrcamentoFor]
   );
   const yearlyTotalOrcamentoReal = yearlyBudgetReal.reduce((s, b) => s + b.orcamentoRealAcumulado, 0);
   const yearlyTotalGastoReal = yearlyBudgetReal.reduce((s, b) => s + b.gastoRealAcumulado, 0);
@@ -225,13 +262,15 @@ export default function SiengeMetasDashboard({
   // Ritmo do mês corrente (não do período filtrado) — sinal de alerta contra a
   // meta, nunca decide estouro.
   const currentMonthAnalysis = useMemo(
-    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, now.getFullYear(), now.getMonth(), tabelaVendas, controleInicio),
+    () => analyzeProjectsForPeriod(scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, now.getFullYear(), now.getMonth(), tabelaVendas, controleInicio, categoriasBase),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scopedProjects, titles, projectMetas, categoriaOrcamento, tabelaVendas, controleInicio]
+    [scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, tabelaVendas, controleInicio, categoriasBase]
   );
   const ritmo = getRitmoMes(
     currentMonthAnalysis.reduce((s, a) => s + a.totalGasto, 0),
-    currentMonthAnalysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT
+    filterCentroCusto === 'todos'
+      ? currentMonthAnalysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT
+      : currentMonthAnalysis.reduce((s, a) => s + a.totalOrcamento, 0)
   );
   const RitmoIcon = RITMO_ICONS[ritmo];
 
@@ -305,6 +344,26 @@ export default function SiengeMetasDashboard({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5 p-0.5 bg-[#141416] border border-[#1F1F22] rounded-md">
+                  {([
+                    { value: 'marketing', label: 'Marketing' },
+                    { value: 'comercial', label: 'Comercial' },
+                    { value: 'todos', label: 'Visão Geral' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFilterCentroCusto(opt.value)}
+                      title={opt.value === 'todos' ? 'Marketing e Comercial somados' : `Somente ${opt.label}`}
+                      className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+                        filterCentroCusto === opt.value
+                          ? 'bg-blue-600 text-white'
+                          : 'text-[#6B6B70] hover:text-[#EDEDED] hover:bg-[#1F1F22]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
                 <ProjectFilterDropdown projects={visibleProjects} value={filterProjectId} onChange={setFilterProjectId} />
                 <MonthFilterDropdown value={filterMonth} onChange={setFilterMonth} allLabel="Ver Todos" />
                 <button
@@ -403,9 +462,9 @@ export default function SiengeMetasDashboard({
               <div className="bg-[#111113] rounded-lg p-5">
                 <SiengeSpendChart
                   projects={scopedProjects}
-                  titles={titles}
+                  titles={scopedTitles}
                   projectMetas={projectMetas}
-                  categoriaOrcamento={categoriaOrcamento}
+                  categoriaOrcamento={scopedCategoriaOrcamento}
                   tabelaVendas={tabelaVendas}
                   vendas={vendas}
                   controleInicio={controleInicio}
@@ -421,9 +480,14 @@ export default function SiengeMetasDashboard({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {analysis.map((a, i) => {
                   const br = budgetRealByProjectId.get(a.project.id);
-                  const diferencaReal = br?.diferencaReal ?? 0;
-                  const gastoReal = br?.gastoRealAcumulado ?? 0;
-                  const orcamentoReal = br?.orcamentoRealAcumulado ?? 0;
+                  // O card passou a falar do PERÍODO selecionado (era acumulado desde o
+                  // início do controle), para casar com os cards do topo.
+                  const bp = budgetPeriodoByProjectId.get(a.project.id);
+                  const gastoPeriodo = bp?.gastoRealPeriodo ?? 0;
+                  const orcamentoRealPeriodo = bp?.orcamentoRealPeriodo ?? 0;
+                  const vgvRealPeriodo = bp?.vgvRealPeriodo ?? 0;
+                  const diferencaPeriodo = orcamentoRealPeriodo - gastoPeriodo;
+                  const metaMes = a.vgvMeta * ORCAMENTO_PCT;
                   return (
                   <div
                     key={a.project.id}
@@ -439,22 +503,30 @@ export default function SiengeMetasDashboard({
                         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: a.project.color }} />
                         {a.project.name}
                       </span>
-                      <span title="Estouro/economia real (Orçamento Real Acumulado − Gasto Real Acumulado)" className={`text-[13px] font-normal shrink-0 ${diferencaReal >= 0 ? 'text-[#3FB950]' : 'text-[#F85149]'}`}>
-                        {diferencaReal >= 0 ? '+' : '-'}{formatCurrency(Math.abs(diferencaReal))}
-                      </span>
+                      {/* Gasto do período em destaque; o estouro/economia vem abaixo, menor. */}
+                      <div className="flex flex-col items-end shrink-0">
+                        <span title="Gasto real do período selecionado" className="text-[15px] font-medium text-[#EDEDED]">
+                          {formatCurrency(gastoPeriodo)}
+                        </span>
+                        {diferencaPeriodo < 0 ? (
+                          <span title="Gasto real do período acima do orçamento real do período" className="text-[11px] text-[#F85149]">
+                            Overspend {formatCurrency(-diferencaPeriodo)}
+                          </span>
+                        ) : diferencaPeriodo > 0 ? (
+                          <span title="Sobra do orçamento real do período" className="text-[11px] text-[#3FB950]">
+                            Saving {formatCurrency(diferencaPeriodo)}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] text-[#6B6B70]">
-                      <span>Real: <span className="text-[#A0A0A5]">{formatCurrency(orcamentoReal)}</span></span>
-                      <span title={a.vgvEstimado ? 'VGV estimado a partir do VGV total ÷ unidades disponíveis do empreendimento' : undefined}>
-                        Meta: <span className="text-[#A0A0A5]">{formatCurrency(a.vgvMeta * ORCAMENTO_PCT)}</span>
+                    <div className="flex items-center gap-3 text-[11px] text-[#6B6B70] flex-wrap">
+                      <span title={a.vgvEstimado ? 'VGV estimado a partir do VGV total ÷ unidades disponíveis do empreendimento' : 'Orçamento projetado pela meta de VGV do período'}>
+                        META/MÊS: <span className="text-[#A0A0A5]">{formatCurrency(metaMes)}</span>
+                      </span>
+                      <span title="Fatia do VGV efetivamente vendido no período">
+                        ORÇAMENTO REAL: <span className="text-[#A0A0A5]">{formatCurrency(orcamentoRealPeriodo)}</span>
                       </span>
                       <span>{a.unidadesMeta.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} unid. meta</span>
-                    </div>
-                    <div className="h-[5px] bg-[#1A1A1C] rounded-full overflow-hidden" title="Gasto real acumulado vs Orçamento Real Acumulado">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${gastoReal > orcamentoReal ? 'bg-[#F85149]' : 'bg-blue-500'}`}
-                        style={{ width: `${orcamentoReal > 0 ? Math.min((gastoReal / orcamentoReal) * 100, 100) : 0}%` }}
-                      />
                     </div>
 
                     {br && br.tetoTotalProduto > 0 && (
@@ -471,19 +543,39 @@ export default function SiengeMetasDashboard({
 
                     {/* Categorias alocadas ou com gasto real: % da verba, gasto e status de utilização.
                         Categorias sem % alocado mas com gasto real também aparecem — gasto real nunca fica escondido. */}
-                    {(br?.categorias || a.categorias).some(c => c.percentual > 0 || c.gasto > 0) && (
-                      <div className="flex flex-col gap-2 pt-2 border-t border-[#1F1F22]">
-                        {(br?.categorias || a.categorias).filter(c => c.percentual > 0 || c.gasto > 0).map(c => {
-                          // Sem % alocado não existe orçamento para estourar: antes qualquer
-                          // gasto acima de zero pintava de vermelho, e R$ 300 parecia tão grave
-                          // quanto R$ 27 mil. Agora isso é "sem orçamento definido" (neutro).
+                    {a.categorias.some(c => c.percentual > 0 || c.gasto > 0) && (
+                      <div className="flex flex-col gap-3 pt-2 border-t border-[#1F1F22]">
+                        {a.categorias.filter(c => c.percentual > 0 || c.gasto > 0).map(c => {
+                          // Três referências por categoria, todas do período selecionado:
+                          //   meta         = % × VGV meta      (orçamento projetado)
+                          //   orçamentoCat = % × VGV vendido    (verba que existe de fato)
+                          //   gasto        = títulos do período
+                          const metaCat = c.orcamento;
+                          const orcamentoCat = vgvRealPeriodo * (c.percentual / 100);
                           const semOrcamento = c.percentual <= 0;
-                          const over = !semOrcamento && c.pctGastoDoVgv > c.percentual;
-                          const used = c.orcamento > 0 ? Math.min(c.gasto / c.orcamento, 1) : 0;
-                          const statusColor = over ? 'text-[#F85149]' : c.gasto > 0 ? 'text-[#A0A0A5]' : 'text-[#6B6B70]';
-                          const barColor = over ? 'bg-[#F85149]' : 'bg-blue-500';
+
+                          // A régua vai até a meta; se o gasto passar dela, estende para caber,
+                          // e a meta vira um traço marcado — nunca some da vista.
+                          const escala = Math.max(metaCat, orcamentoCat, c.gasto) || 1;
+                          const pct = (v: number) => `${Math.min((v / escala) * 100, 100)}%`;
+
+                          const estourouMeta = !semOrcamento && c.gasto > metaCat;
+                          const estourouReal = !semOrcamento && c.gasto > orcamentoCat;
+                          const corGasto = semOrcamento
+                            ? 'bg-[#3A3A3F]'
+                            : estourouMeta ? 'bg-[#F85149]' : estourouReal ? 'bg-[#D29922]' : 'bg-[#3FB950]';
+                          const corValor = semOrcamento
+                            ? 'text-[#A0A0A5]'
+                            : estourouMeta ? 'text-[#F85149]' : estourouReal ? 'text-[#D29922]' : 'text-[#3FB950]';
+
+                          const tip = [
+                            `Gasto real: ${formatCurrency(c.gasto)}`,
+                            semOrcamento ? 'Sem % alocado' : `Orçamento real (${formatPct(c.percentual)} do vendido): ${formatCurrency(orcamentoCat)}`,
+                            semOrcamento ? '' : `Meta (${formatPct(c.percentual)} do VGV meta): ${formatCurrency(metaCat)}`,
+                          ].filter(Boolean).join('\n');
+
                           return (
-                            <div key={`${c.centroCusto}-${c.categoria}`} className="flex flex-col gap-1 text-[11px]">
+                            <div key={`${c.centroCusto}-${c.categoria}`} className="flex flex-col gap-1.5 text-[11px]" title={tip}>
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-[#6B6B70] truncate min-w-0">
                                   {CENTRO_CUSTO_LABELS[c.centroCusto] || c.centroCusto} · {c.categoria}
@@ -494,17 +586,32 @@ export default function SiengeMetasDashboard({
                                   )}
                                 </span>
                                 <div className="flex items-center gap-2 shrink-0">
-                                  <span className="text-[#6B6B70]" title={semOrcamento ? 'Sem % de orçamento alocado para esta categoria.' : 'Fatia do VGV alocada a esta categoria.'}>
-                                    {semOrcamento ? 'sem verba' : formatPct(c.percentual)}
-                                  </span>
-                                  <span className={statusColor}>{formatCurrency(c.gasto)}</span>
+                                  <span className="text-[#6B6B70]">{semOrcamento ? 'sem verba' : formatPct(c.percentual)}</span>
+                                  <span className={corValor}>{formatCurrency(c.gasto)}</span>
                                 </div>
                               </div>
-                              <div className="h-[3px] bg-[#1A1A1C] rounded-full overflow-hidden">
-                                {semOrcamento ? (
-                                  <div className="h-full rounded-full bg-[#3A3A3F]" style={{ width: '100%', opacity: 0.5 }} />
-                                ) : (
-                                  <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${used * 100}%`, opacity: over ? 1 : 0.6 }} />
+
+                              {/* Barra 1 — gasto real. Barra 2 — orçamento real. Traço = meta. */}
+                              <div className="relative flex flex-col gap-1">
+                                <div className="relative h-[4px] bg-[#1A1A1C] rounded-full">
+                                  <div className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${corGasto}`} style={{ width: pct(c.gasto) }} />
+                                  {c.gasto > 0 && (
+                                    <span className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full ring-2 ring-[#111113] ${corGasto}`} style={{ left: pct(c.gasto) }} />
+                                  )}
+                                </div>
+                                <div className="relative h-[4px] bg-[#1A1A1C] rounded-full">
+                                  <div className="absolute inset-y-0 left-0 rounded-full bg-[#4C8EDA]/70 transition-all duration-500" style={{ width: pct(orcamentoCat) }} />
+                                  {orcamentoCat > 0 && (
+                                    <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-[#4C8EDA] ring-2 ring-[#111113]" style={{ left: pct(orcamentoCat) }} />
+                                  )}
+                                </div>
+                                {/* Marca da meta, só quando ela não é o fim da régua */}
+                                {!semOrcamento && metaCat > 0 && metaCat < escala && (
+                                  <span
+                                    className="absolute inset-y-0 w-px bg-[#8B8BF0]"
+                                    style={{ left: pct(metaCat) }}
+                                    title={`Meta: ${formatCurrency(metaCat)}`}
+                                  />
                                 )}
                               </div>
                             </div>

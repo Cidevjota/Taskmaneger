@@ -137,9 +137,12 @@ export function analyzeProjectBudgetPeriodo(
   titles: SiengeTitle[],
   deData: Date,
   ateData: Date,
+  // Fração do VGV que compõe o orçamento. Padrão são os 2% cheios; ao filtrar por
+  // centro de custo vira só a fatia alocada àquele centro.
+  pctOrcamento: number = ORCAMENTO_PCT,
 ): ProjectBudgetPeriodo {
   const vgvRealPeriodo = getVgvRealNoPeriodo(vendas.filter(v => v.projectId === project.id), deData, ateData);
-  const orcamentoRealPeriodo = vgvRealPeriodo * ORCAMENTO_PCT;
+  const orcamentoRealPeriodo = vgvRealPeriodo * pctOrcamento;
   const gastoRealPeriodo = getGastoRealNoPeriodo(titles, project.name, deData.toISOString().slice(0, 10), ateData);
   return {
     project,
@@ -159,12 +162,13 @@ export function analyzeProjectBudgetReal(
   controleInicio: string,
   ateData: Date,
   categoriasBase: CategoriaRef[] = ALL_CATEGORIAS,
+  pctOrcamento: number = ORCAMENTO_PCT,
 ): ProjectBudgetReal {
   const unidadesDoProjeto = unidades.filter(u => u.projectId === project.id);
   const vendasDoProjeto = vendas.filter(v => v.projectId === project.id);
 
   const vgvReal = getVgvRealAcumulado(vendasDoProjeto, ateData);
-  const orcamentoRealAcumulado = vgvReal * ORCAMENTO_PCT;
+  const orcamentoRealAcumulado = vgvReal * pctOrcamento;
 
   const categorias: CategoriaAnalysis[] = categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
     const alocacao = categoriaOrcamento.find(c => c.projectId === project.id && c.centroCusto === centroCusto && c.categoria === categoria);
