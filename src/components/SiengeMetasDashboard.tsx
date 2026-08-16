@@ -10,7 +10,7 @@ import SiengeAlocacaoModal from './SiengeAlocacaoModal';
 import SiengeSpendChart from './SiengeSpendChart';
 import { ALL_CATEGORIAS, analyzeProjectsForPeriod } from '../lib/siengeMetasAnalysis';
 import { CENTRO_CUSTO_LABELS, SiengeTaxonomy } from '../lib/siengeCategorias';
-import { analyzeProjectBudgetReal, getRitmoMes, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
+import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, getRitmoMes, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
 
 const RESTRICTED_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
 
@@ -157,10 +157,25 @@ export default function SiengeMetasDashboard({
   );
   const budgetRealByProjectId = useMemo(() => new Map(budgetReal.map(b => [b.project.id, b])), [budgetReal]);
 
-  const totalOrcamentoReal = budgetReal.reduce((s, b) => s + b.orcamentoRealAcumulado, 0);
-  const totalGastoReal = budgetReal.reduce((s, b) => s + b.gastoRealAcumulado, 0);
-  const totalSaving = budgetReal.reduce((s, b) => s + Math.max(b.diferencaReal, 0), 0);
-  const totalOverspend = budgetReal.reduce((s, b) => s + Math.max(-b.diferencaReal, 0), 0);
+  // ─── Cards do mês: recorte fechado do período, não o acumulado. Antes os dois
+  // usavam a mesma janela (início do controle → hoje) e, no mês corrente, a faixa
+  // de cima repetia exatamente os números da de baixo.
+  const deData = useMemo(() => {
+    const periodStart = month !== null ? new Date(year, month, 1) : new Date(year, 0, 1);
+    const inicio = new Date(`${controleInicio}T00:00:00`);
+    // Não há gasto confiável antes do início do controle: a janela nunca começa antes dele.
+    return periodStart > inicio ? periodStart : inicio;
+  }, [year, month, controleInicio]);
+
+  const budgetPeriodo = useMemo(
+    () => scopedProjects.map(p => analyzeProjectBudgetPeriodo(p, vendas, titles, deData, ateData)),
+    [scopedProjects, vendas, titles, deData, ateData]
+  );
+
+  const mesOrcamentoReal = budgetPeriodo.reduce((s, b) => s + b.orcamentoRealPeriodo, 0);
+  const mesGastoReal = budgetPeriodo.reduce((s, b) => s + b.gastoRealPeriodo, 0);
+  const mesSaving = budgetPeriodo.reduce((s, b) => s + Math.max(b.diferencaPeriodo, 0), 0);
+  const mesOverspend = budgetPeriodo.reduce((s, b) => s + Math.max(-b.diferencaPeriodo, 0), 0);
 
   // ─── Cards do topo: sempre o acumulado geral do ano (ignora o mês do filtro,
   // só respeita o empreendimento selecionado) — quando um empreendimento
@@ -315,20 +330,20 @@ export default function SiengeMetasDashboard({
                 <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(totalBudget)}</div>
               </div>
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
-                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="2% do VGV das unidades efetivamente vendidas dentro do período selecionado.">Orçamento Real Acumulado</div>
-                <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(totalOrcamentoReal)}</div>
+                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="2% do VGV das unidades vendidas dentro do período selecionado (só as vendas do período, sem acumular meses anteriores).">Orçamento Real do Período</div>
+                <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(mesOrcamentoReal)}</div>
               </div>
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
-                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Soma dos títulos Sienge (marketing/comercial) com vencimento desde o início do controle de orçamento até o fim do período selecionado.">Gasto Real Acumulado</div>
-                <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(totalGastoReal)}</div>
+                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Soma dos títulos Sienge (marketing/comercial) com vencimento dentro do período selecionado. O acumulado desde o início do controle fica na faixa de baixo.">Gasto Real do Período</div>
+                <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(mesGastoReal)}</div>
               </div>
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
-                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Overspend</div>
-                <div className={`text-4xl font-semibold tracking-[-0.02em] ${totalOverspend > 0 ? 'text-[#F85149]' : 'text-[#EDEDED]'}`}>{formatCurrency(totalOverspend)}</div>
+                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Quanto o gasto do período passou do orçamento real do período.">Overspend</div>
+                <div className={`text-4xl font-semibold tracking-[-0.02em] ${mesOverspend > 0 ? 'text-[#F85149]' : 'text-[#EDEDED]'}`}>{formatCurrency(mesOverspend)}</div>
               </div>
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
-                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Saving</div>
-                <div className={`text-4xl font-semibold tracking-[-0.02em] ${totalSaving > 0 ? 'text-[#3FB950]' : 'text-[#EDEDED]'}`}>{formatCurrency(totalSaving)}</div>
+                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Quanto sobrou do orçamento real do período.">Saving</div>
+                <div className={`text-4xl font-semibold tracking-[-0.02em] ${mesSaving > 0 ? 'text-[#3FB950]' : 'text-[#EDEDED]'}`}>{formatCurrency(mesSaving)}</div>
               </div>
             </div>
 

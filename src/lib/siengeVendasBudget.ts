@@ -21,7 +21,38 @@ export function getOrcamentoRealAcumulado(vendas: SiengeVenda[], ateData: Date):
   return getVgvRealAcumulado(vendas, ateData) * ORCAMENTO_PCT;
 }
 
+// VGV vendido DENTRO de uma janela (não acumulado): só vendas cuja data cai no
+// período, ignorando as que já foram distratadas até o fim dele.
+export function getVgvRealNoPeriodo(vendas: SiengeVenda[], deData: Date, ateData: Date): number {
+  return vendas
+    .filter(v => {
+      const dv = new Date(v.dataVenda);
+      return dv >= deData && dv <= ateData && (!v.dataDistrato || new Date(v.dataDistrato) > ateData);
+    })
+    .reduce((s, v) => s + v.valorCongelado, 0);
+}
+
 // ─── Gasto real (títulos Sienge), sempre limitado ao início do controle ─────
+
+// Gasto dentro de uma janela [deData, ateData] pelo vencimento do título. Mesmas
+// regras de inclusão do acumulado (inclusive títulos sem categoria) — só muda o
+// limite inferior, para permitir o gasto de um mês isolado.
+export function getGastoRealNoPeriodo(
+  titles: SiengeTitle[],
+  projectName: string,
+  deData: string,  // YYYY-MM-DD
+  ateData: Date,
+  filtro?: { centroCusto: SiengeCentroCusto; categoria: string },
+): number {
+  const ateStr = ateData.toISOString().slice(0, 10);
+  return titles
+    .filter(t =>
+      t.empreendimento === projectName &&
+      t.vencimento && t.vencimento >= deData && t.vencimento <= ateStr &&
+      (!filtro || (t.centroCusto === filtro.centroCusto && t.categoria === filtro.categoria))
+    )
+    .reduce((s, t) => s + t.valor, 0);
+}
 
 export function getGastoRealAcumulado(
   titles: SiengeTitle[],
@@ -30,14 +61,7 @@ export function getGastoRealAcumulado(
   ateData: Date,
   filtro?: { centroCusto: SiengeCentroCusto; categoria: string },
 ): number {
-  const ateStr = ateData.toISOString().slice(0, 10);
-  return titles
-    .filter(t =>
-      t.empreendimento === projectName &&
-      t.vencimento && t.vencimento >= controleInicio && t.vencimento <= ateStr &&
-      (!filtro || (t.centroCusto === filtro.centroCusto && t.categoria === filtro.categoria))
-    )
-    .reduce((s, t) => s + t.valor, 0);
+  return getGastoRealNoPeriodo(titles, projectName, controleInicio, ateData, filtro);
 }
 
 // Mesma coisa, para um conjunto de empreendimentos de uma vez (usado no gráfico).
@@ -93,6 +117,37 @@ export interface ProjectBudgetReal {
   saldoRemanescente: number;
   tetoTotalProduto: number;
   pctTetoConsumido: number;
+}
+
+// ─── Recorte do período (não acumulado) — usado nos cards do mês ────────────
+// Mesmas fórmulas da camada real, mas com a janela fechada nos dois lados: serve
+// para responder "quanto entrou e quanto saiu NESTE mês", enquanto a versão
+// acumulada responde "quanto entrou e saiu desde o início do controle".
+export interface ProjectBudgetPeriodo {
+  project: Project;
+  vgvRealPeriodo: number;
+  orcamentoRealPeriodo: number;
+  gastoRealPeriodo: number;
+  diferencaPeriodo: number;
+}
+
+export function analyzeProjectBudgetPeriodo(
+  project: Project,
+  vendas: SiengeVenda[],
+  titles: SiengeTitle[],
+  deData: Date,
+  ateData: Date,
+): ProjectBudgetPeriodo {
+  const vgvRealPeriodo = getVgvRealNoPeriodo(vendas.filter(v => v.projectId === project.id), deData, ateData);
+  const orcamentoRealPeriodo = vgvRealPeriodo * ORCAMENTO_PCT;
+  const gastoRealPeriodo = getGastoRealNoPeriodo(titles, project.name, deData.toISOString().slice(0, 10), ateData);
+  return {
+    project,
+    vgvRealPeriodo,
+    orcamentoRealPeriodo,
+    gastoRealPeriodo,
+    diferencaPeriodo: orcamentoRealPeriodo - gastoRealPeriodo,
+  };
 }
 
 export function analyzeProjectBudgetReal(
