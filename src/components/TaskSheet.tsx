@@ -2165,46 +2165,13 @@ export default function TaskSheet({
                                })()}`}>
                                  {t.dueDate ? t.dueDate.split('-').reverse().join('/').slice(0, 5) : 'S/P'}
                                </span>
-                               <div className="flex items-center shrink-0" title={statusObj.label}>
-                                {(() => {
-                                  const pct = (() => {
-                                    switch (t.status) {
-                                      case 'no_forecast':
-                                      case 'todo': return 0;
-                                      case 'in_progress': return 25;
-                                      case 'approval': return 75;
-                                      case 'rework': return 50;
-                                      case 'implementation': return 95;
-                                      case 'done': return 100;
-                                      case 'paused': {
-                                        return null; 
-                                      }
-                                      default: return 0;
-                                    }
-                                  })();
-                                  const isPaused = t.status === 'paused';
-                                  const barPct = isPaused ? 50 : (pct ?? 0);
-                                  const barColor = isPaused
-                                    ? 'bg-red-500'
-                                    : pct === 100
-                                    ? 'bg-emerald-500'
-                                    : 'bg-blue-500';
-                                  const trackColor = isPaused ? 'bg-red-500/15' : 'bg-zinc-700/50';
-                                  return (
-                                    <div className="flex items-center gap-1.5">
-                                      <div className={`w-12 h-[4px] rounded-full ${trackColor} overflow-hidden`}>
-                                        <div
-                                          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                                          style={{ width: `${barPct}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-[9px] font-mono leading-none tracking-tighter opacity-80 min-w-[28px] text-right">
-                                        {isPaused ? 'PAUSA' : `${pct}%`}
-                                      </span>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
+                               <span
+                                 className={`flex items-center gap-1.5 shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap ${statusObj.color}`}
+                                 title={statusObj.label}
+                               >
+                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusObj.dotColor}`} />
+                                 {statusObj.label}
+                               </span>
                                {!isParent && onUpdateTask && (
                                  <button
                                    onClick={(e) => {
