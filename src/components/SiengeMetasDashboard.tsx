@@ -337,7 +337,7 @@ export default function SiengeMetasDashboard({
             className="flex-1 flex flex-col overflow-hidden min-h-0"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#1F1F22] shrink-0">
+            <div className="flex items-center justify-between view-pad-x py-4 short:py-2.5 border-b border-[#1F1F22] shrink-0">
               <div className="flex items-center gap-3">
                 <div>
                   <h1 className="text-sm font-medium text-[#EDEDED]">Dashboard Analítico</h1>
@@ -389,7 +389,7 @@ export default function SiengeMetasDashboard({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-8">
+            <div className="flex-1 overflow-y-auto view-pad-x view-pad-y flex flex-col view-gap">
               {!hasMetas ? (
                 <div className="flex flex-col items-center justify-center py-16 text-[#6B6B70] gap-2">
                   <BarChart3 size={28} strokeWidth={1.5} />
@@ -409,7 +409,7 @@ export default function SiengeMetasDashboard({
             </h2>
 
             {/* Cards do mês — destaque principal, sempre respeitam mês + empreendimento filtrados. */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 view-gap">
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
                 <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="2% do VGV meta cadastrado para o período selecionado — sinal de ritmo, não decide estouro.">Orçamento Projetado (Meta)</div>
                 <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(totalBudget)}</div>
@@ -438,7 +438,7 @@ export default function SiengeMetasDashboard({
               <h3 className="text-[10px] font-medium text-[#4A4A4E] uppercase tracking-[0.05em]">
                 Acumulado do ano — {selectedProject ? selectedProject.name : 'todos os empreendimentos'}
               </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 view-gap-sm">
                 <div className="bg-[#0D0D0F] rounded-lg p-3.5 flex flex-col gap-1.5">
                   <div className="text-[10px] font-medium text-[#5A5A5E] uppercase tracking-[0.05em]" title="2% do VGV meta cadastrado, somado nos 12 meses do ano — sinal de ritmo, não decide estouro.">Orçamento Projetado (Meta)</div>
                   <div className="text-xl font-extralight text-[#A0A0A5] tracking-[-0.02em]">{formatCurrency(yearlyTotalBudget)}</div>
@@ -483,7 +483,7 @@ export default function SiengeMetasDashboard({
             {/* Por empreendimento — compacto, 2+ por linha */}
             <div className="flex flex-col gap-4">
               <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Por Empreendimento</h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 view-gap">
                 {analysis.map((a, i) => {
                   const br = budgetRealByProjectId.get(a.project.id);
                   // O card passou a falar do PERÍODO selecionado (era acumulado desde o

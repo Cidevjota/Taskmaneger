@@ -164,7 +164,7 @@ export default function MyDocuments({ expanded, onToggleExpand }: MyDocumentsPro
                 </button>
               </div>
 
-              <div className={`flex flex-col p-2 gap-1 overflow-y-auto scrollbar-minimal ${expanded ? 'flex-1 min-h-[400px]' : 'min-h-[250px] max-h-[350px]'}`}>
+              <div className={`flex flex-col p-2 gap-1 overflow-y-auto scrollbar-minimal ${expanded ? 'flex-1 min-h-[400px] short:min-h-[240px]' : 'card-list-h'}`}>
                 {isLoading ? (
                   <div className="flex-1 flex items-center justify-center text-zinc-600 py-10 text-xs">Carregando…</div>
                 ) : items.length === 0 ? (

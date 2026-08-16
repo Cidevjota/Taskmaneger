@@ -383,7 +383,7 @@ export default function DeliveryApproval({
       })()}
 
       {isExpanded && (
-        <div className={`flex flex-col md:flex-row gap-8 items-stretch ${isCopyFullscreen ? 'md:h-[calc(100vh-190px)]' : 'md:h-[500px]'}`}>
+        <div className={`flex flex-col md:flex-row gap-8 short:gap-4 items-stretch ${isCopyFullscreen ? 'md:h-[calc(100vh-190px)]' : 'md:h-[500px] short:md:h-[calc(100dvh-19rem)] short:md:min-h-[300px]'}`}>
         
         {/* Left Column: Image Preview */}
         <div className="w-full md:w-5/12 flex flex-col gap-2 shrink-0 h-full">
@@ -868,7 +868,7 @@ export default function DeliveryApproval({
   // transform/overflow, onde um `fixed` interno não cobriria a viewport.
   if (isCopyFullscreen) {
     return createPortal(
-      <div className="fixed inset-0 z-[100] bg-[#08080a] overflow-y-auto px-8 py-4">{card}</div>,
+      <div className="fixed inset-0 z-[100] bg-[#08080a] overflow-y-auto view-pad">{card}</div>,
       document.body
     );
   }

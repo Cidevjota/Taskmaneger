@@ -129,44 +129,48 @@ export default function HomeView({
   }).sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
 
   return (
-    <div className="flex-1 overflow-auto bg-[#08080a] p-6 lg:p-10 text-zinc-200 scrollbar-minimal">
-      <div className="max-w-[1900px] w-full mx-auto flex flex-col gap-4">
-        
+    // `p-10` no lg valia para monitor; em notebook são 80px de margem lateral
+    // roubados das três colunas. O `view-pad` já entrega 24/16/12 por altura.
+    <div className="flex-1 overflow-auto bg-[#08080a] view-pad text-zinc-200 scrollbar-minimal">
+      <div className="max-w-[1900px] w-full mx-auto flex flex-col view-gap-sm">
+
         {/* HEADER AREA - SINGLE LINE */}
-        <div className="flex items-center justify-between mb-0">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 mb-0">
+          <div className="flex items-center gap-4 xl:gap-6 min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
               <Bookmark className="text-zinc-400" size={18} />
               <h1 className="text-xs font-bold tracking-[0.2em] text-zinc-400 uppercase">HOME</h1>
             </div>
-            
+
             {/* USER PROFILE */}
-            <div className="hidden lg:flex items-center gap-3 ml-2 border-l border-zinc-800/80 pl-6">
+            <div className="hidden lg:flex items-center gap-3 ml-2 border-l border-zinc-800/80 pl-4 xl:pl-6 min-w-0">
               {currentUser?.avatarUrl ? (
-                <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-10 h-10 rounded-full border border-zinc-700/50 object-cover shrink-0" />
+                <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-10 h-10 short:w-8 short:h-8 rounded-full border border-zinc-700/50 object-cover shrink-0" />
               ) : (
-                <div className="w-10 h-10 rounded-full border border-zinc-700/50 bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-300 shrink-0">
+                <div className="w-10 h-10 short:w-8 short:h-8 rounded-full border border-zinc-700/50 bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-300 shrink-0">
                   {currentUser?.initials || 'U'}
                 </div>
               )}
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-zinc-100 tracking-tight leading-tight">{currentUser?.name || userName}</span>
-                <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider mt-0.5">{currentUser?.role || 'Usuário'}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-bold text-zinc-100 tracking-tight leading-tight truncate">{currentUser?.name || userName}</span>
+                <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider mt-0.5 truncate">{currentUser?.role || 'Usuário'}</span>
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-4 shrink-0">
             <button className="flex items-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 px-4 py-1.5 rounded-md text-[10px] font-bold tracking-[0.15em] uppercase transition-colors">
-              <Plus size={14} /> NOVA TAREFA
+              <Plus size={14} /> <span className="hidden sm:inline">NOVA TAREFA</span>
             </button>
           </div>
         </div>
 
-        {/* TOP STATS / KPIS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm group">
-            <div className="w-10 h-10 rounded-full border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/10 transition-colors">
+        {/* TOP STATS / KPIS
+            4 colunas só a partir de 1280px: abaixo disso cada card fica com
+            menos de 250px e o rótulo "Concluídas da semana" (nowrap) vaza. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 view-gap-sm">
+          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 short:p-3 flex items-center gap-4 short:gap-3 shadow-sm group">
+            <div className="w-10 h-10 short:w-8 short:h-8 rounded-full border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/10 transition-colors">
               <CheckCircle2 size={16} className="text-emerald-500" />
             </div>
             <div className="flex flex-col">
@@ -178,8 +182,8 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm group">
-            <div className="w-10 h-10 rounded-full border border-red-500/20 bg-red-500/5 flex items-center justify-center shrink-0 group-hover:bg-red-500/10 transition-colors">
+          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 short:p-3 flex items-center gap-4 short:gap-3 shadow-sm group">
+            <div className="w-10 h-10 short:w-8 short:h-8 rounded-full border border-red-500/20 bg-red-500/5 flex items-center justify-center shrink-0 group-hover:bg-red-500/10 transition-colors">
               <AlertTriangle size={16} className="text-red-500" />
             </div>
             <div className="flex flex-col">
@@ -191,8 +195,8 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm">
-            <div className="w-10 h-10 rounded-full border-2 border-blue-500/20 border-t-blue-500 flex items-center justify-center shrink-0">
+          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 short:p-3 flex items-center gap-4 short:gap-3 shadow-sm">
+            <div className="w-10 h-10 short:w-8 short:h-8 rounded-full border-2 border-blue-500/20 border-t-blue-500 flex items-center justify-center shrink-0">
             </div>
             <div className="flex flex-col">
               <span className="text-[11px] text-zinc-400 font-medium">Em andamento</span>
@@ -202,8 +206,8 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 flex items-center gap-4 shadow-sm group">
-            <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/20 transition-colors">
+          <div className="bg-gradient-to-br from-[#0c0c0e] to-[#08080a] border border-zinc-900 rounded-xl p-4 short:p-3 flex items-center gap-4 short:gap-3 shadow-sm group">
+            <div className="w-10 h-10 short:w-8 short:h-8 rounded-full bg-indigo-500/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/20 transition-colors">
               <Target size={16} className="text-indigo-400" />
             </div>
             <div className="flex flex-col min-w-0">
@@ -217,7 +221,7 @@ export default function HomeView({
         <div className="flex-1 min-h-0 flex flex-col">
             {/* THREE COLUMNS */}
             {!docsExpanded && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 view-gap-sm mt-4 short:mt-2">
           
           {/* Notificações */}
           <div className="flex flex-col bg-[#121214] border border-zinc-900 rounded-xl overflow-hidden shadow-sm shadow-black/20">
@@ -227,7 +231,7 @@ export default function HomeView({
               </div>
               <button className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider font-semibold">Ver todas</button>
             </div>
-            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto scrollbar-minimal">
+            <div className="flex flex-col p-2 gap-1 card-list-h overflow-y-auto scrollbar-minimal">
               {myNotifications.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 py-10 opacity-70">
                   <CheckCircle2 size={32} className="mb-2 text-zinc-600" />
@@ -322,7 +326,7 @@ export default function HomeView({
               </div>
               <button className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider font-semibold">Ver todas</button>
             </div>
-            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto scrollbar-minimal">
+            <div className="flex flex-col p-2 gap-1 card-list-h overflow-y-auto scrollbar-minimal">
               {prioridades.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 py-10 opacity-70">
                   <span className="text-xs">Nenhuma tarefa urgente</span>
@@ -380,7 +384,7 @@ export default function HomeView({
               </div>
               <button className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider font-semibold">Ver todas</button>
             </div>
-            <div className="flex flex-col p-2 gap-1 min-h-[250px] max-h-[350px] overflow-y-auto scrollbar-minimal">
+            <div className="flex flex-col p-2 gap-1 card-list-h overflow-y-auto scrollbar-minimal">
               {proximosPrazos.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 py-10 opacity-70">
                   <span className="text-xs">Tudo em dia!</span>

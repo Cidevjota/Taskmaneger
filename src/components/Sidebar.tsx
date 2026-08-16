@@ -33,6 +33,7 @@ import {
 import { ViewType, Project, Task } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useMediaQuery, SHORT_SCREEN } from '../hooks/useMediaQuery';
 
 
 interface SidebarProps {
@@ -71,6 +72,11 @@ export default function Sidebar({
   
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [busyNotificationIds, setBusyNotificationIds] = useState<Set<string>>(new Set());
+
+  // Em notebook a prévia cai de 3 para 2 notificações: cada item custa ~40px e
+  // a lista de Vistas precisa continuar visível sem rolagem.
+  const isShortScreen = useMediaQuery(SHORT_SCREEN);
+  const notificationPreviewCount = isShortScreen ? 2 : 3;
 
   // Guards against double-clicks/misclicks firing the same action twice while the
   // item is still animating out (list reflow made it easy to accidentally hit twice).
@@ -133,13 +139,16 @@ export default function Sidebar({
   };
 
   return (
-    <aside 
-      className={`relative h-screen bg-[#08080a] text-zinc-400 border-r border-zinc-900 transition-all duration-300 flex flex-col z-20 ${
-        collapsed ? 'w-[60px]' : 'w-[280px]'
+    // `h-full` e não `h-screen`: o shell do App já reserva as áreas seguras, e
+    // 100vh aqui dentro estouraria essa reserva. A largura expandida vem do
+    // token `--d-sidebar-w`, que encolhe em notebook (ver index.css).
+    <aside
+      className={`relative h-full bg-[#08080a] text-zinc-400 border-r border-zinc-900 transition-all duration-300 flex flex-col z-20 shrink-0 ${
+        collapsed ? 'w-[60px]' : 'sidebar-w'
       }`}
     >
       {/* Workspace Switcher */}
-      <div className="h-12 flex items-center justify-between px-4 border-b border-zinc-900 shrink-0 bg-[#08080a]">
+      <div className="appbar-h flex items-center justify-between px-4 border-b border-zinc-900 shrink-0 bg-[#08080a]">
         {!collapsed ? (
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-200 text-[10px] font-bold font-sans border border-zinc-700/55">
@@ -164,7 +173,7 @@ export default function Sidebar({
       </div>
 
       {/* Quick Action Trigger Button */}
-      <div className="p-3 shrink-0">
+      <div className="p-3 short:p-2 shrink-0">
         {!collapsed ? (
           <button 
             onClick={onOpenCommandBar}
@@ -189,14 +198,14 @@ export default function Sidebar({
       </div>
 
       {/* Navigation Groups */}
-      <div className="flex-1 overflow-y-auto px-2.5 space-y-5 py-3 select-none scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 space-y-5 py-3 short:space-y-3 short:py-1.5 select-none scrollbar-thin">
         {/* Notifications Section */}
         <div className={showAllNotifications ? "flex flex-col flex-1 min-h-0" : ""}>
           {!collapsed && (
             <div 
-              className={`text-[10px] font-semibold text-zinc-500 px-3 py-1.5 uppercase tracking-wider font-sans flex items-center justify-between ${myNotifications.length > 3 ? 'cursor-pointer hover:text-zinc-400 transition-colors' : ''}`}
+              className={`text-[10px] font-semibold text-zinc-500 px-3 py-1.5 uppercase tracking-wider font-sans flex items-center justify-between ${myNotifications.length > notificationPreviewCount ? 'cursor-pointer hover:text-zinc-400 transition-colors' : ''}`}
               onClick={() => {
-                if (myNotifications.length > 3) {
+                if (myNotifications.length > notificationPreviewCount) {
                   setShowAllNotifications(!showAllNotifications);
                 }
               }}
@@ -209,7 +218,7 @@ export default function Sidebar({
                   </span>
                 )}
               </div>
-              {myNotifications.length > 3 && (
+              {myNotifications.length > notificationPreviewCount && (
                 showAllNotifications ? <ChevronDown size={12} className="text-zinc-600" /> : <ChevronRight size={12} className="text-zinc-600" />
               )}
             </div>
@@ -219,7 +228,7 @@ export default function Sidebar({
             {!collapsed && myNotifications.length > 0 && (
               <div className="flex flex-col gap-1.5 px-2 mt-2 mb-2">
                 <AnimatePresence initial={false} mode="popLayout">
-                {(showAllNotifications ? myNotifications : myNotifications.slice(0, 3)).map(n => {
+                {(showAllNotifications ? myNotifications : myNotifications.slice(0, notificationPreviewCount)).map(n => {
                   let titlePart = n.message;
                   if (n.message.includes(':')) {
                     const parts = n.message.split(':');
@@ -593,13 +602,15 @@ export default function Sidebar({
       </div>
 
       {/* Footer Profile Section */}
-      <div className="p-3 pb-6 md:pb-8 border-t border-zinc-900 bg-black shrink-0">
+      {/* O `pb-8` original era folga para a barra de gestos do mobile; em
+          notebook são 20px de tela morta logo abaixo do perfil. */}
+      <div className="p-3 pb-4 short:p-2 short:pb-2.5 border-t border-zinc-900 bg-black shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             {currentUser?.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover shrink-0 border border-zinc-800 shadow-sm" />
+              <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-8 h-8 short:w-7 short:h-7 rounded-full object-cover shrink-0 border border-zinc-800 shadow-sm" />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-blue-600 flex items-center justify-center text-white text-[11px] font-bold leading-none select-none shrink-0 border border-zinc-800 shadow-sm">
+              <div className="w-8 h-8 short:w-7 short:h-7 rounded-full bg-gradient-to-tr from-purple-500 to-blue-600 flex items-center justify-center text-white text-[11px] font-bold leading-none select-none shrink-0 border border-zinc-800 shadow-sm">
                 {currentUser?.initials || 'US'}
               </div>
             )}

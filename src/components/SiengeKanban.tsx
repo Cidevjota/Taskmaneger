@@ -844,7 +844,7 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
         className="flex flex-col h-full overflow-hidden"
       >
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-900/80 shrink-0">
+      <div className="flex items-center justify-between view-pad-x py-4 short:py-2.5 border-b border-zinc-900/80 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
             <Receipt size={16} className="text-blue-400" />
@@ -964,7 +964,7 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
         onMouseLeave={handleMouseLeave}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
-        className={`flex-1 flex overflow-x-auto min-h-0 p-5 gap-4 select-none scrollbar-minimal ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 flex overflow-x-auto min-h-0 view-pad view-gap-sm select-none scrollbar-minimal ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
         {COLUMNS.map(col => {
           const colTitles = col.id === ATRASADOS_COL
@@ -982,7 +982,7 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
               onDragLeave={() => setDropTarget(null)}
               onDrop={e => handleDrop(e, col.id)}
               onDragEnd={handleDragEnd}
-              className={`flex flex-col flex-shrink-0 w-[300px] rounded-xl border transition-all duration-200 overflow-hidden ${
+              className={`flex flex-col flex-shrink-0 w-[300px] nb:w-[272px] nbs:w-[248px] rounded-xl border transition-all duration-200 overflow-hidden ${
                 isDropTarget ? `${col.bg} ${col.border}` : 'border-zinc-900/60 bg-zinc-900/20'
               }`}
             >

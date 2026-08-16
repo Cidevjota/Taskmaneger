@@ -464,16 +464,16 @@ export default function KanbanView({
     <div className="flex-1 flex flex-col min-h-0 bg-[#08080a]">
       {/* Filters Bar */}
       {!hideFilters && (
-        <div className="px-6 py-3 border-b border-zinc-900/60 flex items-center shrink-0">
+        <div className="view-pad-x py-3 short:py-2 border-b border-zinc-900/60 flex items-center flex-wrap gap-y-2 shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
+            <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Responsáveis:</span>
             <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
               <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
               <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
               <div className="flex items-center pl-1 pr-1 gap-1">
                 {sortedUsers.map(u => (
                   <button key={u.id} onClick={() => setFilterAssigneeId(u.id)} title={u.name}
-                    className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'}`}
+                    className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20' : 'border-transparent opacity-50 hover:opacity-100 hover:scale-105'}`}
                     style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
                   >
                     {u.avatarUrl ? <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" /> : <span className="text-zinc-400">{u.initials}</span>}
@@ -484,8 +484,8 @@ export default function KanbanView({
           </div>
 
           {/* Priority Filter */}
-          <div className="flex items-center gap-3 ml-6">
-            <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
+          <div className="flex items-center gap-2 xl:gap-3 ml-3 xl:ml-6">
+            <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Prioridade:</span>
             <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
               <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
               <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
@@ -508,8 +508,8 @@ export default function KanbanView({
           </div>
 
           {/* Sort Filter */}
-          <div className="flex items-center gap-3 ml-6">
-            <span className="text-xs text-zinc-500 font-medium">Ordenar:</span>
+          <div className="flex items-center gap-2 xl:gap-3 ml-3 xl:ml-6">
+            <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Ordenar:</span>
             <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
               <button
                 onClick={() => { if (sortPriority === 'asc') setSortPriority('desc'); else if (sortPriority === 'desc') setSortPriority('none'); else setSortPriority('asc'); }}
@@ -536,8 +536,8 @@ export default function KanbanView({
 
           {/* Social Media Filter */}
           {setSocialMediaFilter && (
-            <div className="flex items-center gap-3 ml-6">
-              <span className="text-xs text-zinc-500 font-medium hidden lg:inline">Acesso Rápido:</span>
+            <div className="flex items-center gap-2 xl:gap-3 ml-3 xl:ml-6">
+              <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Acesso Rápido:</span>
               <button
                 onClick={() => setSocialMediaFilter(!socialMediaFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
@@ -575,7 +575,7 @@ export default function KanbanView({
         onMouseLeave={handleMouseLeave}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
-        className={`flex-1 flex overflow-x-auto min-h-0 gap-6 select-none ${hideFilters ? 'no-scrollbar p-0 pt-1' : 'scrollbar-minimal p-6'} ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`flex-1 flex overflow-x-auto min-h-0 view-gap select-none ${hideFilters ? 'no-scrollbar p-0 pt-1' : 'scrollbar-minimal view-pad'} ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
         {COLUMNS.map((column, colIndex) => {
           const colTasks = getColTasks(column.id);
@@ -588,7 +588,7 @@ export default function KanbanView({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18, delay: colIndex * 0.03 }}
-              className="relative flex-1 min-w-[320px] max-w-[380px] h-full flex flex-col"
+              className="relative flex-1 kanban-col h-full flex flex-col"
             >
               <div
                 data-col={column.id}
@@ -804,7 +804,7 @@ export default function KanbanView({
                                         <button type="button" className="w-5 h-5 rounded-full border border-zinc-800 shrink-0 overflow-hidden hover:border-zinc-500 transition-colors bg-zinc-900 flex items-center justify-center"
                                           title={task.assigneeId && USERS.find(u => u.id === task.assigneeId)?.name || 'Sem responsável'}>
                                           {task.assigneeId && USERS.find(u => u.id === task.assigneeId)
-                                            ? <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all" />
+                                            ? <img src={USERS.find(u => u.id === task.assigneeId)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover transition-all" />
                                             : <span className="text-[10px] text-zinc-500 font-bold">+</span>}
                                         </button>
                                       }

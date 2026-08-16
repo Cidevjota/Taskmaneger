@@ -215,6 +215,16 @@ export interface SocialMediaApprovalData {
   selectedDesignTaskId?: string;
   selectedCopyEditorId?: string;
   selectedCopyTaskId?: string;
+  /** 'approved' usa a entrega de Design aprovada; 'custom' usa o print enviado aqui. */
+  imageSource?: 'approved' | 'custom';
+  /** Prints enviados direto no painel (links do Storage, nunca base64). */
+  customImageUrls?: string[];
+  /** Link externo do arquivo final (Drive, Dropbox, etc). */
+  customImageFileLink?: string;
+  /** 'approved' usa o editor de Copy filho; 'custom' usa o texto escrito aqui. */
+  copySource?: 'approved' | 'custom';
+  /** HTML do copy escrito direto no painel. */
+  customCopy?: string;
   status?: 'pending' | 'review_requested' | 'approved' | 'rejected';
   approverId?: string;
   requesterId?: string;

@@ -1384,10 +1384,10 @@ export default function TaskSheet({
 
       <div className={isCompareChild 
         ? "h-full bg-[#0c0c0e] flex flex-col text-zinc-200 w-full relative z-0 overflow-hidden" 
-        : `fixed top-0 right-0 bottom-0 z-50 bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200 transition-all duration-300 ${compareTaskId ? 'w-full' : 'w-full md:w-[75vw]'}`
+        : `fixed top-0 right-0 bottom-0 z-50 bg-[#0c0c0e] border-l border-zinc-900 shadow-2xl flex flex-col animate-slide-in text-zinc-200 transition-all duration-300 ${compareTaskId ? 'w-full' : 'w-full md:w-[75vw] nb:w-[85vw] nbs:w-[92vw]'}`
       }>
         
-        <div className="h-14 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a] relative">
+        <div className="h-14 short:h-11 px-4 border-b border-zinc-900 flex items-center justify-between shrink-0 bg-[#08080a] relative">
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-zinc-900 px-2.5 py-1 rounded font-mono text-zinc-400 font-semibold border border-zinc-900">
               {task.taskCode || 'NOVO'}
@@ -1524,7 +1524,7 @@ export default function TaskSheet({
 
         <div className="flex-1 flex overflow-hidden">
           {/* Main Task Panel */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin border-r border-zinc-900">
+          <div className="flex-1 overflow-y-auto view-pad space-y-6 short:space-y-4 scrollbar-thin border-r border-zinc-900">
           
           {task.routine?.active && (
             <div className="mb-4 bg-purple-500/10 border border-purple-500/30 text-purple-400 p-3 rounded-md flex items-center justify-between text-xs animate-pulse">
@@ -2525,7 +2525,7 @@ export default function TaskSheet({
           if (!cTask) return null;
           
           return (
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin bg-[#0c0c0e] animate-slide-in relative">
+            <div className="flex-1 overflow-y-auto view-pad space-y-6 short:space-y-4 scrollbar-thin bg-[#0c0c0e] animate-slide-in relative">
               <div className="mb-2 flex items-start gap-3">
                 <div className="mt-[2px] shrink-0 text-zinc-500">
                   <TagIcon size={28} />

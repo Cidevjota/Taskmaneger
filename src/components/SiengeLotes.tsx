@@ -453,7 +453,7 @@ export default function SiengeLotes({ lotes, titles, statusHistory, onSaveLote, 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#08080a]">
       {/* Header — mês em destaque, "Lotes de Pagamento" como subtítulo */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-900/80 shrink-0">
+      <div className="flex items-center justify-between view-pad-x py-4 short:py-2.5 border-b border-zinc-900/80 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
             <Layers size={16} className="text-blue-400" />
@@ -493,7 +493,7 @@ export default function SiengeLotes({ lotes, titles, statusHistory, onSaveLote, 
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6">
+      <div className="flex-1 overflow-y-auto view-pad-x view-pad-y flex flex-col view-gap">
         {/* Dashboard cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Valor total do período */}

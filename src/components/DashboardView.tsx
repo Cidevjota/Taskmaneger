@@ -126,7 +126,7 @@ export default function DashboardView({ tasks, projects, labels }: DashboardView
     <div className="flex-1 flex flex-col min-h-0 bg-[#0A0A0A] text-[#EDEDED]">
 
       {/* Top Filter Bar */}
-      <div className="h-14 border-b border-[#1F1F22] px-6 flex items-center gap-2 shrink-0 bg-[#0A0A0A]">
+      <div className="min-h-14 short:min-h-11 border-b border-[#1F1F22] view-pad-x py-2 flex items-center flex-wrap gap-2 shrink-0 bg-[#0A0A0A]">
         <div className="flex items-center gap-2 text-[#6B6B70] mr-3">
           <Filter size={13} strokeWidth={1.75} />
           <span className="text-[11px] font-medium uppercase tracking-[0.05em]">Filtros</span>
@@ -140,7 +140,7 @@ export default function DashboardView({ tasks, projects, labels }: DashboardView
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto view-pad scrollbar-thin">
         <OverviewTab
           tasks={tasks}
           projects={projects}
@@ -492,9 +492,9 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
   }, [filteredTasks, projects]);
 
   return (
-    <div className="space-y-10 animate-fade-in w-full">
+    <div className="flex flex-col gap-10 short:gap-5 animate-fade-in w-full">
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 view-gap">
         <MetricCard title="Entregas" value={metrics.entregas} suffix="tarefas" delta="+0%" trend="up" tooltip="Tarefas entregues no período, com comparativo ao período anterior." />
         <MetricCard title="Entregas no Prazo" value={metrics.entregasNoPrazoVal} suffix="tarefas" delta="+0%" trend="up" tooltip={metrics.entregasNoPrazoAbs} featured />
         <MetricCard title="Tempo de Ciclo (Execução)" value={metrics.avgCycleTime} suffix="dias" delta="-0.0" trend="down" goodTrend="down" tooltip="Tempo decorrido enquanto ativamente trabalhando (acumulado no timer)." />
@@ -507,10 +507,10 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 view-gap">
         {/* Donut: Criação vs Conclusão */}
-        <div className="bg-[#111113] rounded-lg p-6">
-          <div className="flex items-center justify-between mb-6">
+        <div className="bg-[#111113] rounded-lg card-pad">
+          <div className="flex items-center justify-between mb-6 short:mb-3">
             <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Criação vs Conclusão</h3>
             <div className="flex items-center gap-3 text-[11px] font-normal text-[#6B6B70]">
               <div className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[#5E6AD2] opacity-30"></span> Criadas</div>
@@ -518,7 +518,7 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
             </div>
           </div>
 
-          <div className="h-[340px] flex items-center justify-center relative">
+          <div className="h-[340px] short:h-[240px] flex items-center justify-center relative">
             {(() => {
               const criadas = metrics.criadasTotais;
               const concluidas = metrics.entregasTotais;
@@ -547,7 +547,7 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
                   </svg>
 
                   <div className="absolute flex flex-col items-center justify-center text-center">
-                    <span className="text-5xl font-extralight text-[#EDEDED] tracking-[-0.02em]">{metrics.criacaoVsConclusaoVal}<span className="text-2xl text-[#6B6B70]">x</span></span>
+                    <span className="text-5xl short:text-4xl font-extralight text-[#EDEDED] tracking-[-0.02em]">{metrics.criacaoVsConclusaoVal}<span className="text-2xl text-[#6B6B70]">x</span></span>
                     <span className="text-[11px] text-[#6B6B70] uppercase tracking-[0.05em] mt-2">Razão criação/conclusão</span>
                   </div>
                 </div>
@@ -557,8 +557,8 @@ function OverviewTab({ tasks, projects, period, member, projectFilter, taskClass
         </div>
 
         {/* Bars: Mediana por Status */}
-        <div className="bg-[#111113] rounded-lg p-6">
-          <div className="mb-6">
+        <div className="bg-[#111113] rounded-lg card-pad">
+          <div className="mb-6 short:mb-3">
             <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Mediana por Status</h3>
           </div>
 

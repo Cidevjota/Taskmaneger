@@ -119,10 +119,10 @@ export default function SiengeView({
   return (
     <div className="flex flex-col h-full bg-[#08080a]">
       {/* View Header with Tabs */}
-      <div className="flex items-center gap-6 px-6 pt-4 border-b border-zinc-800/60 shrink-0">
+      <div className="flex items-center gap-4 xl:gap-6 view-pad-x pt-4 short:pt-2.5 border-b border-zinc-800/60 shrink-0 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('titulos')}
-          className={`pb-3 text-sm font-semibold transition-colors border-b-2 ${
+          className={`pb-3 short:pb-2 text-sm short:text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors border-b-2 ${
             activeTab === 'titulos'
               ? 'text-zinc-100 border-blue-500'
               : 'text-zinc-500 border-transparent hover:text-zinc-300'
@@ -132,7 +132,7 @@ export default function SiengeView({
         </button>
         <button
           onClick={() => setActiveTab('lotes')}
-          className={`pb-3 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2 ${
+          className={`pb-3 short:pb-2 text-sm short:text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors border-b-2 flex items-center gap-2 ${
             activeTab === 'lotes'
               ? 'text-zinc-100 border-blue-500'
               : 'text-zinc-500 border-transparent hover:text-zinc-300'
@@ -147,7 +147,7 @@ export default function SiengeView({
         </button>
         <button
           onClick={() => setActiveTab('faturas')}
-          className={`pb-3 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2 ${
+          className={`pb-3 short:pb-2 text-sm short:text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors border-b-2 flex items-center gap-2 ${
             activeTab === 'faturas'
               ? 'text-zinc-100 border-blue-500'
               : 'text-zinc-500 border-transparent hover:text-zinc-300'
@@ -163,7 +163,7 @@ export default function SiengeView({
         {showMetasTab && (
           <button
             onClick={() => setActiveTab('metas')}
-            className={`pb-3 text-sm font-semibold transition-colors border-b-2 ${
+            className={`pb-3 short:pb-2 text-sm short:text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors border-b-2 ${
               activeTab === 'metas'
                 ? 'text-zinc-100 border-blue-500'
                 : 'text-zinc-500 border-transparent hover:text-zinc-300'
@@ -175,7 +175,7 @@ export default function SiengeView({
         {showMetasTab && (
           <button
             onClick={() => setActiveTab('vendas')}
-            className={`pb-3 text-sm font-semibold transition-colors border-b-2 ${
+            className={`pb-3 short:pb-2 text-sm short:text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors border-b-2 ${
               activeTab === 'vendas'
                 ? 'text-zinc-100 border-blue-500'
                 : 'text-zinc-500 border-transparent hover:text-zinc-300'

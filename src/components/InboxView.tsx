@@ -305,9 +305,9 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#08080a] text-zinc-100 font-sans">
-      <header className="px-6 py-4 border-b border-zinc-800/40 shrink-0 flex flex-col gap-4">
+      <header className="view-pad-x py-4 short:py-2.5 border-b border-zinc-800/40 shrink-0 flex flex-col gap-4 short:gap-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 xl:gap-6 min-w-0">
             <div>
               <h1 className="text-lg font-semibold flex items-center gap-2">
                 <Inbox size={18} className="text-zinc-400" />
@@ -386,12 +386,12 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
         </div>
       </header>
 
-      <div className="flex-1 p-6 overflow-hidden">
+      <div className="flex-1 view-pad overflow-hidden">
         {/* Full width container, 12 columns grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full w-full">
+        <div className="grid grid-cols-1 xl:grid-cols-12 view-gap h-full w-full overflow-y-auto xl:overflow-visible">
           
           {/* Coluna 1: Ativas (3 colunas de 12) */}
-          <div className="lg:col-span-3 flex flex-col h-full bg-transparent border border-zinc-800/40 rounded-lg overflow-hidden">
+          <div className="xl:col-span-3 flex flex-col min-h-[260px] xl:h-full bg-transparent border border-zinc-800/40 rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-zinc-800/40 bg-[#0c0c0e] flex items-center justify-between shrink-0">
               <h3 className="text-[13px] font-semibold text-zinc-300 flex items-center gap-2">
                 Ativas
@@ -436,7 +436,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
           </div>
 
           {/* Coluna 2: Arquivadas (4 colunas de 12) */}
-          <div className="lg:col-span-4 flex flex-col h-full bg-transparent border border-zinc-800/40 rounded-lg overflow-hidden">
+          <div className="xl:col-span-4 flex flex-col min-h-[260px] xl:h-full bg-transparent border border-zinc-800/40 rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-zinc-800/40 bg-[#0c0c0e] flex items-center justify-between shrink-0">
               <h3 className="text-[13px] font-semibold text-zinc-400 flex items-center gap-2">
                 Arquivadas
@@ -468,7 +468,7 @@ export default function InboxView({ tasks, projects, onSelectTask }: InboxViewPr
           </div>
 
           {/* Coluna 3: Dashboard (5 colunas de 12) */}
-          <div className="lg:col-span-5 flex flex-col h-full bg-transparent rounded-lg overflow-hidden">
+          <div className="xl:col-span-5 flex flex-col min-h-[260px] xl:h-full bg-transparent rounded-lg overflow-hidden">
             <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-6 pr-2">
               
               {/* KPIs Header */}

@@ -383,7 +383,7 @@ export default function SiengeConfigPanel({
       className="flex flex-col h-full overflow-hidden bg-[#08080a]"
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-900/80 shrink-0">
+      <div className="flex items-center gap-3 view-pad-x py-4 short:py-2.5 border-b border-zinc-900/80 shrink-0">
         <button
           onClick={onClose}
           title="Voltar para Títulos"
@@ -401,7 +401,7 @@ export default function SiengeConfigPanel({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
+      <div className="flex-1 overflow-y-auto view-pad flex flex-col view-gap-sm">
         <AlcadaSection alcadaConfig={alcadaConfig} onSaveAlcadaConfig={onSaveAlcadaConfig} />
 
         {taxonomy.centrosCusto.map(cc => (

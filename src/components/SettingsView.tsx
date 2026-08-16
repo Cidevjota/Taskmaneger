@@ -38,7 +38,7 @@ export default function SettingsView({ isDarkMode, onToggleDarkMode }: SettingsV
   const visibleTabs = TABS.filter(t => !t.adminOnly || isAdmin);
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-y-auto select-none space-y-5 max-w-5xl text-zinc-200 bg-[#08080a]">
+    <div className="flex-1 flex flex-col view-pad overflow-y-auto select-none space-y-5 short:space-y-3 max-w-5xl w-full text-zinc-200 bg-[#08080a]">
       <div className="flex items-center gap-2.5 bg-zinc-950/50 p-4 rounded-lg border border-zinc-900">
         <Settings size={15} className="text-zinc-400" />
         <div>
@@ -49,7 +49,7 @@ export default function SettingsView({ isDarkMode, onToggleDarkMode }: SettingsV
         </div>
       </div>
 
-      <div className="flex gap-6 items-start">
+      <div className="flex flex-wrap gap-3 xl:gap-6 items-start">
         {/* Navegação lateral */}
         <nav className="w-44 shrink-0 space-y-0.5">
           {visibleTabs.map(tab => {
@@ -123,7 +123,7 @@ function AppearanceTab({ isDarkMode, onToggleDarkMode }: { isDarkMode: boolean; 
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div className="grid grid-cols-1 md:grid-cols-2 view-gap-sm">
       <div className="bg-zinc-950/30 border border-zinc-900 rounded-lg p-5 space-y-4">
         <h3 className="text-xs font-bold font-mono text-zinc-200 uppercase tracking-widest flex items-center gap-1.5 pb-2 border-b border-zinc-900">
           <Palette size={12} className="text-zinc-450" />

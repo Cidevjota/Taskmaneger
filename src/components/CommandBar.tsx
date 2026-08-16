@@ -230,7 +230,7 @@ export default function CommandBar({
   let globalCount = 0;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] z-50 animate-fade-in px-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] short:pt-[8vh] z-50 animate-fade-in px-4">
       <div 
         ref={dropdownRef}
         className="w-full max-w-[640px] bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden flex flex-col"
@@ -259,7 +259,7 @@ export default function CommandBar({
         </div>
 
         {/* Categories and elements lists */}
-        <div className="max-h-[380px] overflow-y-auto p-2 space-y-4 scrollbar-thin">
+        <div className="max-h-[380px] short:max-h-[calc(100dvh-16rem)] overflow-y-auto p-2 space-y-4 scrollbar-thin">
           {filteredItems.length === 0 ? (
             <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center gap-1">
               <Search size={22} className="text-gray-600 mb-2" />

@@ -435,7 +435,7 @@ export default function SiengeTitleModal({
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
+        <div className="flex items-center justify-between view-pad-x py-4 short:py-2.5 border-b border-zinc-800/60">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
               <Hash size={14} className="text-blue-400" />
@@ -475,7 +475,7 @@ export default function SiengeTitleModal({
 
         {/* Body */}
         {isLocked ? (
-          <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[70vh]">
+          <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto modal-body-h">
             {/* Título + Status */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -697,7 +697,7 @@ export default function SiengeTitleModal({
             </div>
           </div>
         ) : (
-        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[70vh]">
+        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto modal-body-h">
           {/* Row 1: Título (number) */}
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">

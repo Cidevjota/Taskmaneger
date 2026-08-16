@@ -142,7 +142,7 @@ export default function SiengeMensalidadeModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-[#0d0d10] border border-zinc-800/80 rounded-2xl shadow-2xl shadow-black/50 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
+        <div className="flex items-center justify-between view-pad-x py-4 short:py-2.5 border-b border-zinc-800/60">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
               <Repeat size={15} className="text-blue-400" />
@@ -156,7 +156,7 @@ export default function SiengeMensalidadeModal({
           </button>
         </div>
 
-        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto max-h-[70vh]">
+        <div className="flex flex-col gap-4 px-6 py-5 overflow-y-auto modal-body-h">
           <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-500/5 border border-blue-500/20 rounded-lg text-[11px] text-blue-300/90 leading-relaxed">
             <AlertCircle size={13} className="shrink-0 mt-0.5" />
             Todo dia 01 esta mensalidade vira um título novo em "A Lançar", com vencimento no dia escolhido do mês vigente.

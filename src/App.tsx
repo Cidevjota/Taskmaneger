@@ -44,6 +44,10 @@ import SiengeView from './components/SiengeView';
 import DashboardView from './components/DashboardView';
 import HomeView from './components/HomeView';
 
+// Espelha o breakpoint `nbs` do index.css (largura < 1280px). Manter os dois
+// em sincronia: é o limiar em que a sidebar deixa de caber junto do conteúdo.
+const NARROW_VIEWPORT_QUERY = '(max-width: 1279.98px)';
+
 // Stable color per user — used for presence avatars / ring
 function colorFor(userId: string) {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
@@ -96,7 +100,21 @@ export default function App() {
   // Navigation Routing states
   const [activeView, setActiveView] = useState<ViewType>('home');
   const [activeTaskViewType, setActiveTaskViewType] = useState<'board' | 'list'>('board');
-  const [collapsed, setCollapsed] = useState(false);
+  // A sidebar expandida come 280px — 20% de um notebook de 1366px, e é o que
+  // sobra de largura para o kanban. Abaixo de 1280px ela nasce recolhida e volta
+  // sozinha quando a janela cresce. O listener reage só à TRANSIÇÃO do limiar
+  // (não a cada resize), então um toggle manual dentro da mesma faixa nunca é
+  // desfeito pelo sistema.
+  const [collapsed, setCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(NARROW_VIEWPORT_QUERY).matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_VIEWPORT_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setCollapsed(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // Database core states using React Query
   const queryClient = useQueryClient();
@@ -1329,7 +1347,7 @@ export default function App() {
     // então recolhe os insets aqui para não passar por baixo do recorte nem do
     // indicador de gestos. Em telas sem recorte os env() valem 0.
     <div
-      className={`h-screen flex overflow-hidden bg-[#08080a] text-zinc-100 ${isDarkMode ? 'dark' : ''}`}
+      className={`h-dvh flex overflow-hidden bg-[#08080a] text-zinc-100 ${isDarkMode ? 'dark' : ''}`}
       style={{
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -1359,21 +1377,23 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
         
         {/* Top Header navbar */}
-        <header className="h-12 border-b border-zinc-900 px-6 flex items-center justify-between shrink-0 bg-[#08080a]/60 backdrop-blur-md z-10 select-none">
-          <div className="flex items-center gap-3">
-            <span className="text-zinc-500 text-[11px] font-semibold tracking-wider font-sans uppercase">Workspace</span>
-            <span className="text-zinc-500 text-xs">/</span>
-            
+        <header className="appbar-h border-b border-zinc-900 view-pad-x flex items-center justify-between gap-3 shrink-0 bg-[#08080a]/60 backdrop-blur-md z-10 select-none">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* "Workspace /" é redundante quando o espaço aperta — o rótulo da
+                view sozinho já orienta, e a largura vai para o filtro ativo. */}
+            <span className="hidden xl:inline text-zinc-500 text-[11px] font-semibold tracking-wider font-sans uppercase">Workspace</span>
+            <span className="hidden xl:inline text-zinc-500 text-xs">/</span>
+
             {/* Breadcrumb indicator */}
-            <span className="text-[11px] font-semibold text-zinc-200 tracking-tight flex items-center gap-1.5 font-sans">
+            <span className="text-[11px] font-semibold text-zinc-200 tracking-tight flex items-center gap-1.5 font-sans whitespace-nowrap">
               {getBreadcrumbLabel()}
             </span>
 
             {/* Active Project Filter box */}
             {currentProjectFilter && activeProjectObject && (
-              <div className="hidden sm:flex items-center gap-1.5 ml-4 bg-zinc-900/60 text-zinc-300 border border-zinc-800/80 px-2 py-0.5 rounded-md text-[10px] font-sans font-medium">
-                <span className={`w-1.5 h-1.5 rounded-full bg-current ${activeProjectObject.color}`} />
-                <span>{activeProjectObject.name}</span>
+              <div className="hidden sm:flex items-center gap-1.5 ml-1 lg:ml-4 min-w-0 bg-zinc-900/60 text-zinc-300 border border-zinc-800/80 px-2 py-0.5 rounded-md text-[10px] font-sans font-medium">
+                <span className={`w-1.5 h-1.5 rounded-full bg-current shrink-0 ${activeProjectObject.color}`} />
+                <span className="truncate max-w-[16ch] lg:max-w-none" title={activeProjectObject.name}>{activeProjectObject.name}</span>
                 <button
                   onClick={() => setCurrentProjectFilter(null)}
                   className="hover:text-zinc-100 transition-colors ml-1 text-zinc-400 font-bold"

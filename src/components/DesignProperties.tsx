@@ -518,7 +518,7 @@ export default function DesignProperties({ task, allTasks = [], saveChange, them
 
   return (
     <div className="flex flex-col bg-[#08080a]/40 rounded-md border border-zinc-900/40 animate-slide-down overflow-hidden mt-2">
-      <div className="grid grid-cols-2 gap-8 px-5 pt-5 pb-5">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:gap-8 view-pad">
         
         <div className="flex flex-col gap-4">
           {!task.designBriefing?.isFilled && !isEditing ? (

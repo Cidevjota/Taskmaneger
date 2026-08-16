@@ -24,17 +24,17 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#08080a] flex items-center justify-center p-4 selection:bg-blue-500/30">
+    <div className="min-h-dvh bg-[#08080a] flex items-center justify-center p-4 selection:bg-blue-500/30">
       <div className="w-full max-w-md">
         
         {/* Logo / Brand */}
-        <div className="flex flex-col items-center justify-center mb-10 animate-fade-in">
-          <img src="/Logo_Primaria.png" alt="Orbit Logo" className="h-14 mb-4 object-contain" />
+        <div className="flex flex-col items-center justify-center mb-10 short:mb-6 animate-fade-in">
+          <img src="/Logo_Primaria.png" alt="Orbit Logo" className="h-14 short:h-11 mb-4 object-contain" />
           <h1 className="text-3xl font-bold text-zinc-100 tracking-tight">Orbit</h1>
         </div>
 
         {/* Login Card */}
-        <div className="bg-[#121214] border border-zinc-800/80 rounded-2xl p-8 shadow-2xl shadow-black/50 animate-slide-up">
+        <div className="bg-[#121214] border border-zinc-800/80 rounded-2xl p-8 short:p-6 shadow-2xl shadow-black/50 animate-slide-up">
           <h2 className="text-lg font-semibold text-zinc-200 mb-6">Acesse sua conta</h2>
           
           <form onSubmit={handleSubmit} className="space-y-4">

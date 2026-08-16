@@ -1158,3 +1158,128 @@
   scrollbar-width: none;  /* Firefox */
 }
 
+/* ============================================================================
+   ORBIT — SISTEMA DE DENSIDADE (TELAS PEQUENAS DE NOTEBOOK)
+   ----------------------------------------------------------------------------
+   O gargalo de um notebook NÃO é a largura, é a ALTURA. Um 1366x768 entrega
+   ~640px de viewport depois da barra do navegador e da barra de tarefas do
+   Windows; um 1920x1080 a 150% (padrão de fábrica de muitos notebooks) entrega
+   1280x720 em pixels CSS. Os breakpoints do Tailwind (sm..2xl) só olham
+   largura, então tratam 1280x640 e 1280x1440 como a mesma tela — que é
+   exatamente o erro que deixa o app apertado nesses aparelhos.
+
+   Por isso a densidade vive em tokens `--d-*` governados por ALTURA, e a
+   largura só governa o que é de fato horizontal (sidebar, coluna de kanban).
+   Toda a régua de espaçamento do app passa a sair daqui: mudar um valor nesta
+   seção reflete em todas as telas de uma vez.
+
+   Régua vertical:
+     base            altura >= 860px   desktop / monitor externo
+     short           altura <  860px   notebook 1440x900, 1920x1080@150%
+     xshort          altura <  720px   notebook 1366x768 (o caso crítico)
+
+   Régua horizontal:
+     base            largura >= 1536px
+     nb              largura <  1536px  1920@125%, 1440
+     nbs             largura <  1280px  1366 com sidebar aberta, 1280
+   ========================================================================== */
+
+@custom-variant short (@media (max-height: 859.98px));
+@custom-variant xshort (@media (max-height: 719.98px));
+@custom-variant nb (@media (max-width: 1535.98px));
+@custom-variant nbs (@media (max-width: 1279.98px));
+
+:root {
+  /* Espaçamento de página (o antigo `p-6` hardcoded das views) */
+  --d-pad: 1.5rem;
+  /* Respiro entre blocos de uma view */
+  --d-gap: 1.5rem;
+  --d-gap-sm: 1rem;
+  /* Altura das barras fixas (header do app, header de view) */
+  --d-appbar: 3rem;
+  /* Padding interno de card/painel */
+  --d-card-pad: 1.5rem;
+  /* Largura da sidebar expandida */
+  --d-sidebar-w: 280px;
+  /* Largura mínima de uma coluna do kanban */
+  --d-col-w: 320px;
+  --d-col-w-max: 380px;
+  /* Altura de lista rolável dentro de card (Início, Meus Documentos) */
+  --d-list-min: 250px;
+  --d-list-max: 350px;
+}
+
+@media (max-height: 859.98px) {
+  :root {
+    --d-pad: 1rem;
+    --d-gap: 1rem;
+    --d-gap-sm: 0.75rem;
+    --d-appbar: 2.75rem;
+    --d-card-pad: 1.125rem;
+    --d-list-min: 180px;
+    --d-list-max: 300px;
+  }
+}
+
+@media (max-height: 719.98px) {
+  :root {
+    --d-pad: 0.75rem;
+    --d-gap: 0.75rem;
+    --d-gap-sm: 0.625rem;
+    --d-appbar: 2.5rem;
+    --d-card-pad: 0.875rem;
+    --d-list-min: 150px;
+    --d-list-max: 260px;
+  }
+}
+
+@media (max-width: 1535.98px) {
+  :root {
+    --d-sidebar-w: 248px;
+    --d-col-w: 288px;
+    --d-col-w-max: 340px;
+  }
+}
+
+@media (max-width: 1279.98px) {
+  :root {
+    --d-sidebar-w: 224px;
+    --d-col-w: 264px;
+    --d-col-w-max: 320px;
+  }
+}
+
+/* --- Utilitários semânticos --------------------------------------------
+   Preferir estes a `p-6`/`gap-6` em qualquer shell de view: eles já vêm
+   com a resposta certa para cada faixa de altura. */
+@utility view-pad { padding: var(--d-pad); }
+@utility view-pad-x { padding-inline: var(--d-pad); }
+@utility view-pad-y { padding-block: var(--d-pad); }
+@utility view-gap { gap: var(--d-gap); }
+@utility view-gap-sm { gap: var(--d-gap-sm); }
+@utility card-pad { padding: var(--d-card-pad); }
+@utility appbar-h { height: var(--d-appbar); }
+@utility sidebar-w { width: var(--d-sidebar-w); }
+@utility kanban-col {
+  min-width: var(--d-col-w);
+  max-width: var(--d-col-w-max);
+}
+@utility card-list-h {
+  min-height: var(--d-list-min);
+  max-height: var(--d-list-max);
+}
+
+/* Altura máxima de corpo de modal. `70vh` fixo desperdiça tela grande e
+   estoura tela pequena (70vh + header + footer + margem > viewport em 640px de
+   altura). O cálculo desconta o cromo real do modal. */
+@utility modal-body-h { max-height: calc(100dvh - 11rem); }
+
+@media (max-height: 719.98px) {
+  /* Barra de rolagem de 10px come largura útil em coluna estreita de
+     notebook; nessas telas ela encolhe junto com o resto. */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+}
+

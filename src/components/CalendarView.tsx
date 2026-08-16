@@ -342,17 +342,17 @@ export default function CalendarView({
           <div className="w-12 h-1 rounded-full bg-zinc-800 group-hover:bg-zinc-600 transition-colors" />
         </div>
         
-        <div className="max-h-0 overflow-hidden opacity-0 group-hover:max-h-[80px] group-hover:opacity-100 transition-all duration-300 ease-in-out">
-          <div className="px-6 pb-3 pt-1 flex items-center">
+        <div className="max-h-0 overflow-hidden opacity-0 group-hover:max-h-[160px] group-hover:opacity-100 transition-all duration-300 ease-in-out">
+          <div className="view-pad-x pb-3 pt-1 flex items-center flex-wrap gap-y-2">
             <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-500 font-medium">Responsáveis:</span>
+          <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Responsáveis:</span>
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
             <button onClick={() => setFilterAssigneeId('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterAssigneeId === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todos</button>
             <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
             <div className="flex items-center pl-1 pr-1 gap-1">
               {sortedUsers.map(u => (
                 <button key={u.id} onClick={() => setFilterAssigneeId(u.id)} title={u.name}
-                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'}`}
+                  className={`relative w-6 h-6 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[9px] font-bold shrink-0 ${filterAssigneeId === u.id ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20' : 'border-transparent opacity-50 hover:opacity-100 hover:scale-105'}`}
                   style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
                 >
                   {u.avatarUrl ? <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" /> : <span className="text-zinc-400">{u.initials}</span>}
@@ -363,8 +363,8 @@ export default function CalendarView({
         </div>
 
         {/* Priority Filter */}
-        <div className="flex items-center gap-3 ml-6">
-          <span className="text-xs text-zinc-500 font-medium">Prioridade:</span>
+        <div className="flex items-center gap-2 xl:gap-3 ml-3 xl:ml-6">
+          <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Prioridade:</span>
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
             <button onClick={() => setFilterPriority('all')} className={`text-[10px] px-3 py-1 rounded-full font-medium transition-all ${filterPriority === 'all' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}>Todas</button>
             <div className="w-[1px] h-4 bg-zinc-800 mx-0.5" />
@@ -387,8 +387,8 @@ export default function CalendarView({
         </div>
 
         {/* Sort Filter */}
-        <div className="flex items-center gap-3 ml-6">
-          <span className="text-xs text-zinc-500 font-medium">Ordenar:</span>
+        <div className="flex items-center gap-2 xl:gap-3 ml-3 xl:ml-6">
+          <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Ordenar:</span>
           <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
             <button
               onClick={() => { if (sortPriority === 'asc') setSortPriority('desc'); else if (sortPriority === 'desc') setSortPriority('none'); else setSortPriority('asc'); }}
@@ -415,8 +415,8 @@ export default function CalendarView({
 
         {/* Social Media Filter */}
         {setSocialMediaFilter && (
-          <div className="flex items-center gap-3 ml-6">
-            <span className="text-xs text-zinc-500 font-medium hidden lg:inline">Acesso Rápido:</span>
+          <div className="flex items-center gap-2 xl:gap-3 ml-3 xl:ml-6">
+            <span className="hidden xl:inline text-xs text-zinc-500 font-medium">Acesso Rápido:</span>
             <button
               onClick={() => setSocialMediaFilter(!socialMediaFilter)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
@@ -434,9 +434,9 @@ export default function CalendarView({
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col p-6 overflow-y-auto select-none space-y-4">
+      <div className="flex-1 flex flex-col view-pad overflow-y-auto select-none space-y-4 short:space-y-2">
         {/* Calendar Header */}
-      <div className="flex items-center justify-between bg-zinc-950/50 p-4 rounded-lg border border-zinc-900 shrink-0">
+      <div className="flex items-center justify-between bg-zinc-950/50 p-4 short:p-2.5 rounded-lg border border-zinc-900 shrink-0">
         <div className="flex items-center gap-2">
           <CalendarIcon size={14} className="text-zinc-400" />
           <h2 className="text-xs font-semibold text-zinc-350 uppercase tracking-widest font-mono">
@@ -451,10 +451,10 @@ export default function CalendarView({
         </div>
       </div>
 
-      <div className="flex-1 flex gap-4 min-h-[460px] overflow-hidden">
+      <div className="flex-1 flex gap-4 short:gap-2.5 min-h-[460px] short:min-h-[340px] xshort:min-h-[280px] overflow-hidden">
         <div className="flex-1 border border-zinc-900 rounded-lg overflow-hidden bg-[#121214]/30 flex flex-col min-w-0">
           {/* Days of the week header - sticky */}
-          <div className="grid grid-cols-7 h-10 border-b border-zinc-900 text-center items-center font-mono text-[9px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-950 select-none shrink-0 z-10">
+          <div className="grid grid-cols-7 h-10 short:h-8 border-b border-zinc-900 text-center items-center font-mono text-[9px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-950 select-none shrink-0 z-10">
             {daysHeader.map(d => (
               <div key={d}>{d}</div>
             ))}
@@ -477,7 +477,7 @@ export default function CalendarView({
                 onDragOver={(e) => handleDragOver(e, dateStr)}
                 onDragLeave={(e) => handleDragLeave(e, dateStr)}
                 onDrop={(e) => handleDrop(e, dateStr)}
-                className={`p-1.5 min-h-[150px] hover:bg-zinc-900/40 flex flex-col transition-colors group relative ${
+                className={`p-1.5 min-h-[150px] short:min-h-[104px] xshort:min-h-[86px] hover:bg-zinc-900/40 flex flex-col transition-colors group relative ${
                   isTarget ? 'bg-blue-500/10' : isToday ? 'bg-zinc-900/10' : ''
                 }`}
               >

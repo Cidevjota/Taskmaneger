@@ -720,9 +720,9 @@ export default function ListView({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-6 py-6 pb-2 space-y-4 bg-[#08080a]">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden view-pad-x view-pad-y pb-2 space-y-3 bg-[#08080a]">
       {/* Header filter options strip */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-950/50 p-3 rounded-lg border border-zinc-900 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-950/50 p-3 short:p-2 rounded-lg border border-zinc-900 shrink-0">
         
         {/* Search input */}
         <div className="relative flex-1 max-w-sm">
@@ -736,10 +736,10 @@ export default function ListView({
           />
         </div>
 
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2 xl:gap-4 flex-wrap">
           {/* Assignee Filter */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">Responsável:</span>
+            <span className="hidden xl:inline text-[10px] font-mono uppercase text-zinc-500 font-semibold">Responsável:</span>
             
             <div className="flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50">
               <button
@@ -760,9 +760,9 @@ export default function ListView({
                     onClick={() => setFilterAssigneeId(u.id)}
                     title={u.name}
                     className={`relative w-5 h-5 rounded-full border-2 transition-all duration-300 overflow-hidden flex items-center justify-center text-[8px] font-bold shrink-0 ${
-                      filterAssigneeId === u.id 
-                        ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20 grayscale-0' 
-                        : 'border-transparent opacity-50 hover:opacity-100 grayscale hover:grayscale-0 hover:scale-105'
+                      filterAssigneeId === u.id
+                        ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/20'
+                        : 'border-transparent opacity-50 hover:opacity-100 hover:scale-105'
                     }`}
                     style={{ backgroundColor: u.avatarUrl ? 'transparent' : '#27272a' }}
                   >
@@ -931,13 +931,13 @@ export default function ListView({
 
       {/* Main Container list rendering */}
       {filteredTasks.length === 0 ? (
-        <div className="flex-1 border border-dashed border-zinc-900 rounded-xl p-12 text-center text-zinc-600 bg-transparent flex flex-col items-center justify-center">
+        <div className="flex-1 border border-dashed border-zinc-900 rounded-xl p-12 short:p-6 text-center text-zinc-600 bg-transparent flex flex-col items-center justify-center">
           <Inbox size={22} className="text-zinc-600 mb-2" />
           <p className="text-xs font-semibold">Nenhuma tarefa correspondente</p>
           <p className="text-[11px] text-zinc-650">Altere o filtro de pesquisa ou de empreendimentos</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-auto pb-20 scrollbar-minimal min-h-0">
+        <div className="flex-1 overflow-auto pb-8 scrollbar-minimal min-h-0">
           <div className="min-w-fit">
             {renderGroupedContent()}
           </div>

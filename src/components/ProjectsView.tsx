@@ -129,7 +129,7 @@ export default function ProjectsView({
   };
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-y-auto select-none space-y-6 bg-[#08080a]">
+    <div className="flex-1 flex flex-col view-pad overflow-y-auto select-none view-gap bg-[#08080a]">
 
       {/* Projects Title Banner */}
       <div className="flex items-center justify-between bg-zinc-950/50 p-4 rounded-lg border border-zinc-900">
@@ -244,7 +244,7 @@ export default function ProjectsView({
       )}
 
       {/* Grid of Projects */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 view-gap-sm">
         {projects.map(project => {
           const projectTasks = tasks.filter(t => t.projectId === project.id);
           const totalTasks = projectTasks.length;
@@ -259,7 +259,7 @@ export default function ProjectsView({
               onClick={() => onSelectProjectFilter(project.id)}
             >
               {/* Cover */}
-              <div className={`relative h-28 shrink-0 overflow-hidden ${project.color}`}>
+              <div className={`relative h-28 short:h-20 shrink-0 overflow-hidden ${project.color}`}>
                 {project.coverImage ? (
                   <img
                     src={project.coverImage}
