@@ -810,7 +810,32 @@ export default function TaskSheet({
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
-  
+
+  // Hierarquia tem três estados, percorridos ao clicar no título:
+  // recolhida (ícone) → normal → maximizada (toma o espaço de Documentos) → recolhida.
+  const [isHierarchyMaximized, setIsHierarchyMaximized] = useState(false);
+  const attachmentsBeforeMaximizeRef = useRef(true);
+
+  const cycleHierarchy = () => {
+    if (!openSections.hierarchy) {
+      setOpenSections(prev => ({ ...prev, hierarchy: true }));
+      return;
+    }
+    if (!isHierarchyMaximized) {
+      // Guarda o estado de Documentos para devolvê-lo ao sair do modo maximizado.
+      attachmentsBeforeMaximizeRef.current = openSections.attachments;
+      setOpenSections(prev => ({ ...prev, attachments: false }));
+      setIsHierarchyMaximized(true);
+      return;
+    }
+    setIsHierarchyMaximized(false);
+    setOpenSections(prev => ({
+      ...prev,
+      hierarchy: false,
+      attachments: attachmentsBeforeMaximizeRef.current,
+    }));
+  };
+
   const [animatingToIndex, setAnimatingToIndex] = useState<number | null>(null);
   const [currentVisibleIndex, setCurrentVisibleIndex] = useState<number>(-1);
   const [isLinkDropdownOpen, setIsLinkDropdownOpen] = useState(false);
@@ -871,7 +896,8 @@ export default function TaskSheet({
     setAssigneeId(task?.assigneeId);
     setSubtasks(task?.subtasks || []);
     setShowDeleteConfirm(false);
-    
+    setIsHierarchyMaximized(false);
+
     setAnimatingToIndex(null);
     setCurrentVisibleIndex(-1);
   }
@@ -1982,6 +2008,9 @@ export default function TaskSheet({
           <div className="flex flex-row gap-4 items-start">
             {/* ═══ CHECKLIST — always visible, grows to fill ═══ */}
             <div id="section-checklist" className={`flex flex-col gap-3 transition-all duration-300 order-1 ${
+              // Com a Hierarquia maximizada, é ela que absorve o espaço de Documentos —
+              // o checklist mantém a largura que já tinha.
+              isHierarchyMaximized ? 'flex-1' :
               !openSections.hierarchy && !openSections.attachments ? 'flex-[3]' :
               !openSections.hierarchy || !openSections.attachments ? 'flex-[2]' :
               'flex-1'
@@ -2062,19 +2091,27 @@ export default function TaskSheet({
                 </div>
             </div>
 
-            {/* ═══ HIERARCHY — collapses to icon ═══ */}
+            {/* ═══ HIERARCHY — collapses to icon / maximizes over Documentos ═══ */}
             <div className={`flex flex-col gap-3 transition-all duration-300 order-3 ${
+              isHierarchyMaximized ? 'flex-[2] min-w-0' :
               openSections.hierarchy ? 'flex-1 min-w-0' : 'w-auto shrink-0'
             }`}>
                <button
-                  onClick={() => toggleSection('hierarchy')}
+                  onClick={cycleHierarchy}
                   className={`text-xs font-semibold font-sans flex items-center uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-all ${openSections.hierarchy ? 'gap-1.5 w-full text-left' : 'flex-col gap-2 justify-center py-4 bg-[#08080a]/40 border border-zinc-900 rounded-md h-full min-h-[200px]'}`}
-                  title={!openSections.hierarchy ? "Expandir Hierarquia" : undefined}
+                  title={
+                    !openSections.hierarchy ? 'Expandir Hierarquia'
+                    : !isHierarchyMaximized ? 'Ampliar sobre o espaço de Documentos'
+                    : 'Recolher Hierarquia'
+                  }
                 >
                   {openSections.hierarchy ? (
                     <>
                       <ChevronDown size={14} />
                       Hierarquia
+                      <span className="ml-auto text-zinc-500 shrink-0">
+                        {isHierarchyMaximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                      </span>
                     </>
                   ) : (
                     <>
@@ -2380,7 +2417,7 @@ export default function TaskSheet({
               openSections.attachments ? 'flex-1 min-w-0' : 'w-auto shrink-0'
             }`}>
               <button
-                onClick={() => toggleSection('attachments')}
+                onClick={() => { setIsHierarchyMaximized(false); toggleSection('attachments'); }}
                 className={`text-xs font-semibold font-sans flex items-center uppercase tracking-wider ${themeTextColor} hover:opacity-80 transition-all ${openSections.attachments ? 'gap-1.5 w-full text-left' : 'flex-col gap-2 justify-center py-4 bg-[#08080a]/40 border border-zinc-900 rounded-md h-full min-h-[200px]'}`}
                 title={!openSections.attachments ? "Expandir Documentos" : undefined}
               >
