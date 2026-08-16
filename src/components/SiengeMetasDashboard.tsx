@@ -10,7 +10,7 @@ import SiengeAlocacaoModal from './SiengeAlocacaoModal';
 import SiengeSpendChart from './SiengeSpendChart';
 import { analyzeProjectsForPeriod, buildCategoriasBase } from '../lib/siengeMetasAnalysis';
 import { CENTRO_CUSTO_LABELS, SiengeTaxonomy } from '../lib/siengeCategorias';
-import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, getRitmoMes, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
+import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, categoriaKey, getRitmoMes, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
 
 const RESTRICTED_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
 
@@ -162,13 +162,19 @@ export default function SiengeMetasDashboard({
   // Fatia do VGV alocada ao centro filtrado, por empreendimento. Sem filtro vale a
   // regra geral dos 2%.
   const pctOrcamentoFor = useMemo(() => {
+    // Só alocações de categorias que ainda existem entram na conta. Alocação órfã
+    // (categoria apagada) inflava o Orçamento Real do cabeçalho sem ter linha
+    // correspondente, e a soma das categorias não fechava com ele.
+    const validas = new Set(categoriasBase.filter(c => !c.obsoleta).map(c => categoriaKey(c.centroCusto, c.categoria)));
     const map = new Map<string, number>();
     if (filterCentroCusto !== 'todos') {
-      scopedCategoriaOrcamento.forEach(c => map.set(c.projectId, (map.get(c.projectId) || 0) + (c.percentual || 0)));
+      scopedCategoriaOrcamento
+        .filter(c => validas.has(categoriaKey(c.centroCusto, c.categoria)))
+        .forEach(c => map.set(c.projectId, (map.get(c.projectId) || 0) + (c.percentual || 0)));
     }
     return (projectId: string) =>
       filterCentroCusto === 'todos' ? ORCAMENTO_PCT : (map.get(projectId) || 0) / 100;
-  }, [scopedCategoriaOrcamento, filterCentroCusto]);
+  }, [scopedCategoriaOrcamento, filterCentroCusto, categoriasBase]);
 
   const analysis = useMemo(
     () => analyzeProjectsForPeriod(scopedProjects, scopedTitles, projectMetas, scopedCategoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase),
@@ -209,8 +215,8 @@ export default function SiengeMetasDashboard({
   }, [year, month, controleInicio]);
 
   const budgetPeriodo = useMemo(
-    () => scopedProjects.map(p => analyzeProjectBudgetPeriodo(p, vendas, scopedTitles, deData, ateData, pctOrcamentoFor(p.id))),
-    [scopedProjects, vendas, scopedTitles, deData, ateData, pctOrcamentoFor]
+    () => scopedProjects.map(p => analyzeProjectBudgetPeriodo(p, vendas, scopedTitles, deData, ateData, pctOrcamentoFor(p.id), categoriasBase)),
+    [scopedProjects, vendas, scopedTitles, deData, ateData, pctOrcamentoFor, categoriasBase]
   );
 
   const budgetPeriodoByProjectId = useMemo(() => new Map(budgetPeriodo.map(b => [b.project.id, b])), [budgetPeriodo]);
@@ -491,61 +497,108 @@ export default function SiengeMetasDashboard({
                   return (
                   <div
                     key={a.project.id}
-                    className={`bg-[#111113] rounded-lg p-5 flex flex-col gap-3 ${
+                    className={`bg-[#101012] border border-[#1A1A1E] rounded-xl p-5 flex flex-col gap-3.5 ${
                       // Último card sozinho na linha (contagem ímpar) ocupa a linha inteira, evitando buraco no grid.
                       analysis.length % 2 === 1 && i === analysis.length - 1 ? 'lg:col-span-2' : ''
                     }`}
                   >
-                    {/* Todas as linhas (título, VGV, categorias) partem do mesmo x — nenhum
-                        indenta com ícone/bullet — para o texto ficar alinhado verticalmente. */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2 text-[13px] font-normal text-[#EDEDED] truncate min-w-0">
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: a.project.color }} />
+                    {/* ── Identidade ─────────────────────────────────────────── */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: a.project.color }} />
+                      <span className="text-[11px] font-medium text-[#8B8B93] uppercase tracking-[0.08em] truncate">
                         {a.project.name}
                       </span>
-                      {/* Gasto do período em destaque; o estouro/economia vem abaixo, menor. */}
-                      <div className="flex flex-col items-end shrink-0">
-                        <span title="Gasto real do período selecionado" className="text-[15px] font-medium text-[#EDEDED]">
+                    </div>
+
+                    {/* ── Métrica principal: um único ponto focal ─────────────── */}
+                    <div className="flex items-end justify-between gap-3 -mt-1">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[26px] leading-none font-semibold text-[#F0F0F2] tracking-[-0.03em] tabular-nums">
                           {formatCurrency(gastoPeriodo)}
                         </span>
-                        {diferencaPeriodo < 0 ? (
-                          <span title="Gasto real do período acima do orçamento real do período" className="text-[11px] text-[#F85149]">
-                            Overspend {formatCurrency(-diferencaPeriodo)}
-                          </span>
-                        ) : diferencaPeriodo > 0 ? (
-                          <span title="Sobra do orçamento real do período" className="text-[11px] text-[#3FB950]">
-                            Saving {formatCurrency(diferencaPeriodo)}
-                          </span>
-                        ) : null}
+                        <span className="mt-1.5 text-[9px] text-[#5A5A62] uppercase tracking-[0.1em]">
+                          Gasto no período
+                        </span>
                       </div>
+                      {diferencaPeriodo !== 0 && (
+                        <span
+                          title={diferencaPeriodo < 0 ? 'Gasto acima do orçamento real do período' : 'Sobra do orçamento real do período'}
+                          className={`shrink-0 px-2 py-1 rounded-md text-[11px] font-medium tabular-nums border ${
+                            diferencaPeriodo < 0
+                              ? 'text-[#FB7185] bg-[#FB7185]/[0.08] border-[#FB7185]/20'
+                              : 'text-[#34D399] bg-[#34D399]/[0.08] border-[#34D399]/20'
+                          }`}
+                        >
+                          {diferencaPeriodo < 0 ? 'Overspend' : 'Saving'} {formatCurrency(Math.abs(diferencaPeriodo))}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] text-[#6B6B70] flex-wrap">
-                      <span title={a.vgvEstimado ? 'VGV estimado a partir do VGV total ÷ unidades disponíveis do empreendimento' : 'Orçamento projetado pela meta de VGV do período'}>
-                        META/MÊS: <span className="text-[#A0A0A5]">{formatCurrency(metaMes)}</span>
-                      </span>
-                      <span title="Fatia do VGV efetivamente vendido no período">
-                        ORÇAMENTO REAL: <span className="text-[#A0A0A5]">{formatCurrency(orcamentoRealPeriodo)}</span>
-                      </span>
-                      <span>{a.unidadesMeta.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} unid. meta</span>
+
+                    {/* ── Trio de referência: mesmo formato rótulo/valor ──────── */}
+                    <div className="grid grid-cols-3 rounded-lg bg-[#0C0C0E] border border-[#1A1A1E] divide-x divide-[#1A1A1E]">
+                      {[
+                        {
+                          label: 'Meta/Mês',
+                          value: formatCurrency(metaMes),
+                          tip: a.vgvEstimado ? 'VGV estimado a partir do VGV total ÷ unidades disponíveis' : 'Orçamento projetado pela meta de VGV do período',
+                        },
+                        {
+                          label: 'Orçamento Real',
+                          value: formatCurrency(orcamentoRealPeriodo),
+                          tip: 'Fatia do VGV efetivamente vendido no período',
+                        },
+                        {
+                          label: 'Unid. Meta',
+                          value: a.unidadesMeta.toLocaleString('pt-BR', { maximumFractionDigits: 2 }),
+                          tip: 'Unidades previstas na meta do período',
+                        },
+                      ].map(m => (
+                        <div key={m.label} title={m.tip} className="flex flex-col gap-1 px-3 py-2.5">
+                          <span className="text-[8.5px] text-[#77777F] uppercase tracking-[0.1em] truncate">{m.label}</span>
+                          <span className="text-[12px] text-[#DCDCE2] tabular-nums truncate">{m.value}</span>
+                        </div>
+                      ))}
                     </div>
 
                     {br && br.tetoTotalProduto > 0 && (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between text-[10px] text-[#6B6B70]">
-                          <span>Teto do Produto: <span className="text-[#A0A0A5]">{formatCurrency(br.tetoTotalProduto)}</span></span>
-                          <span>{formatPct(br.pctTetoConsumido)} consumido</span>
+                      <div className="flex items-center gap-2.5 text-[10px] text-[#5A5A62]">
+                        <span className="shrink-0">Teto do produto</span>
+                        <div className="flex-1 h-[2px] rounded-full bg-[#15151A] overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${Math.min(br.pctTetoConsumido, 100)}%`, background: 'linear-gradient(90deg,#6E6EC4,#8B8BF0)' }}
+                          />
                         </div>
-                        <div className="h-[3px] bg-[#1A1A1C] rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-[#8B8BF0]" style={{ width: `${Math.min(br.pctTetoConsumido, 100)}%` }} />
-                        </div>
+                        <span className="shrink-0 tabular-nums text-[#7A7A82]">{formatPct(br.pctTetoConsumido)}</span>
                       </div>
                     )}
 
-                    {/* Categorias alocadas ou com gasto real: % da verba, gasto e status de utilização.
-                        Categorias sem % alocado mas com gasto real também aparecem — gasto real nunca fica escondido. */}
+                    {/* ── Categorias ─────────────────────────────────────────── */}
                     {a.categorias.some(c => c.percentual > 0 || c.gasto > 0) && (
-                      <div className="flex flex-col gap-3 pt-2 border-t border-[#1F1F22]">
-                        {a.categorias.filter(c => c.percentual > 0 || c.gasto > 0).map(c => {
+                      <div className="flex flex-col gap-3 pt-3.5 border-t border-[#1A1A1E]">
+                        <div className="flex items-center justify-end gap-2.5 text-[8.5px] text-[#70707A] -mb-0.5">
+                          {/* A amostra da meta é quase preta e sumiria sobre o card — a borda
+                              fina é só para ela continuar legível na legenda. */}
+                          <span className="flex items-center gap-1"><span className="w-[8px] h-[2px] rounded-full bg-black ring-1 ring-[#2A2A32]" /> meta</span>
+                          <span className="flex items-center gap-1"><span className="w-[8px] h-[2px] rounded-full bg-[#2C2C38]" /> orç. real</span>
+                          <span className="flex items-center gap-1"><span className="w-[8px] h-[3px] rounded-full" style={{ background: 'linear-gradient(90deg,#3FCF9B,#0FA771)' }} /> gasto</span>
+                        </div>
+
+                        {/* Cabeçalho das colunas — mesma grade das linhas, para os números
+                            ficarem ancorados sob o rótulo certo. */}
+                        <div className="grid grid-cols-[1fr_auto_76px_76px_80px] items-baseline gap-2 text-[8.5px] text-[#70707A] uppercase tracking-[0.1em] pb-1 border-b border-[#18181C]">
+                          <span>Categorias</span>
+                          <span className="text-right">%</span>
+                          <span className="text-right">Orç. Meta</span>
+                          <span className="text-right">Orç. Real</span>
+                          <span className="text-right text-[#9A9AA4]">Consumo</span>
+                        </div>
+                        {a.categorias
+                          // Obsoletas saem da lista; as que ainda têm gasto no período ficam,
+                          // senão esse dinheiro sumiria da quebra e ela não fecharia com o total.
+                          .filter(c => !c.obsoleta || (bp?.gastoPorCategoria[categoriaKey(c.centroCusto, c.categoria)] ?? 0) > 0)
+                          .filter(c => c.percentual > 0 || (bp?.gastoPorCategoria[categoriaKey(c.centroCusto, c.categoria)] ?? 0) > 0)
+                          .map(c => {
                           // Três referências por categoria, todas do período selecionado:
                           //   meta         = % × VGV meta      (orçamento projetado)
                           //   orçamentoCat = % × VGV vendido    (verba que existe de fato)
@@ -553,64 +606,98 @@ export default function SiengeMetasDashboard({
                           const metaCat = c.orcamento;
                           const orcamentoCat = vgvRealPeriodo * (c.percentual / 100);
                           const semOrcamento = c.percentual <= 0;
+                          // Gasto da MESMA janela usada no total do card (para em hoje), e não
+                          // o mês fechado que vinha de analyzeProjectMonth.
+                          const gastoCat = bp?.gastoPorCategoria[categoriaKey(c.centroCusto, c.categoria)] ?? 0;
 
-                          // A régua vai até a meta; se o gasto passar dela, estende para caber,
-                          // e a meta vira um traço marcado — nunca some da vista.
-                          const escala = Math.max(metaCat, orcamentoCat, c.gasto) || 1;
-                          const pct = (v: number) => `${Math.min((v / escala) * 100, 100)}%`;
+                          // Régua normalmente termina na meta; se o gasto passar dela, estende
+                          // para caber e o cinza escuro deixa de ocupar a linha toda — o próprio
+                          // fim da barra de meta passa a sinalizar o estouro.
+                          const escala = Math.max(metaCat, orcamentoCat, gastoCat) || 1;
+                          const p = (v: number) => Math.min((v / escala) * 100, 100);
 
-                          const estourouMeta = !semOrcamento && c.gasto > metaCat;
-                          const estourouReal = !semOrcamento && c.gasto > orcamentoCat;
-                          const corGasto = semOrcamento
-                            ? 'bg-[#3A3A3F]'
-                            : estourouMeta ? 'bg-[#F85149]' : estourouReal ? 'bg-[#D29922]' : 'bg-[#3FB950]';
-                          const corValor = semOrcamento
-                            ? 'text-[#A0A0A5]'
-                            : estourouMeta ? 'text-[#F85149]' : estourouReal ? 'text-[#D29922]' : 'text-[#3FB950]';
+                          const estourouMeta = !semOrcamento && gastoCat > metaCat;
+                          const estourouReal = !semOrcamento && gastoCat > orcamentoCat;
+                          const semGasto = gastoCat <= 0;
+
+                          // Degradês suaves: mesma matiz em duas paradas, dando profundidade
+                          // sem introduzir uma segunda cor na disputa. A barra de consumo
+                          // sempre parte do zero — passar do orçamento muda só a cor.
+                          // Sem glow: qualquer box-shadow em barra de 5px vira halo e engrossa
+                          // a linha. O âmbar também foi rebaixado — amarelo puro tem a maior
+                          // luminância do espectro e, sobre fundo escuro, "transborda" a própria
+                          // área (irradiação), parecendo mais espesso que o verde e o vermelho.
+                          const gradGasto = semOrcamento
+                            ? 'linear-gradient(90deg,#55555F,#70707C)'
+                            : estourouMeta ? 'linear-gradient(90deg,#F2647A,#D92D44)'
+                            : estourouReal ? 'linear-gradient(90deg,#E0A93B,#C97F12)'
+                            : 'linear-gradient(90deg,#3FCF9B,#0FA771)';
+                          const corValor = estourouMeta ? 'text-[#FF8A9B]'
+                            : estourouReal ? 'text-[#FCD34D]'
+                            : semGasto ? 'text-[#5C5C66]' : 'text-[#E8E8EC]';
 
                           const tip = [
-                            `Gasto real: ${formatCurrency(c.gasto)}`,
+                            `Gasto real: ${formatCurrency(gastoCat)}`,
                             semOrcamento ? 'Sem % alocado' : `Orçamento real (${formatPct(c.percentual)} do vendido): ${formatCurrency(orcamentoCat)}`,
                             semOrcamento ? '' : `Meta (${formatPct(c.percentual)} do VGV meta): ${formatCurrency(metaCat)}`,
                           ].filter(Boolean).join('\n');
 
                           return (
-                            <div key={`${c.centroCusto}-${c.categoria}`} className="flex flex-col gap-1.5 text-[11px]" title={tip}>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[#6B6B70] truncate min-w-0">
-                                  {CENTRO_CUSTO_LABELS[c.centroCusto] || c.centroCusto} · {c.categoria}
+                            <div
+                              key={`${c.centroCusto}-${c.categoria}`}
+                              className={`flex flex-col gap-[7px] transition-opacity duration-200 ${semGasto ? 'opacity-60 hover:opacity-100' : ''}`}
+                              title={tip}
+                            >
+                              {/* Grid fixo: rótulo flui, % e valor têm largura própria, então
+                                  as colunas ficam alinhadas de uma linha para a outra. */}
+                              {/* Meta e orçamento real são referência: ficam em cinza suave para
+                                  o consumo (colorido e com peso maior) ser o que salta na linha. */}
+                              <div className="grid grid-cols-[1fr_auto_76px_76px_80px] items-baseline gap-2 text-[11px]">
+                                <span className="text-[#A8A8B2] truncate min-w-0">
+                                  {c.categoria}
                                   {c.obsoleta && (
-                                    <span className="ml-1.5 text-[9px] text-[#8A6D3B]" title="Categoria fora da configuração atual — aparece porque ainda há título lançado nela.">
-                                      (obsoleta)
+                                    <span className="ml-1.5 text-[9px] text-[#C08A2E]" title="Categoria fora da configuração atual — continua aqui porque ainda há gasto lançado nela no período.">
+                                      obsoleta
                                     </span>
                                   )}
                                 </span>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="text-[#6B6B70]">{semOrcamento ? 'sem verba' : formatPct(c.percentual)}</span>
-                                  <span className={corValor}>{formatCurrency(c.gasto)}</span>
-                                </div>
+                                <span className="text-[10px] text-[#66666F] tabular-nums text-right">
+                                  {semOrcamento ? '—' : formatPct(c.percentual)}
+                                </span>
+                                <span className="text-[10.5px] tabular-nums text-right text-[#74747E]" title="Orçamento meta da categoria no período">
+                                  {semOrcamento ? '—' : formatCurrency(metaCat)}
+                                </span>
+                                <span className="text-[10.5px] tabular-nums text-right text-[#8A8A96]" title="Orçamento real da categoria no período (% sobre o VGV vendido)">
+                                  {semOrcamento ? '—' : formatCurrency(orcamentoCat)}
+                                </span>
+                                <span className={`tabular-nums text-right font-medium ${corValor}`} title="Consumo real do período">
+                                  {formatCurrency(gastoCat)}
+                                </span>
                               </div>
 
-                              {/* Barra 1 — gasto real. Barra 2 — orçamento real. Traço = meta. */}
-                              <div className="relative flex flex-col gap-1">
-                                <div className="relative h-[4px] bg-[#1A1A1C] rounded-full">
-                                  <div className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${corGasto}`} style={{ width: pct(c.gasto) }} />
-                                  {c.gasto > 0 && (
-                                    <span className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full ring-2 ring-[#111113] ${corGasto}`} style={{ left: pct(c.gasto) }} />
-                                  )}
-                                </div>
-                                <div className="relative h-[4px] bg-[#1A1A1C] rounded-full">
-                                  <div className="absolute inset-y-0 left-0 rounded-full bg-[#4C8EDA]/70 transition-all duration-500" style={{ width: pct(orcamentoCat) }} />
-                                  {orcamentoCat > 0 && (
-                                    <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-[#4C8EDA] ring-2 ring-[#111113]" style={{ left: pct(orcamentoCat) }} />
-                                  )}
-                                </div>
-                                {/* Marca da meta, só quando ela não é o fim da régua */}
-                                {!semOrcamento && metaCat > 0 && metaCat < escala && (
-                                  <span
-                                    className="absolute inset-y-0 w-px bg-[#8B8BF0]"
-                                    style={{ left: pct(metaCat) }}
-                                    title={`Meta: ${formatCurrency(metaCat)}`}
+                              {/* Três camadas sobre a mesma régua, do fundo para a frente:
+                                  meta → orçamento real → gasto. Dentro do orçamento o gasto é
+                                  verde desde o zero; ao estourar, a cor começa só onde o
+                                  orçamento real acaba, isolando o excesso. */}
+                              {/* Trilha fina. O fundo é levemente mais claro que a barra de meta
+                                  (preta), para a faixa "além da meta" continuar visível. */}
+                              <div className="relative h-[3px] rounded-full bg-[#15151A] overflow-hidden">
+                                {metaCat > 0 && (
+                                  <div
+                                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                                    style={{ width: `${p(metaCat)}%`, background: 'linear-gradient(90deg,#000000,#050507)' }}
+                                  />
+                                )}
+                                {orcamentoCat > 0 && (
+                                  <div
+                                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                                    style={{ width: `${p(orcamentoCat)}%`, background: 'linear-gradient(90deg,#20202A,#2C2C38)' }}
+                                  />
+                                )}
+                                {!semGasto && (
+                                  <div
+                                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                                    style={{ width: `${p(gastoCat)}%`, background: gradGasto }}
                                   />
                                 )}
                               </div>

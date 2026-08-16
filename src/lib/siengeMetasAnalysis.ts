@@ -119,7 +119,10 @@ export function analyzeProjectMonth(
 
   const categorias = categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
     const alocacao = categoriaOrcamento.find(c => c.projectId === project.id && c.centroCusto === centroCusto && c.categoria === categoria);
-    const percentual = alocacao?.percentual || 0;
+    // Alocação de categoria que não existe mais é órfã: não gera orçamento. Sem isso
+    // ela inflava o total do card sem aparecer em nenhuma linha, e a soma das
+    // categorias não fechava com o "Orçamento Real" do cabeçalho.
+    const percentual = obsoleta ? 0 : (alocacao?.percentual || 0);
     const orcamento = vgvMeta * (percentual / 100);
     const gasto = periodTitles
       .filter(t => t.empreendimento === project.name && t.centroCusto === centroCusto && t.categoria === categoria)

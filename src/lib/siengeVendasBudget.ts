@@ -129,7 +129,13 @@ export interface ProjectBudgetPeriodo {
   orcamentoRealPeriodo: number;
   gastoRealPeriodo: number;
   diferencaPeriodo: number;
+  // Gasto por categoria na MESMA janela do período. Sem isso as linhas de categoria
+  // somavam o mês inteiro (incluindo o que ainda vai vencer) e não fechavam com o
+  // total do card, que para na data de hoje.
+  gastoPorCategoria: Record<string, number>;
 }
+
+export const categoriaKey = (centroCusto: string, categoria: string) => `${centroCusto}::${categoria}`;
 
 export function analyzeProjectBudgetPeriodo(
   project: Project,
@@ -140,16 +146,26 @@ export function analyzeProjectBudgetPeriodo(
   // Fração do VGV que compõe o orçamento. Padrão são os 2% cheios; ao filtrar por
   // centro de custo vira só a fatia alocada àquele centro.
   pctOrcamento: number = ORCAMENTO_PCT,
+  categoriasBase: CategoriaRef[] = ALL_CATEGORIAS,
 ): ProjectBudgetPeriodo {
+  const deISO = deData.toISOString().slice(0, 10);
   const vgvRealPeriodo = getVgvRealNoPeriodo(vendas.filter(v => v.projectId === project.id), deData, ateData);
   const orcamentoRealPeriodo = vgvRealPeriodo * pctOrcamento;
-  const gastoRealPeriodo = getGastoRealNoPeriodo(titles, project.name, deData.toISOString().slice(0, 10), ateData);
+  const gastoRealPeriodo = getGastoRealNoPeriodo(titles, project.name, deISO, ateData);
+
+  const gastoPorCategoria: Record<string, number> = {};
+  categoriasBase.forEach(({ centroCusto, categoria }) => {
+    gastoPorCategoria[categoriaKey(centroCusto, categoria)] =
+      getGastoRealNoPeriodo(titles, project.name, deISO, ateData, { centroCusto, categoria });
+  });
+
   return {
     project,
     vgvRealPeriodo,
     orcamentoRealPeriodo,
     gastoRealPeriodo,
     diferencaPeriodo: orcamentoRealPeriodo - gastoRealPeriodo,
+    gastoPorCategoria,
   };
 }
 
@@ -172,7 +188,8 @@ export function analyzeProjectBudgetReal(
 
   const categorias: CategoriaAnalysis[] = categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
     const alocacao = categoriaOrcamento.find(c => c.projectId === project.id && c.centroCusto === centroCusto && c.categoria === categoria);
-    const percentual = alocacao?.percentual || 0;
+    // Ver analyzeProjectMonth: alocação órfã (categoria inexistente) não gera orçamento.
+    const percentual = obsoleta ? 0 : (alocacao?.percentual || 0);
     const orcamento = vgvReal * (percentual / 100);
     const gasto = getGastoRealAcumulado(titles, project.name, controleInicio, ateData, { centroCusto, categoria });
     const pctGastoDoVgv = vgvReal > 0 ? (gasto / vgvReal) * 100 : 0;
