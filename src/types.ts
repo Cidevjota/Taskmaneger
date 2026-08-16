@@ -359,6 +359,9 @@ export interface SiengeFatura {
   closedAt?: string;
   vencimento?: string;      // ISO date
   prazoPagamento?: string;  // ISO date
+  // Título gerado a partir desta fatura (botão "Gerar Título"). Enquanto existir,
+  // a situação exibida da fatura acompanha o status desse título no kanban.
+  tituloId?: string;
 }
 
 export interface SiengeVencimentoHistoryEntry {

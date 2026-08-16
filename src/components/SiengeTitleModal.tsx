@@ -25,6 +25,12 @@ interface SiengeTitleModalProps {
   // travado em somente-leitura (bloqueio, igual às tasks) para evitar sobrescrita.
   editingBy?: { name: string; avatarUrl?: string; color: string };
   taxonomy: SiengeTaxonomy;
+  // Modo despesa de cartão: o lançamento pertence a uma fatura e não vai para o
+  // kanban. Título vira opcional e some o vencimento (a data que vale é a da
+  // fatura); em troca aparecem os campos de fatura e motivo detalhado.
+  despesaMode?: boolean;
+  // Pré-seleciona a fatura ao lançar uma despesa a partir de uma fatura específica.
+  initialFaturaId?: string;
 }
 
 const STATUS_LABELS: Record<SiengeStatus, string> = {
@@ -68,6 +74,8 @@ export default function SiengeTitleModal({
   projects,
   editingBy,
   taxonomy,
+  despesaMode = false,
+  initialFaturaId,
 }: SiengeTitleModalProps) {
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -161,9 +169,9 @@ export default function SiengeTitleModal({
         setSubcategoria('');
         setVencimento('');
         setLoteId('');
-        setFaturaId('');
+        setFaturaId(initialFaturaId || '');
         setMotivoDetalhado('');
-        setPaymentMode('lote');
+        setPaymentMode(despesaMode ? 'cartao' : 'lote');
         setAssigneeId('');
         setStatus(initialStatus);
         setIsLocked(false);
@@ -182,7 +190,7 @@ export default function SiengeTitleModal({
       setResolveObservacao('');
       setPdfFiles([{ id: Date.now().toString(), file: null }]);
     }
-  }, [isOpen, initialData, initialStatus]);
+  }, [isOpen, initialData, initialStatus, despesaMode, initialFaturaId]);
 
   if (!isOpen) return null;
 
@@ -200,7 +208,8 @@ export default function SiengeTitleModal({
     if (!centroCusto) newErrors.centroCusto = 'Centro de custo é obrigatório';
     if (!categoria) newErrors.categoria = 'Categoria é obrigatória';
     if (!subcategoria) newErrors.subcategoria = 'Subcategoria é obrigatória';
-    if (!vencimento) newErrors.vencimento = 'Vencimento é obrigatório';
+    // Despesa não tem vencimento próprio: quem vence é a fatura que a contém.
+    if (!despesaMode && !vencimento) newErrors.vencimento = 'Vencimento é obrigatório';
     if (!descricao.trim()) newErrors.descricao = 'Descrição é obrigatória';
     return newErrors;
   };
@@ -432,7 +441,9 @@ export default function SiengeTitleModal({
               <Hash size={14} className="text-blue-400" />
             </div>
             <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-1.5">
-              {isEditing ? (isLocked ? 'Título Sienge' : 'Editar Título') : 'Novo Título Sienge'}
+              {despesaMode
+                ? (isEditing ? (isLocked ? 'Despesa do Cartão' : 'Editar Despesa') : 'Nova Despesa')
+                : (isEditing ? (isLocked ? 'Título Sienge' : 'Editar Título') : 'Novo Título Sienge')}
               {isEditing && isLocked && (
                 <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-zinc-800/80 text-zinc-500 text-[9px] font-medium uppercase tracking-wider">
                   <Lock size={9} /> Somente leitura
@@ -690,43 +701,20 @@ export default function SiengeTitleModal({
           {/* Row 1: Título (number) */}
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-              <Hash size={11} /> Número do Título
+              <Hash size={11} /> Número do {despesaMode ? 'Documento' : 'Título'}
             </label>
             <input
               type="text"
               value={titulo}
               onChange={e => setTitulo(e.target.value)}
-              placeholder="Ex: 12345 (opcional se a lançar)"
+              placeholder={despesaMode ? 'Ex: 12345 (opcional)' : 'Ex: 12345 (opcional se a lançar)'}
               className={inputClass('titulo')}
               autoFocus
             />
           </div>
 
-          {/* Forma de lançamento: Lote de Pagamento vs Cartão de Crédito */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Forma de Lançamento</label>
-            <div className="flex items-center gap-1 p-1 bg-zinc-900/60 border border-zinc-800 rounded-lg">
-              <button
-                type="button"
-                onClick={() => { setPaymentMode('lote'); setErrors(p => ({ ...p, faturaId: '', motivoDetalhado: '' })); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  paymentMode === 'lote' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
-                }`}
-              >
-                <Layers size={12} /> Lote de Pagamento
-              </button>
-              <button
-                type="button"
-                onClick={() => { setPaymentMode('cartao'); setErrors(p => ({ ...p, loteId: '' })); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  paymentMode === 'cartao' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-zinc-500 border border-transparent hover:text-zinc-300'
-                }`}
-              >
-                <CreditCard size={12} /> Cartão de Crédito
-              </button>
-            </div>
-          </div>
-
+          {/* A escolha "lote vs cartão" deixou de existir: um título é sempre de lote,
+              e um lançamento de cartão é uma despesa, criada pela tela de Faturas. */}
           {paymentMode === 'lote' ? (
             /* Lote de Pagamento selector */
             <div className="flex flex-col gap-1.5 relative">
@@ -1125,7 +1113,7 @@ export default function SiengeTitleModal({
               </div>
               {errors.valor && <p className="text-[11px] text-red-400 flex items-center gap-1"><AlertCircle size={10} />{errors.valor}</p>}
             </div>
-            <div className="flex flex-col gap-1.5 flex-1">
+            <div className={`flex-col gap-1.5 flex-1 ${despesaMode ? 'hidden' : 'flex'}`}>
               <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
                 <Calendar size={11} /> Vencimento <span className="text-red-400">*</span>
               </label>
@@ -1307,7 +1295,7 @@ export default function SiengeTitleModal({
                   className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
                 >
                   {isUploading && <Loader2 size={12} className="animate-spin" />}
-                  {isUploading ? 'Enviando...' : isEditing ? 'Salvar Alterações' : 'Criar Título'}
+                  {isUploading ? 'Enviando...' : isEditing ? 'Salvar Alterações' : despesaMode ? 'Criar Despesa' : 'Criar Título'}
                 </button>
               </>
             )}

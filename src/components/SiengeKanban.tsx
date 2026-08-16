@@ -768,7 +768,10 @@ export default function SiengeKanban({ titles, openLotes, openFaturas, projects,
   };
 
   const filteredTitles = useMemo(() => {
-    let list = titles;
+    // Despesas de cartão (faturaId preenchido) vivem só dentro da fatura, na aba
+    // Cartão de Crédito. O que chega ao kanban pela fatura é o título gerado por
+    // ela, que não tem faturaId e por isso passa por aqui normalmente.
+    let list = titles.filter(t => !t.faturaId);
 
     // Filter by project if active
     if (currentProjectFilter) {

@@ -226,6 +226,10 @@ export default function SiengeView({
             titles={titles}
             onSaveFatura={onSaveFatura}
             onDeleteFatura={onDeleteFatura}
+            onSaveTitle={onSaveTitle}
+            openLotes={openLotes}
+            projects={projects}
+            taxonomy={taxonomy}
           />
         ) : activeTab === 'vendas' ? (
           <SiengeVendasModal

@@ -1397,6 +1397,7 @@ export async function fetchSiengeFaturas(): Promise<SiengeFatura[]> {
     closedAt: r.closed_at,
     vencimento: r.vencimento,
     prazoPagamento: r.prazo_pagamento,
+    tituloId: r.titulo_id,
   }));
 }
 
@@ -1408,6 +1409,7 @@ export async function saveSiengeFatura(fatura: SiengeFatura) {
     vencimento: fatura.vencimento || null,
     prazo_pagamento: fatura.prazoPagamento || null,
     closed_at: fatura.closedAt || null,
+    titulo_id: fatura.tituloId || null,
   });
   if (error) throw error;
 }
