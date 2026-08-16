@@ -1392,6 +1392,7 @@ export async function fetchSiengeFaturas(): Promise<SiengeFatura[]> {
   return (data || []).map((r: any): SiengeFatura => ({
     id: r.id,
     codigo: r.codigo,
+    seq: r.seq,
     status: r.status,
     createdAt: r.created_at,
     closedAt: r.closed_at,

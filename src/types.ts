@@ -354,6 +354,9 @@ export interface SiengeLote {
 export interface SiengeFatura {
   id: string;
   codigo: string; // e.g. "FATJUL001" — FAT + 3-letter month + continuous 3-digit sequence
+  // Contador do banco (sequence). Nunca reaproveita número, nem após exclusão — é
+  // dele que sai a numeração do código.
+  seq?: number;
   status: SiengeLoteStatus;
   createdAt: string;
   closedAt?: string;

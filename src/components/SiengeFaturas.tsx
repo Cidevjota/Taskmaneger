@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Plus, X, CheckCircle2, ChevronRight,
-  Hash, FileText, CreditCard,
+  Hash, FileText, CreditCard, Pencil,
   TrendingUp, BarChart3, Timer, Package, AlertTriangle, Trash2
 } from 'lucide-react';
 import { SiengeFatura, SiengeTitle, SiengeLote, Project } from '../types';
@@ -59,32 +59,13 @@ const STATUS_COLORS: Record<string, string> = {
 const MONTH_ABBR = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 
 // ─── Lógica de Datas ────────────────────────────────────────────────────────────
-function getNextTuesday(fromDate: Date): Date {
-  const date = new Date(fromDate);
-  const day = date.getDay();
-  const daysUntilTuesday = (2 - day + 7) % 7 || 7;
-  date.setDate(date.getDate() + daysUntilTuesday);
-  return date;
-}
+// O vencimento da fatura passou a ser escolhido na mão (dia 1 a 15), sempre dentro do
+// mês corrente — o mesmo mês que nomeia o código (FATAGO → agosto).
+const VENCIMENTO_DIAS = Array.from({ length: 15 }, (_, i) => i + 1);
 
-function calculateNextAvailableDates(faturas: SiengeFatura[]) {
-  const existingVencimentos = new Set(faturas.map(f => f.vencimento).filter(Boolean));
-  let candidateDate = getNextTuesday(new Date());
-
-  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-  while (true) {
-    const candidateISO = toLocalISO(candidateDate);
-    if (!existingVencimentos.has(candidateISO)) break;
-    candidateDate = getNextTuesday(candidateDate);
-  }
-
-  const vencimentoISO = toLocalISO(candidateDate);
-  const prazoPagamentoDate = new Date(candidateDate);
-  prazoPagamentoDate.setDate(prazoPagamentoDate.getDate() + 6);
-  const prazoPagamentoISO = toLocalISO(prazoPagamentoDate);
-
-  return { vencimento: vencimentoISO, prazoPagamento: prazoPagamentoISO };
+function vencimentoISOParaDia(dia: number): string {
+  const hoje = new Date();
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
 const MONTH_FULL: Record<string, string> = {
@@ -100,25 +81,38 @@ export function faturaDescricao(fatura: SiengeFatura): string {
   return `FATURA CARTÃO DE CRÉDITO ${mes}`;
 }
 
-// Continuous count across every fatura ever created — never resets per month.
+// Contagem contínua entre todas as faturas já criadas — nunca reinicia por mês.
+//
+// A numeração sai do maior número já emitido, não da quantidade de faturas: com
+// `faturas.length + 1`, apagar uma fatura fazia a contagem regredir e o próximo código
+// repetia um já usado — e como `codigo` é UNIQUE no banco, a criação falhava.
+// Consideramos tanto o `seq` (contador do banco) quanto o número no próprio código,
+// para que faturas antigas sem seq mapeado também contem.
 export function generateNextFaturaCodigo(faturas: SiengeFatura[]): string {
+  const maiorUsado = faturas.reduce((max, f) => {
+    const doCodigo = parseInt(f.codigo?.slice(-3) ?? '', 10);
+    return Math.max(max, f.seq ?? 0, Number.isNaN(doCodigo) ? 0 : doCodigo);
+  }, 0);
   const monthAbbr = MONTH_ABBR[new Date().getMonth()];
-  const seq = String(faturas.length + 1).padStart(3, '0');
-  return `FAT${monthAbbr}${seq}`;
+  return `FAT${monthAbbr}${String(maiorUsado + 1).padStart(3, '0')}`;
 }
 
 // ─── New Fatura Form ────────────────────────────────────────────────────────────
 function NewFaturaModal({
   defaultCodigo,
-  calculatedDates,
   onSave,
   onClose
 }: {
   defaultCodigo: string;
-  calculatedDates: { vencimento: string; prazoPagamento: string };
-  onSave: (codigo: string, dates: { vencimento: string; prazoPagamento: string }) => void;
+  onSave: (codigo: string, vencimento: string) => void;
   onClose: () => void
 }) {
+  const [dia, setDia] = useState<number | null>(null);
+  const vencimento = dia ? vencimentoISOParaDia(dia) : '';
+  // Dia já passado no mês corrente continua selecionável (lançamento retroativo é
+  // legítimo), mas avisamos para não passar despercebido.
+  const jaPassou = !!vencimento && vencimento < new Date().toISOString().split('T')[0];
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
@@ -146,22 +140,42 @@ function NewFaturaModal({
           </div>
 
           <div className="mt-4 flex flex-col gap-2">
-            <div className="flex items-center justify-between p-2 rounded bg-zinc-900/40 border border-zinc-800/60">
-              <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Vencimento (Prox. Terça Livre)</span>
-              <span className="text-xs text-zinc-300 font-semibold">{formatDate(calculatedDates.vencimento)}</span>
+            <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">
+              Vencimento <span className="text-red-400">*</span>
+            </span>
+            <div className="grid grid-cols-5 gap-1.5">
+              {VENCIMENTO_DIAS.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDia(d)}
+                  className={`py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                    dia === d
+                      ? 'bg-blue-500/15 text-blue-400 border-blue-500/40'
+                      : 'bg-zinc-900/40 text-zinc-400 border-zinc-800/60 hover:border-zinc-700 hover:text-zinc-200'
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
             </div>
-            <div className="flex items-center justify-between p-2 rounded bg-zinc-900/40 border border-zinc-800/60">
-              <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Prazo de Pagamento (+6 dias)</span>
-              <span className="text-xs text-emerald-400 font-semibold">{formatDate(calculatedDates.prazoPagamento)}</span>
-            </div>
+            {vencimento && (
+              <div className="flex items-center justify-between p-2 rounded bg-zinc-900/40 border border-zinc-800/60">
+                <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Vence em</span>
+                <span className={`text-xs font-semibold ${jaPassou ? 'text-amber-400' : 'text-zinc-300'}`}>
+                  {formatDate(vencimento)}{jaPassou ? ' (data já passada)' : ''}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex justify-end gap-2 mt-2">
           <button onClick={onClose} className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors">Cancelar</button>
           <button
-            onClick={() => { onSave(defaultCodigo, calculatedDates); onClose(); }}
-            className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg shadow-blue-500/20"
+            onClick={() => { onSave(defaultCodigo, vencimento); onClose(); }}
+            disabled={!dia}
+            className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors shadow-lg shadow-blue-500/20 disabled:shadow-none"
           >
             Confirmar Criação
           </button>
@@ -252,6 +266,7 @@ function FaturaRow({
   onDelete,
   onGerarTitulo,
   onNovaDespesa,
+  onEditDespesa,
 }: {
   fatura: SiengeFatura;
   titles: SiengeTitle[];
@@ -259,6 +274,7 @@ function FaturaRow({
   onDelete: (id: string) => void;
   onGerarTitulo: (fatura: SiengeFatura) => void;
   onNovaDespesa: (fatura: SiengeFatura) => void;
+  onEditDespesa: (despesa: SiengeTitle) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -273,9 +289,10 @@ function FaturaRow({
   const tituloGerado = fatura.tituloId ? titles.find(t => t.id === fatura.tituloId) : undefined;
   const isPago = tituloGerado?.status === 'pago';
 
+  // Sem prazo de pagamento separado: o próprio vencimento define atraso e alerta.
   const today = new Date().toISOString().split('T')[0];
-  const isOverdue = !isPago && !!fatura.prazoPagamento && today > fatura.prazoPagamento;
-  const isWarning = !isPago && today === fatura.prazoPagamento;
+  const isOverdue = !isPago && !!fatura.vencimento && today > fatura.vencimento;
+  const isWarning = !isPago && today === fatura.vencimento;
 
   let prazoColor = "text-zinc-400";
   if (isPago) prazoColor = "text-emerald-400";
@@ -333,21 +350,18 @@ function FaturaRow({
 
         {/* Dates */}
         <div className="hidden lg:flex justify-center shrink-0 w-28">
-          <span className="text-sm font-medium text-zinc-400">{formatDate(fatura.vencimento)}</span>
-        </div>
-        <div className="hidden lg:flex justify-center shrink-0 w-28">
-          <span className={`text-sm font-medium ${prazoColor}`}>{formatDate(fatura.prazoPagamento)}</span>
+          <span className={`text-sm font-medium ${prazoColor}`}>{formatDate(fatura.vencimento)}</span>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-1 shrink-0 w-64">
+        <div className="flex items-center justify-end gap-1 shrink-0 w-80">
           {isAberto && (
             <button
               onClick={() => onNovaDespesa(fatura)}
               title="Lançar uma despesa nesta fatura"
-              className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 rounded-lg transition-colors"
             >
-              <Plus size={13} /> Despesa
+              <Plus size={13} className="shrink-0" /> Despesa
             </button>
           )}
           {/* Sem despesas não há o que cobrar; com título já gerado, gerar de novo
@@ -356,22 +370,22 @@ function FaturaRow({
             <button
               onClick={() => onGerarTitulo(fatura)}
               title="Gerar o título desta fatura no kanban"
-              className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 rounded-lg transition-colors"
             >
-              <FileText size={13} /> Gerar Título
+              <FileText size={13} className="shrink-0" /> Gerar Título
             </button>
           )}
           {tituloGerado && (
-            <span className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold text-emerald-400/80 uppercase tracking-wider" title={`Título gerado: ${tituloGerado.descricao || tituloGerado.titulo}`}>
-              <CheckCircle2 size={12} /> Gerada
+            <span className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold whitespace-nowrap shrink-0 text-emerald-400/80 uppercase tracking-wider" title={`Título gerado: ${tituloGerado.descricao || tituloGerado.titulo}`}>
+              <CheckCircle2 size={12} className="shrink-0" /> Gerada
             </span>
           )}
           {isAberto && !confirmClose && (
             <button
               onClick={() => setConfirmClose(true)}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 rounded-lg transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap shrink-0 text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 rounded-lg transition-colors"
             >
-              <CheckCircle2 size={13} /> Encerrar
+              <CheckCircle2 size={13} className="shrink-0" /> Encerrar
             </button>
           )}
           {confirmClose && (
@@ -413,11 +427,12 @@ function FaturaRow({
                   <th className="text-left px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Motivo Detalhado</th>
                   <th className="text-left px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Empreendimento</th>
                   <th className="text-right px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Valor</th>
+                  <th className="w-16 px-4 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {despesas.map((t, i) => (
-                  <tr key={t.id} className={`border-b border-zinc-900/40 hover:bg-zinc-800/20 transition-colors ${i % 2 === 0 ? '' : 'bg-zinc-900/10'}`}>
+                  <tr key={t.id} className={`group border-b border-zinc-900/40 hover:bg-zinc-800/20 transition-colors ${i % 2 === 0 ? '' : 'bg-zinc-900/10'}`}>
                     <td className="px-4 py-2.5 font-semibold text-blue-400">{t.titulo || '—'}</td>
                     <td className="px-4 py-2.5 text-zinc-400 truncate max-w-[200px]">{t.descricao || '—'}</td>
                     <td className="px-4 py-2.5 text-zinc-400 max-w-[260px]">
@@ -425,6 +440,15 @@ function FaturaRow({
                     </td>
                     <td className="px-4 py-2.5 text-zinc-400 truncate max-w-[160px]">{t.empreendimento || '—'}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-emerald-400">{formatCurrency(t.valor)}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        onClick={() => onEditDespesa(t)}
+                        title="Editar despesa"
+                        className="p-1.5 text-zinc-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -443,16 +467,24 @@ export default function SiengeFaturas({
   const [showNewModal, setShowNewModal] = useState(false);
   const [despesaModalOpen, setDespesaModalOpen] = useState(false);
   const [despesaFatura, setDespesaFatura] = useState<SiengeFatura | null>(null);
+  const [editingDespesa, setEditingDespesa] = useState<SiengeTitle | null>(null);
+
+  // Só faturas abertas recebem lançamento novo; ao editar, a fatura da própria despesa
+  // entra na lista mesmo encerrada, senão o campo abriria vazio e a gravação acabaria
+  // movendo a despesa para outra fatura.
+  const faturasSelecionaveis = useMemo(
+    () => faturas.filter(f => f.status === 'aberto' || f.id === editingDespesa?.faturaId),
+    [faturas, editingDespesa],
+  );
   const [gerarTituloFatura, setGerarTituloFatura] = useState<SiengeFatura | null>(null);
 
-  const handleCreate = (codigo: string, dates: { vencimento: string; prazoPagamento: string }) => {
+  const handleCreate = (codigo: string, vencimento: string) => {
     const newFatura: SiengeFatura = {
       id: crypto.randomUUID(),
       codigo,
       status: 'aberto',
       createdAt: new Date().toISOString(),
-      vencimento: dates.vencimento,
-      prazoPagamento: dates.prazoPagamento,
+      vencimento,
     };
     onSaveFatura(newFatura);
   };
@@ -476,7 +508,7 @@ export default function SiengeFaturas({
       descricao: faturaDescricao(fatura),
       valor: total,
       loteId,
-      vencimento: fatura.prazoPagamento || fatura.vencimento,
+      vencimento: fatura.vencimento,
       status: 'a_lancar',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -631,8 +663,7 @@ export default function SiengeFaturas({
               <div className="w-24 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">QTD Despesas</div>
               <div className="w-32 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Valor Total</div>
               <div className="hidden lg:block w-28 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Vencimento</div>
-              <div className="hidden lg:block w-28 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Prazo de PGTO</div>
-              <div className="w-64 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Ações</div>
+              <div className="w-80 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Ações</div>
             </div>
           )}
 
@@ -653,7 +684,8 @@ export default function SiengeFaturas({
                 onClose={handleClose}
                 onDelete={onDeleteFatura}
                 onGerarTitulo={setGerarTituloFatura}
-                onNovaDespesa={(f) => { setDespesaFatura(f); setDespesaModalOpen(true); }}
+                onNovaDespesa={(f) => { setDespesaFatura(f); setEditingDespesa(null); setDespesaModalOpen(true); }}
+                onEditDespesa={(d) => { setEditingDespesa(d); setDespesaFatura(null); setDespesaModalOpen(true); }}
               />
             ))
           )}
@@ -663,7 +695,6 @@ export default function SiengeFaturas({
       {showNewModal && (
         <NewFaturaModal
           defaultCodigo={generateNextFaturaCodigo(faturas)}
-          calculatedDates={calculateNextAvailableDates(faturas)}
           onSave={handleCreate}
           onClose={() => setShowNewModal(false)}
         />
@@ -684,11 +715,12 @@ export default function SiengeFaturas({
       <SiengeTitleModal
         isOpen={despesaModalOpen}
         despesaMode
-        onClose={() => { setDespesaModalOpen(false); setDespesaFatura(null); }}
-        onSave={(t) => { onSaveTitle(t); setDespesaModalOpen(false); setDespesaFatura(null); }}
+        onClose={() => { setDespesaModalOpen(false); setDespesaFatura(null); setEditingDespesa(null); }}
+        onSave={(t) => { onSaveTitle(t); setDespesaModalOpen(false); setDespesaFatura(null); setEditingDespesa(null); }}
+        initialData={editingDespesa}
         initialFaturaId={despesaFatura?.id}
         openLotes={openLotes}
-        openFaturas={faturas.filter(f => f.status === 'aberto')}
+        openFaturas={faturasSelecionaveis}
         projects={projects}
         taxonomy={taxonomy}
       />
