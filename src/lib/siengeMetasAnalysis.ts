@@ -14,6 +14,47 @@ export interface CategoriaAnalysis {
   gasto: number;
   diferenca: number;
   pctGastoDoVgv: number;
+  // Categoria que não existe mais na taxonomia configurada, mas ainda tem título
+  // lançado nela (ex.: renomeada depois do lançamento). Aparece assim mesmo, senão
+  // o gasto sumia da quebra por categoria e só restava no total.
+  obsoleta?: boolean;
+}
+
+export type CategoriaRef = { centroCusto: SiengeCentroCusto; categoria: string; obsoleta?: boolean };
+
+// Lista de categorias que a análise deve percorrer: as configuradas pelo usuário
+// (taxonomia do banco) mais qualquer uma que apareça em título já lançado.
+//
+// Antes isso era só a constante estática ALL_CATEGORIAS: categorias apagadas na
+// configuração continuavam aparecendo zeradas, e — pior — títulos gravados com um
+// nome fora da lista não viravam linha nenhuma, deixando gasto real invisível
+// enquanto o total do card continuava somando esse valor.
+export function buildCategoriasBase(
+  categoriasPorCentro: Record<string, string[]> | undefined,
+  titles: SiengeTitle[],
+): CategoriaRef[] {
+  const vistos = new Set<string>();
+  const out: CategoriaRef[] = [];
+  const push = (centroCusto: string, categoria: string, obsoleta: boolean) => {
+    const key = `${centroCusto}::${categoria}`;
+    if (vistos.has(key)) return;
+    vistos.add(key);
+    out.push({ centroCusto: centroCusto as SiengeCentroCusto, categoria, obsoleta: obsoleta || undefined });
+  };
+
+  const configurado = categoriasPorCentro && Object.keys(categoriasPorCentro).length > 0;
+  if (configurado) {
+    Object.entries(categoriasPorCentro!).forEach(([cc, cats]) => cats.forEach(cat => push(cc, cat, false)));
+  } else {
+    // Sem taxonomia carregada ainda, mantém o comportamento antigo.
+    ALL_CATEGORIAS.forEach(({ centroCusto, categoria }) => push(centroCusto, categoria, false));
+  }
+
+  titles.forEach(t => {
+    if (t.centroCusto && t.categoria) push(t.centroCusto, t.categoria, true);
+  });
+
+  return out;
 }
 
 export interface ProjectAnalysis {
@@ -62,6 +103,7 @@ export function analyzeProjectMonth(
   month0: number,
   tabelaVendas: SiengeTabelaVendaUnidade[] = [],
   controleInicio: string = '0000-01-01',
+  categoriasBase: CategoriaRef[] = ALL_CATEGORIAS,
 ): ProjectAnalysis {
   const monthKey = monthKeyOf(year, month0);
   // Não existe histórico de gasto confiável antes do início do controle de
@@ -75,7 +117,7 @@ export function analyzeProjectMonth(
   const vgvEstimado = vgvExplicito === 0 && unidadesMeta > 0;
   const vgvMeta = vgvExplicito > 0 ? vgvExplicito : pricePerUnitFor(project, tabelaVendas) * unidadesMeta;
 
-  const categorias = ALL_CATEGORIAS.map(({ centroCusto, categoria }) => {
+  const categorias = categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
     const alocacao = categoriaOrcamento.find(c => c.projectId === project.id && c.centroCusto === centroCusto && c.categoria === categoria);
     const percentual = alocacao?.percentual || 0;
     const orcamento = vgvMeta * (percentual / 100);
@@ -83,7 +125,7 @@ export function analyzeProjectMonth(
       .filter(t => t.empreendimento === project.name && t.centroCusto === centroCusto && t.categoria === categoria)
       .reduce((s, t) => s + t.valor, 0);
     const pctGastoDoVgv = vgvMeta > 0 ? (gasto / vgvMeta) * 100 : 0;
-    return { centroCusto, categoria, percentual, orcamento, gasto, diferenca: orcamento - gasto, pctGastoDoVgv };
+    return { centroCusto, categoria, percentual, orcamento, gasto, diferenca: orcamento - gasto, pctGastoDoVgv, obsoleta };
   });
 
   const totalOrcamento = categorias.reduce((s, c) => s + c.orcamento, 0);
@@ -103,28 +145,29 @@ export function analyzeProjectsForPeriod(
   month: number | null,
   tabelaVendas: SiengeTabelaVendaUnidade[] = [],
   controleInicio: string = '0000-01-01',
+  categoriasBase: CategoriaRef[] = ALL_CATEGORIAS,
 ): ProjectAnalysis[] {
   if (month !== null) {
     return projects
-      .map(p => analyzeProjectMonth(p, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio))
+      .map(p => analyzeProjectMonth(p, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase))
       .filter(a => a.vgvMeta > 0);
   }
 
   return projects
     .map(project => {
-      const perMonth = Array.from({ length: 12 }, (_, m) => analyzeProjectMonth(project, titles, projectMetas, categoriaOrcamento, year, m, tabelaVendas, controleInicio))
+      const perMonth = Array.from({ length: 12 }, (_, m) => analyzeProjectMonth(project, titles, projectMetas, categoriaOrcamento, year, m, tabelaVendas, controleInicio, categoriasBase))
         .filter(a => a.vgvMeta > 0);
       if (perMonth.length === 0) return null;
 
       const vgvMeta = perMonth.reduce((s, a) => s + a.vgvMeta, 0);
       const vgvEstimado = perMonth.some(a => a.vgvEstimado);
       const unidadesMeta = perMonth.reduce((s, a) => s + a.unidadesMeta, 0);
-      const categorias: CategoriaAnalysis[] = ALL_CATEGORIAS.map(({ centroCusto, categoria }) => {
+      const categorias: CategoriaAnalysis[] = categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
         const orcamento = perMonth.reduce((s, a) => s + (a.categorias.find(c => c.centroCusto === centroCusto && c.categoria === categoria)?.orcamento || 0), 0);
         const gasto = perMonth.reduce((s, a) => s + (a.categorias.find(c => c.centroCusto === centroCusto && c.categoria === categoria)?.gasto || 0), 0);
         const percentual = perMonth[0].categorias.find(c => c.centroCusto === centroCusto && c.categoria === categoria)?.percentual || 0;
         const pctGastoDoVgv = vgvMeta > 0 ? (gasto / vgvMeta) * 100 : 0;
-        return { centroCusto, categoria, percentual, orcamento, gasto, diferenca: orcamento - gasto, pctGastoDoVgv };
+        return { centroCusto, categoria, percentual, orcamento, gasto, diferenca: orcamento - gasto, pctGastoDoVgv, obsoleta };
       });
       const totalOrcamento = categorias.reduce((s, c) => s + c.orcamento, 0);
       const totalGasto = categorias.reduce((s, c) => s + c.gasto, 0);

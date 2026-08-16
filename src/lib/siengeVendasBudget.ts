@@ -1,5 +1,5 @@
 import { Project, SiengeTabelaVendaUnidade, SiengeVenda, SiengeTitle, SiengeCategoriaOrcamento, SiengeCentroCusto } from '../types';
-import { ALL_CATEGORIAS, CategoriaAnalysis } from './siengeMetasAnalysis';
+import { ALL_CATEGORIAS, CategoriaAnalysis, CategoriaRef } from './siengeMetasAnalysis';
 
 // 2% do VGV é o teto de orçamento de marketing/comercial adotado pela Uchôa —
 // mesmo percentual usado em toda a análise de metas (ver ORCAMENTO_ALVO_PCT em
@@ -158,6 +158,7 @@ export function analyzeProjectBudgetReal(
   categoriaOrcamento: SiengeCategoriaOrcamento[],
   controleInicio: string,
   ateData: Date,
+  categoriasBase: CategoriaRef[] = ALL_CATEGORIAS,
 ): ProjectBudgetReal {
   const unidadesDoProjeto = unidades.filter(u => u.projectId === project.id);
   const vendasDoProjeto = vendas.filter(v => v.projectId === project.id);
@@ -165,13 +166,13 @@ export function analyzeProjectBudgetReal(
   const vgvReal = getVgvRealAcumulado(vendasDoProjeto, ateData);
   const orcamentoRealAcumulado = vgvReal * ORCAMENTO_PCT;
 
-  const categorias: CategoriaAnalysis[] = ALL_CATEGORIAS.map(({ centroCusto, categoria }) => {
+  const categorias: CategoriaAnalysis[] = categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
     const alocacao = categoriaOrcamento.find(c => c.projectId === project.id && c.centroCusto === centroCusto && c.categoria === categoria);
     const percentual = alocacao?.percentual || 0;
     const orcamento = vgvReal * (percentual / 100);
     const gasto = getGastoRealAcumulado(titles, project.name, controleInicio, ateData, { centroCusto, categoria });
     const pctGastoDoVgv = vgvReal > 0 ? (gasto / vgvReal) * 100 : 0;
-    return { centroCusto, categoria, percentual, orcamento, gasto, diferenca: orcamento - gasto, pctGastoDoVgv };
+    return { centroCusto, categoria, percentual, orcamento, gasto, diferenca: orcamento - gasto, pctGastoDoVgv, obsoleta };
   });
 
   const gastoRealAcumulado = getGastoRealAcumulado(titles, project.name, controleInicio, ateData);

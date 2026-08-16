@@ -8,7 +8,7 @@ import { MONTHS_FULL } from './MonthSelectDropdown';
 import SiengeMetasModal from './SiengeMetasModal';
 import SiengeAlocacaoModal from './SiengeAlocacaoModal';
 import SiengeSpendChart from './SiengeSpendChart';
-import { ALL_CATEGORIAS, analyzeProjectsForPeriod } from '../lib/siengeMetasAnalysis';
+import { analyzeProjectsForPeriod, buildCategoriasBase } from '../lib/siengeMetasAnalysis';
 import { CENTRO_CUSTO_LABELS, SiengeTaxonomy } from '../lib/siengeCategorias';
 import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, getRitmoMes, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
 
@@ -133,9 +133,17 @@ export default function SiengeMetasDashboard({
 
   const controleInicio = orcamentoConfig?.controleInicio || now.toISOString().slice(0, 10);
 
+  // Categorias percorridas pela análise: as configuradas em "Alocação de Orçamento"
+  // (taxonomia do banco) + as que aparecem em títulos já lançados, para que nenhum
+  // gasto fique fora da quebra por categoria.
+  const categoriasBase = useMemo(
+    () => buildCategoriasBase(taxonomy?.categoriasPorCentro, titles),
+    [taxonomy, titles]
+  );
+
   const analysis = useMemo(
-    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio),
-    [scopedProjects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio]
+    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase),
+    [scopedProjects, titles, projectMetas, categoriaOrcamento, year, month, tabelaVendas, controleInicio, categoriasBase]
   );
 
   // Orçamento Projetado (Meta): sempre 2% da meta de VGV do período, independente
@@ -152,8 +160,8 @@ export default function SiengeMetasDashboard({
   }, [year, month]);
 
   const budgetReal = useMemo(
-    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, ateData)),
-    [scopedProjects, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, ateData]
+    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, ateData, categoriasBase)),
+    [scopedProjects, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, ateData, categoriasBase]
   );
   const budgetRealByProjectId = useMemo(() => new Map(budgetReal.map(b => [b.project.id, b])), [budgetReal]);
 
@@ -174,16 +182,24 @@ export default function SiengeMetasDashboard({
 
   const mesOrcamentoReal = budgetPeriodo.reduce((s, b) => s + b.orcamentoRealPeriodo, 0);
   const mesGastoReal = budgetPeriodo.reduce((s, b) => s + b.gastoRealPeriodo, 0);
-  const mesSaving = budgetPeriodo.reduce((s, b) => s + Math.max(b.diferencaPeriodo, 0), 0);
-  const mesOverspend = budgetPeriodo.reduce((s, b) => s + Math.max(-b.diferencaPeriodo, 0), 0);
+
+  // Estouro/economia do conjunto selecionado, sempre líquido: orçamento total menos
+  // gasto total. Antes cada empreendimento ia para um balde (soma dos que estouraram
+  // vs soma dos que economizaram) e os dois cards apareciam preenchidos ao mesmo
+  // tempo, sem responder "no geral, estamos dentro do orçamento?". Agora a economia
+  // de um empreendimento abate o estouro de outro, e o Saving só aparece quando não
+  // há estouro nenhum. Com um único empreendimento selecionado o resultado é o mesmo.
+  const mesDiferenca = mesOrcamentoReal - mesGastoReal;
+  const mesOverspend = Math.max(-mesDiferenca, 0);
+  const mesSaving = Math.max(mesDiferenca, 0);
 
   // ─── Cards do topo: sempre o acumulado geral do ano (ignora o mês do filtro,
   // só respeita o empreendimento selecionado) — quando um empreendimento
   // específico está selecionado, a segunda fileira de cards abaixo é que reflete
   // o mês filtrado.
   const yearlyAnalysis = useMemo(
-    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, year, null, tabelaVendas, controleInicio),
-    [scopedProjects, titles, projectMetas, categoriaOrcamento, year, tabelaVendas, controleInicio]
+    () => analyzeProjectsForPeriod(scopedProjects, titles, projectMetas, categoriaOrcamento, year, null, tabelaVendas, controleInicio, categoriasBase),
+    [scopedProjects, titles, projectMetas, categoriaOrcamento, year, tabelaVendas, controleInicio, categoriasBase]
   );
   const yearlyTotalBudget = yearlyAnalysis.reduce((s, a) => s + a.vgvMeta, 0) * ORCAMENTO_PCT;
 
@@ -194,13 +210,17 @@ export default function SiengeMetasDashboard({
   }, [year]);
 
   const yearlyBudgetReal = useMemo(
-    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, yearlyAteData)),
-    [scopedProjects, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, yearlyAteData]
+    () => scopedProjects.map(p => analyzeProjectBudgetReal(p, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, yearlyAteData, categoriasBase)),
+    [scopedProjects, tabelaVendas, vendas, titles, categoriaOrcamento, controleInicio, yearlyAteData, categoriasBase]
   );
   const yearlyTotalOrcamentoReal = yearlyBudgetReal.reduce((s, b) => s + b.orcamentoRealAcumulado, 0);
   const yearlyTotalGastoReal = yearlyBudgetReal.reduce((s, b) => s + b.gastoRealAcumulado, 0);
-  const yearlyTotalSaving = yearlyBudgetReal.reduce((s, b) => s + Math.max(b.diferencaReal, 0), 0);
-  const yearlyTotalOverspend = yearlyBudgetReal.reduce((s, b) => s + Math.max(-b.diferencaReal, 0), 0);
+
+  // Mesma regra líquida da faixa do período — as duas faixas precisam responder à
+  // pergunta do mesmo jeito, senão comparar uma com a outra engana.
+  const yearlyDiferenca = yearlyTotalOrcamentoReal - yearlyTotalGastoReal;
+  const yearlyTotalOverspend = Math.max(-yearlyDiferenca, 0);
+  const yearlyTotalSaving = Math.max(yearlyDiferenca, 0);
 
   // Ritmo do mês corrente (não do período filtrado) — sinal de alerta contra a
   // meta, nunca decide estouro.
@@ -338,11 +358,11 @@ export default function SiengeMetasDashboard({
                 <div className="text-4xl font-semibold text-[#EDEDED] tracking-[-0.02em]">{formatCurrency(mesGastoReal)}</div>
               </div>
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
-                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Quanto o gasto do período passou do orçamento real do período.">Overspend</div>
+                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Gasto real do período menos orçamento real do período, somando todos os empreendimentos selecionados — a economia de um abate o estouro de outro.">Overspend</div>
                 <div className={`text-4xl font-semibold tracking-[-0.02em] ${mesOverspend > 0 ? 'text-[#F85149]' : 'text-[#EDEDED]'}`}>{formatCurrency(mesOverspend)}</div>
               </div>
               <div className="bg-[#111113] rounded-lg p-5 flex flex-col gap-3">
-                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="Quanto sobrou do orçamento real do período.">Saving</div>
+                <div className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]" title="O que sobrou do orçamento real do período no conjunto selecionado. Só aparece quando não há estouro algum.">Saving</div>
                 <div className={`text-4xl font-semibold tracking-[-0.02em] ${mesSaving > 0 ? 'text-[#3FB950]' : 'text-[#EDEDED]'}`}>{formatCurrency(mesSaving)}</div>
               </div>
             </div>
@@ -454,7 +474,11 @@ export default function SiengeMetasDashboard({
                     {(br?.categorias || a.categorias).some(c => c.percentual > 0 || c.gasto > 0) && (
                       <div className="flex flex-col gap-2 pt-2 border-t border-[#1F1F22]">
                         {(br?.categorias || a.categorias).filter(c => c.percentual > 0 || c.gasto > 0).map(c => {
-                          const over = c.pctGastoDoVgv > c.percentual;
+                          // Sem % alocado não existe orçamento para estourar: antes qualquer
+                          // gasto acima de zero pintava de vermelho, e R$ 300 parecia tão grave
+                          // quanto R$ 27 mil. Agora isso é "sem orçamento definido" (neutro).
+                          const semOrcamento = c.percentual <= 0;
+                          const over = !semOrcamento && c.pctGastoDoVgv > c.percentual;
                           const used = c.orcamento > 0 ? Math.min(c.gasto / c.orcamento, 1) : 0;
                           const statusColor = over ? 'text-[#F85149]' : c.gasto > 0 ? 'text-[#A0A0A5]' : 'text-[#6B6B70]';
                           const barColor = over ? 'bg-[#F85149]' : 'bg-blue-500';
@@ -462,15 +486,26 @@ export default function SiengeMetasDashboard({
                             <div key={`${c.centroCusto}-${c.categoria}`} className="flex flex-col gap-1 text-[11px]">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-[#6B6B70] truncate min-w-0">
-                                  {CENTRO_CUSTO_LABELS[c.centroCusto]} · {c.categoria}
+                                  {CENTRO_CUSTO_LABELS[c.centroCusto] || c.centroCusto} · {c.categoria}
+                                  {c.obsoleta && (
+                                    <span className="ml-1.5 text-[9px] text-[#8A6D3B]" title="Categoria fora da configuração atual — aparece porque ainda há título lançado nela.">
+                                      (obsoleta)
+                                    </span>
+                                  )}
                                 </span>
                                 <div className="flex items-center gap-2 shrink-0">
-                                  <span className="text-[#6B6B70]">{formatPct(c.percentual)}</span>
+                                  <span className="text-[#6B6B70]" title={semOrcamento ? 'Sem % de orçamento alocado para esta categoria.' : 'Fatia do VGV alocada a esta categoria.'}>
+                                    {semOrcamento ? 'sem verba' : formatPct(c.percentual)}
+                                  </span>
                                   <span className={statusColor}>{formatCurrency(c.gasto)}</span>
                                 </div>
                               </div>
                               <div className="h-[3px] bg-[#1A1A1C] rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${used * 100}%`, opacity: over ? 1 : 0.6 }} />
+                                {semOrcamento ? (
+                                  <div className="h-full rounded-full bg-[#3A3A3F]" style={{ width: '100%', opacity: 0.5 }} />
+                                ) : (
+                                  <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${used * 100}%`, opacity: over ? 1 : 0.6 }} />
+                                )}
                               </div>
                             </div>
                           );
@@ -497,10 +532,15 @@ export default function SiengeMetasDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {ALL_CATEGORIAS.map(({ centroCusto, categoria }) => (
+                    {categoriasBase.map(({ centroCusto, categoria, obsoleta }) => (
                       <tr key={`${centroCusto}-${categoria}`} className="border-b border-[#1F1F22] last:border-b-0 hover:bg-[#151519] transition-colors">
                         <td className="px-4 py-2.5 pl-5 text-[#A0A0A5]">
-                          <span className="text-[#6B6B70] mr-1">{CENTRO_CUSTO_LABELS[centroCusto]} ·</span>{categoria}
+                          <span className="text-[#6B6B70] mr-1">{CENTRO_CUSTO_LABELS[centroCusto] || centroCusto} ·</span>{categoria}
+                          {obsoleta && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#8A6D3B] bg-[#3A2E17] border border-[#5C4718]" title="Categoria fora da configuração atual — aparece porque ainda há título lançado nela.">
+                              obsoleta
+                            </span>
+                          )}
                         </td>
                         {analysis.map(a => {
                           // Gasto real acumulado da categoria, sobre o orçamento da categoria alocado
