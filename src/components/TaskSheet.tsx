@@ -1064,7 +1064,10 @@ export default function TaskSheet({
 
   const handleDeadlinePicked = (newDate: string | undefined) => {
     if (!task || effectiveLock) return;
-    if (isDeadlineAdmin) {
+    // Aprovação só faz sentido quando existe um prazo para ser alterado. Na primeira
+    // definição (tarefa ainda sem prazo) qualquer um grava direto.
+    const isFirstDeadline = !task.dueDate;
+    if (isDeadlineAdmin || isFirstDeadline) {
       let newStatus = status;
       if (status === 'no_forecast' && newDate) newStatus = 'todo';
       else if (status === 'todo' && !newDate) newStatus = 'no_forecast';
