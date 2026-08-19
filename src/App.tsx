@@ -1069,8 +1069,14 @@ export default function App() {
     const statusMovingActive = statusIsChanging && newStatus !== 'no_forecast' && newStatus !== 'done';
 
     if (statusMovingActive && !resultingDueDate) {
+      // Só o status é barrado. Descartar o update inteiro derrubava junto os dados que
+      // vieram no mesmo write — o caso real foi a rodada de aprovação de orçamento, que
+      // sobe com status 'approval': a rodada se perdia e o aprovador recebia a
+      // notificação sem ter nada para aprovar.
       showToast('Adicione um prazo antes de mover esta tarefa para outro status.');
-      return;
+      delete updates.status;
+      const hasOtherChanges = Object.keys(updates).some(k => k !== 'id' && k !== 'updatedBy');
+      if (!hasOtherChanges) return;
     }
 
     // Automação: prazo removido de task ativa → volta silenciosamente para 'Sem Previsão'
