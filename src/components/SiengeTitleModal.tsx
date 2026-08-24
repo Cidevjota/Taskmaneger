@@ -244,7 +244,13 @@ export default function SiengeTitleModal({
         })
       );
 
-      const allAttachments = [...(initialData?.attachments || []), ...newAttachments];
+      // `attachments` só entra no save quando temos a lista real em mãos: os anexos já
+      // salvos (carregados sob demanda) mais os enviados agora. Se o título foi aberto
+      // a partir da listagem — que não traz a coluna —, mandar `[]` apagaria no banco os
+      // anexos existentes, e era assim que as despesas perdiam o PDF ao serem editadas.
+      const allAttachments = initialData?.attachments !== undefined
+        ? [...initialData.attachments, ...newAttachments]
+        : (newAttachments.length > 0 ? newAttachments : undefined);
 
       const title: SiengeTitle = withVencimentoOriginal({
         id: titleId,

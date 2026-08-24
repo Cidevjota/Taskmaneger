@@ -442,6 +442,10 @@ export interface SiengeTitle {
   reminderDate?: string;
   reminderType?: '3h' | '1d' | 'custom' | 'seen';
   attachments?: { id: string, name: string, url?: string, data?: string }[];
+  // Quantidade de anexos vinda da coluna gerada `attachments_count`. A listagem não
+  // carrega `attachments` (linhas antigas guardam PDF em base64), então é por aqui que
+  // as telas sabem que existe anexo antes de buscá-lo sob demanda.
+  attachmentsCount?: number;
   chatMessages?: ChatMessage[];
   status: SiengeStatus;
   motivoRecusa?: string; // Reason recorded when status is set to 'recusados'

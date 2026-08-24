@@ -1539,9 +1539,16 @@ export default function App() {
                 const { __baseUpdatedAt, ...clean } = title as any;
                 queryClient.setQueryData<SiengeTitle[]>(['siengeTitles'], prev => {
                   const exists = (prev || []).find(t => t.id === clean.id);
+                  // attachmentsCount vem de coluna gerada, então não volta no objeto salvo:
+                  // recalcula pelos anexos enviados ou preserva o que a lista já sabia —
+                  // senão o clipe de anexo sumiria da tela até o próximo refetch.
+                  const merged: SiengeTitle = {
+                    ...clean,
+                    attachmentsCount: clean.attachments?.length ?? exists?.attachmentsCount,
+                  };
                   return exists
-                    ? (prev || []).map(t => t.id === clean.id ? clean : t)
-                    : [clean, ...(prev || [])];
+                    ? (prev || []).map(t => t.id === clean.id ? merged : t)
+                    : [merged, ...(prev || [])];
                 });
                 saveSiengeTitle(title).catch((e) => {
                   if (e instanceof SiengeTitleConflictError) {

@@ -495,24 +495,15 @@ function TitleCard({ title, column, onClick, onDragStart, isDragging, lotes, onU
               )}
             </div>
           )}
-          {title.attachments && title.attachments.length > 0 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // Download the first attachment
-                const att = title.attachments![0];
-                const link = document.createElement('a');
-                link.href = att.data;
-                link.download = att.name;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }}
-              className="flex items-center justify-center w-5 h-5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-colors border border-blue-500/20 mr-1"
-              title={`Baixar anexo: ${title.attachments[0].name}`}
+          {/* Só o contador chega pela listagem (a coluna `attachments` fica de fora),
+              então o clipe é apenas um indicador — o conteúdo abre no modal do título. */}
+          {(title.attachmentsCount ?? title.attachments?.length ?? 0) > 0 && (
+            <span
+              className="flex items-center justify-center w-5 h-5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 mr-1"
+              title={`${title.attachmentsCount ?? title.attachments!.length} anexo(s) — abra o título para visualizar`}
             >
               <Paperclip size={11} />
-            </button>
+            </span>
           )}
           {assignee && (
             assignee.avatarUrl ? (

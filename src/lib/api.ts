@@ -527,7 +527,7 @@ export async function deleteUserDocument(id: string) {
 
 // ─── Sienge Titles ───────────────────────────────────────────────
 
-const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, centro_custo, categoria, subcategoria, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, paid_at, mensalidade_id, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao';
+const SIENGE_TITLE_LIST_COLS = 'id, titulo, descricao, valor, empreendimento, centro_custo, categoria, subcategoria, vencimento, vencimento_original, lote, lote_id, fatura_id, motivo_detalhado, assignee_id, reminder_date, reminder_type, status, created_at, updated_at, paid_at, mensalidade_id, motivo_recusa, motivo_recusa_registrado_em, motivo_recusa_resolvido, motivo_recusa_resolvido_em, motivo_recusa_observacao, attachments_count';
 
 function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
   return {
@@ -557,6 +557,9 @@ function mapSiengeTitle(r: any, attachments?: any): SiengeTitle {
     // apart from "explicitly empty" and won't clobber real attachments — same
     // guard used for vencimento_history above.
     attachments,
+    // Coluna gerada no banco: vem na lista mesmo sem o conteúdo dos anexos, e é o que
+    // permite às telas mostrarem o clipe sem baixar o `attachments` inteiro.
+    attachmentsCount: attachments ? attachments.length : (r.attachments_count ?? undefined),
     status: r.status,
     motivoRecusa: r.motivo_recusa,
     motivoRecusaRegistradoEm: r.motivo_recusa_registrado_em,

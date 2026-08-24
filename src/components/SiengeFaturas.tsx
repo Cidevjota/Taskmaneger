@@ -2,10 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Plus, X, CheckCircle2, ChevronRight,
   Hash, FileText, CreditCard, Pencil,
-  TrendingUp, BarChart3, Timer, Package, AlertTriangle, Trash2
+  TrendingUp, BarChart3, Timer, Package, AlertTriangle, Trash2,
+  Paperclip, Loader2
 } from 'lucide-react';
 import { SiengeFatura, SiengeTitle, SiengeLote, Project } from '../types';
 import { SiengeTaxonomy } from '../lib/siengeCategorias';
+import { fetchSiengeTitleById } from '../lib/api';
 import SiengeTitleModal from './SiengeTitleModal';
 
 interface SiengeFaturasProps {
@@ -258,6 +260,83 @@ function GerarTituloModal({
   );
 }
 
+// ─── Anexos da despesa ──────────────────────────────────────────────────────────
+// A listagem de títulos não traz a coluna `attachments` (linhas antigas guardam PDF em
+// base64), só o contador `attachmentsCount`. Então o clipe aparece pelo contador e o
+// conteúdo é buscado sob demanda, no clique.
+function DespesaAnexos({ despesa }: { despesa: SiengeTitle }) {
+  const count = despesa.attachmentsCount ?? despesa.attachments?.length ?? 0;
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [anexos, setAnexos] = useState<NonNullable<SiengeTitle['attachments']>>(despesa.attachments || []);
+
+  if (count === 0) return <span className="text-zinc-700">—</span>;
+
+  const handleOpen = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (anchor) { setAnchor(null); return; }
+    const r = e.currentTarget.getBoundingClientRect();
+    // Posição fixa: o container da tabela tem overflow, um dropdown comum seria cortado.
+    setAnchor({ top: r.bottom + 6, left: r.left });
+    if (anexos.length === 0) {
+      setLoading(true);
+      try {
+        const full = await fetchSiengeTitleById(despesa.id);
+        setAnexos(full?.attachments || []);
+      } catch {
+        setAnexos([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleOpen}
+        title={`${count} anexo${count !== 1 ? 's' : ''} — clique para visualizar`}
+        className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 border border-blue-500/20 transition-colors"
+      >
+        <Paperclip size={11} />
+        {count > 1 && <span className="text-[10px] font-semibold">{count}</span>}
+      </button>
+      {anchor && (
+        <>
+          <div className="fixed inset-0 z-[90]" onClick={() => setAnchor(null)} />
+          <div
+            className="fixed z-[91] w-64 max-h-64 overflow-y-auto bg-[#0d0d10] border border-zinc-800 rounded-xl shadow-2xl p-2 flex flex-col gap-1"
+            style={{ top: anchor.top, left: Math.min(anchor.left, window.innerWidth - 272) }}
+            onClick={e => e.stopPropagation()}
+          >
+            {loading ? (
+              <div className="flex items-center gap-2 px-2 py-2 text-[11px] text-zinc-500">
+                <Loader2 size={12} className="animate-spin" /> Carregando anexos...
+              </div>
+            ) : anexos.length === 0 ? (
+              <div className="px-2 py-2 text-[11px] text-zinc-600">Nenhum anexo disponível.</div>
+            ) : (
+              anexos.map(att => (
+                <a
+                  key={att.id}
+                  href={att.url || att.data}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] text-zinc-300 hover:bg-zinc-800/60 hover:text-blue-300 transition-colors"
+                  title={att.name}
+                >
+                  <Paperclip size={11} className="text-blue-400 shrink-0" />
+                  <span className="truncate">{att.name}</span>
+                </a>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 // ─── Fatura Row (accordion) ─────────────────────────────────────────────────────
 function FaturaRow({
   fatura,
@@ -426,6 +505,7 @@ function FaturaRow({
                   <th className="text-left px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Descrição</th>
                   <th className="text-left px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Motivo Detalhado</th>
                   <th className="text-left px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Empreendimento</th>
+                  <th className="text-center px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider w-16">Anexo</th>
                   <th className="text-right px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Valor</th>
                   <th className="w-16 px-4 py-2" />
                 </tr>
@@ -439,6 +519,7 @@ function FaturaRow({
                       <span className="block truncate" title={t.motivoDetalhado || undefined}>{t.motivoDetalhado || '—'}</span>
                     </td>
                     <td className="px-4 py-2.5 text-zinc-400 truncate max-w-[160px]">{t.empreendimento || '—'}</td>
+                    <td className="px-4 py-2.5 text-center"><DespesaAnexos despesa={t} /></td>
                     <td className="px-4 py-2.5 text-right font-semibold text-emerald-400">{formatCurrency(t.valor)}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button
@@ -477,6 +558,24 @@ export default function SiengeFaturas({
     [faturas, editingDespesa],
   );
   const [gerarTituloFatura, setGerarTituloFatura] = useState<SiengeFatura | null>(null);
+  const [isLoadingDespesa, setIsLoadingDespesa] = useState(false);
+
+  // Abre a despesa para edição com os anexos já carregados. A listagem não traz a coluna
+  // `attachments`; sem esse fetch, o modal salvaria a despesa sem eles e o banco perderia
+  // os PDFs já enviados.
+  const handleEditDespesa = async (despesa: SiengeTitle) => {
+    setIsLoadingDespesa(true);
+    let full: SiengeTitle | null = null;
+    try {
+      full = await fetchSiengeTitleById(despesa.id);
+    } catch {
+      full = null;
+    }
+    setIsLoadingDespesa(false);
+    setEditingDespesa(full ?? despesa);
+    setDespesaFatura(null);
+    setDespesaModalOpen(true);
+  };
 
   const handleCreate = (codigo: string, vencimento: string) => {
     const newFatura: SiengeFatura = {
@@ -685,12 +784,20 @@ export default function SiengeFaturas({
                 onDelete={onDeleteFatura}
                 onGerarTitulo={setGerarTituloFatura}
                 onNovaDespesa={(f) => { setDespesaFatura(f); setEditingDespesa(null); setDespesaModalOpen(true); }}
-                onEditDespesa={(d) => { setEditingDespesa(d); setDespesaFatura(null); setDespesaModalOpen(true); }}
+                onEditDespesa={handleEditDespesa}
               />
             ))
           )}
         </div>
       </div>
+
+      {isLoadingDespesa && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0d0d10] border border-zinc-800 rounded-xl text-xs text-zinc-300 shadow-2xl">
+            <Loader2 size={13} className="animate-spin text-blue-400" /> Carregando despesa...
+          </div>
+        </div>
+      )}
 
       {showNewModal && (
         <NewFaturaModal
