@@ -72,13 +72,23 @@ function FaixaValidacao() {
   );
 }
 
-function NaoEncontrada() {
+/**
+ * `validacao` troca só o texto. A página de validação é interna, e o recado
+ * genérico do corretor ("fale com a equipe comercial") mandava quem estava
+ * conferindo uma tabela procurar a si mesmo — o que falta ali é sempre a chave
+ * ligada e salva no painel.
+ */
+function NaoEncontrada({ validacao = false }: { validacao?: boolean }) {
   return (
     <div className="min-h-[100svh] bg-[#08080a] flex flex-col items-center justify-center gap-3 px-8 text-center">
       <img src={LP_EMPRESA.logoUrl} alt={LP_EMPRESA.nome} className="h-8 w-auto opacity-40 mb-2" />
-      <h1 className="text-base font-bold text-zinc-200">Tabela indisponível</h1>
+      <h1 className="text-base font-bold text-zinc-200">
+        {validacao ? 'Validação indisponível' : 'Tabela indisponível'}
+      </h1>
       <p className="text-sm text-zinc-500 max-w-xs">
-        Este link não está mais ativo ou a tabela ainda não foi publicada. Fale com a equipe comercial para receber o link atualizado.
+        {validacao
+          ? 'A página de validação está desligada ou este link foi substituído. No Orbit, abra Tabela Corretor, ligue a chave "Página de validação" e clique em Salvar.'
+          : 'Este link não está mais ativo ou a tabela ainda não foi publicada. Fale com a equipe comercial para receber o link atualizado.'}
       </p>
     </div>
   );
@@ -814,7 +824,7 @@ export default function LpCorretorPage({ slug, validacaoToken }: LpCorretorPageP
   const visiveisIds = new Set(visiveis.map(u => u.id));
 
   if (carregando) return <Skeleton />;
-  if (erro || !data) return <NaoEncontrada />;
+  if (erro || !data) return <NaoEncontrada validacao={!!validacaoToken} />;
 
   const { config, projeto } = data;
   const banner = config.bannerUrl || projeto.coverImage;

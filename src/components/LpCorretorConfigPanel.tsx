@@ -359,6 +359,11 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
 
   const url = lpCorretorUrl(slugifyLpSlug(config.slug));
 
+  // Lê de `salvo`, não de `config`: quem decide se o link responde é o banco, e
+  // o toggle só chega lá no Salvar. Usar o estado local aqui faria o painel
+  // anunciar "no ar" um link que a RPC ainda recusa.
+  const validacaoNoAr = !!salvo?.validacaoHabilitada;
+
   return (
     <div className="flex flex-col gap-4 p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-fade-in">
       <div className="flex items-start justify-between gap-3">
@@ -424,7 +429,7 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
             <ListChecks size={14} className={config.validacaoHabilitada ? 'text-amber-400 shrink-0' : 'text-zinc-600 shrink-0'} />
             <span className="text-xs font-semibold text-zinc-200 shrink-0">Página de validação</span>
             <span className="text-[11px] text-zinc-600 truncate">
-              {config.validacaoHabilitada ? '— espelha a tabela ao vivo, sem publicar' : '— o link está desligado'}
+              {validacaoNoAr ? '— espelha a tabela ao vivo, sem publicar' : '— o link está desligado'}
             </span>
           </div>
           <button
@@ -442,34 +447,61 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
         </p>
 
         {config.validacaoToken ? (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 flex-1 min-w-0 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2">
-              <Link2 size={12} className="text-zinc-600 shrink-0" />
-              <span className="text-[11px] text-zinc-600 shrink-0">/validacao/</span>
-              <span className="flex-1 min-w-0 truncate text-[11px] text-zinc-400 font-mono">{config.validacaoToken}</span>
+          <>
+            {/* Copiar e abrir só depois de SALVO. O toggle é estado local até o
+                Salvar gravar; enquanto isso a RPC recusa o token e a página
+                responde "indisponível". Deixar os botões ativos aqui convidava
+                a abrir um link que ainda não existe para o banco. */}
+            <div className={`flex items-center gap-2 ${validacaoNoAr ? '' : 'opacity-50'}`}>
+              <div className="flex items-center gap-1.5 flex-1 min-w-0 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2">
+                <Link2 size={12} className="text-zinc-600 shrink-0" />
+                <span className="text-[11px] text-zinc-600 shrink-0">/validacao/</span>
+                <span className="flex-1 min-w-0 truncate text-[11px] text-zinc-400 font-mono">{config.validacaoToken}</span>
+              </div>
+              <button
+                type="button"
+                onClick={copiarLinkValidacao}
+                disabled={!validacaoNoAr}
+                title={validacaoNoAr ? 'Copiar link de validação' : 'Ligue a validação e salve para o link responder'}
+                className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0 disabled:cursor-not-allowed disabled:hover:text-zinc-400"
+              >
+                {copiadoValidacao ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+              </button>
+              {validacaoNoAr ? (
+                <a
+                  href={lpValidacaoUrl(config.validacaoToken)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir página de validação"
+                  className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0"
+                >
+                  <ExternalLink size={13} />
+                </a>
+              ) : (
+                <span title="Ligue a validação e salve para o link responder" className="p-2 text-zinc-600 bg-zinc-900/60 border border-zinc-800 rounded-lg shrink-0 cursor-not-allowed">
+                  <ExternalLink size={13} />
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={regenerarToken}
+                disabled={regenerando}
+                title="Gerar um novo link — o atual para de funcionar na hora"
+                className="p-2 text-zinc-400 hover:text-amber-300 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0 disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={regenerando ? 'animate-spin' : ''} />
+              </button>
             </div>
-            <button type="button" onClick={copiarLinkValidacao} title="Copiar link de validação" className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0">
-              {copiadoValidacao ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-            </button>
-            <a
-              href={lpValidacaoUrl(config.validacaoToken)}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Abrir página de validação"
-              className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0"
-            >
-              <ExternalLink size={13} />
-            </a>
-            <button
-              type="button"
-              onClick={regenerarToken}
-              disabled={regenerando}
-              title="Gerar um novo link — o atual para de funcionar na hora"
-              className="p-2 text-zinc-400 hover:text-amber-300 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0 disabled:opacity-50"
-            >
-              <RefreshCw size={13} className={regenerando ? 'animate-spin' : ''} />
-            </button>
-          </div>
+
+            {!validacaoNoAr && (
+              <p className="flex items-center gap-1.5 text-[11px] text-amber-400/90">
+                <AlertTriangle size={12} className="shrink-0" />
+                {config.validacaoHabilitada
+                  ? 'Clique em Salvar, no rodapé do painel, para o link entrar no ar.'
+                  : 'Ligue a chave acima e clique em Salvar para o link entrar no ar.'}
+              </p>
+            )}
+          </>
         ) : (
           <p className="text-[11px] text-zinc-600">Salve a configuração uma vez para o link de validação ser gerado.</p>
         )}
