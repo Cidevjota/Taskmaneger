@@ -1,12 +1,22 @@
 import { LpCorretorPlanta, LpCorretorPublicColuna, LpCorretorPublicRegra, LpCorretorPublicUnidade, SiengeColunaTipo, SiengeVendaSituacao } from '../types';
 
 export const LP_CORRETOR_BASE_PATH = '/tabela';
+// Rota da página de validação. Separada de /tabela de propósito: ela serve a
+// tabela ao vivo, inclusive valores ainda não publicados, então o endereço é o
+// token — e não pode ser deduzível a partir do slug público.
+export const LP_VALIDACAO_BASE_PATH = '/validacao';
 export const REGRA_PREFIX = 'regra:';
 
 /** Endereço público completo de uma LP, para copiar/compartilhar. */
 export function lpCorretorUrl(slug: string): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return `${origin}${LP_CORRETOR_BASE_PATH}/${slug}`;
+}
+
+/** Endereço da página de validação — o token é o segredo, trate como senha. */
+export function lpValidacaoUrl(token: string): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}${LP_VALIDACAO_BASE_PATH}/${token}`;
 }
 
 // ─── Tema da página pública ───────────────────────────────────────────────

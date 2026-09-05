@@ -748,8 +748,14 @@ export interface LpCorretorConfig {
   // porque antes do registro da incorporação não houve venda. A troca acontece
   // na RPC, não na tela: a situação real não sai do banco.
   riRegistrado: boolean;
-  // Quando a versão atual dos valores foi aprovada para a LP. null = nunca
-  // publicada, e a LP serve a tabela ao vivo.
+  // Página de validação: espelho ao vivo da tabela, endereçado pelo token e
+  // fora do fluxo de publicação. Serve para conferir um reajuste antes de
+  // liberá-lo — por isso mostra preço não publicado e o endereço é secreto.
+  validacaoHabilitada: boolean;
+  validacaoToken: string;
+  // Slot de publicação por projeto, de quando o empreendimento tinha uma tabela
+  // só. Cada versão tem o seu desde 20260805030000 e é ele que a LP usa; este
+  // permanece apenas para não quebrar leituras antigas do painel.
   tabelaPublicadaEm: string | null;
   createdAt: string;
   updatedAt: string;
@@ -790,6 +796,12 @@ export interface LpCorretorPublicVersao {
 }
 
 export interface LpCorretorPublicData {
+  /**
+   * true = este payload é o espelho ao vivo da página de validação, montado
+   * sem passar por publicação nenhuma. A página avisa quem está lendo: não é
+   * o que o corretor está vendo.
+   */
+  validacao: boolean;
   /** Versões liberadas na LP. Uma só = a página não mostra os botões. */
   versoes: LpCorretorPublicVersao[];
   /** Qual delas esta resposta traz — colunas, regras e unidades são dela. */

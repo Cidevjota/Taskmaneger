@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, Moon, Sun, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe, Download } from 'lucide-react';
 import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
-import { fetchLpCorretorPublic } from '../lib/api';
+import { fetchLpCorretorPublic, fetchLpCorretorValidacao } from '../lib/api';
 import { LP_SITUACAO_LABELS, LP_TEMA_STORAGE_KEY, LpTema, aplicarTemaLp, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, mergeLpColunas, plantasDaUnidade, sortUnidades, temaLpSalvo, valorNumerico } from '../lib/lpCorretor';
 import { baixarTabelaPdf } from '../lib/lpCorretorPdf';
 import { LP_EMPRESA, canaisDeContato } from '../lib/lpCorretorEmpresa';
@@ -54,6 +54,20 @@ function Skeleton() {
   return (
     <div className="min-h-[100svh] bg-[#08080a] flex items-center justify-center">
       <Loader2 size={22} className="text-zinc-600 animate-spin" />
+    </div>
+  );
+}
+
+/**
+ * Faixa de identificação da página de validação. Ela é visualmente idêntica à
+ * do corretor, e essa é exatamente a razão de existir a faixa: sem ela, uma
+ * captura de tela desta página circula como se fosse a tabela publicada.
+ */
+function FaixaValidacao() {
+  return (
+    <div className="lp-no-print sticky top-0 z-50 flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 text-amber-950 text-[11px] sm:text-xs font-semibold text-center">
+      <ListChecks size={14} className="shrink-0" />
+      <span>Pré-visualização ao vivo — reflete a tabela do Orbit agora e não é o que o corretor está vendo.</span>
     </div>
   );
 }
@@ -667,7 +681,19 @@ function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas,
   );
 }
 
-export default function LpCorretorPage({ slug }: { slug: string }) {
+/**
+ * A mesma página em dois endereços. Com `slug`, é a LP pública: serve o
+ * snapshot publicado e só muda quando alguém aperta Publicar. Com
+ * `validacaoToken`, é o espelho de validação: reflete a tabela do Orbit ao vivo,
+ * sem publicação nenhuma. O payload é montado pela mesma função no banco nos
+ * dois casos — é isso que faz o que se confere na validação valer para o que
+ * será publicado.
+ */
+type LpCorretorPageProps =
+  | { slug: string; validacaoToken?: never }
+  | { slug?: never; validacaoToken: string };
+
+export default function LpCorretorPage({ slug, validacaoToken }: LpCorretorPageProps) {
   const [data, setData] = useState<LpCorretorPublicData | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
@@ -690,14 +716,21 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
     let ativo = true;
     const primeira = versaoId === null;
     if (!primeira) setTrocandoVersao(true);
-    fetchLpCorretorPublic(slug, versaoId ?? undefined)
+    const carregar = validacaoToken
+      ? fetchLpCorretorValidacao(validacaoToken, versaoId ?? undefined)
+      : fetchLpCorretorPublic(slug!, versaoId ?? undefined);
+    carregar
       .then(d => { if (ativo) { setData(d); setCarregando(false); setTrocandoVersao(false); } })
       .catch(() => { if (ativo) { setErro(true); setCarregando(false); setTrocandoVersao(false); } });
     return () => { ativo = false; };
-  }, [slug, versaoId]);
+  }, [slug, validacaoToken, versaoId]);
 
   useEffect(() => {
-    if (data) document.title = `${data.config.titulo || data.projeto.nome} — Tabela de Vendas`;
+    if (!data) return;
+    const nomePagina = data.config.titulo || data.projeto.nome;
+    document.title = data.validacao
+      ? `${nomePagina} — Validação (ao vivo)`
+      : `${nomePagina} — Tabela de Vendas`;
   }, [data]);
 
   // O tema já foi aplicado em main.tsx antes do primeiro render; aqui só se
@@ -823,6 +856,7 @@ export default function LpCorretorPage({ slug }: { slug: string }) {
       className="lp-print min-h-[100svh] w-full overflow-x-hidden bg-[#08080a] text-zinc-100 antialiased"
       style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
     >
+      {data.validacao && <FaixaValidacao />}
       {/* A largura cresce por etapas em vez de saltar de 512px para o desktop:
           navegador interno de WhatsApp/Instagram e o modo "site para
           computador" montam a página com viewport largo, e uma coluna estreita

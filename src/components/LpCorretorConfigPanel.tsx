@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, Loader2, Plus, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, ListChecks, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
 import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao } from '../types';
-import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, publicarTabelaLpCorretorVersao, saveLpCorretorConfig } from '../lib/api';
-import { REGRA_PREFIX, lpCorretorUrl, slugifyLpSlug } from '../lib/lpCorretor';
+import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, publicarTabelaLpCorretorVersao, regenerarTokenValidacaoLp, saveLpCorretorConfig } from '../lib/api';
+import { REGRA_PREFIX, lpCorretorUrl, lpValidacaoUrl, slugifyLpSlug } from '../lib/lpCorretor';
 import { mergeColunasRegras } from '../lib/siengeVendasTabela';
 import { UPLOAD_LIMITS, sanitizeFileName, uploadToStorage } from '../lib/storage';
 
@@ -52,6 +52,10 @@ function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
     colunasLinha: [],
     colunaTipologia: null,
     riRegistrado: true,
+    validacaoHabilitada: false,
+    // O token real nasce no banco (default da coluna) e chega no primeiro
+    // carregamento depois de salvar; até lá não há link para copiar.
+    validacaoToken: '',
     tabelaPublicadaEm: null,
     createdAt: now,
     updatedAt: now,
@@ -94,6 +98,8 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
+  const [copiadoValidacao, setCopiadoValidacao] = useState(false);
+  const [regenerando, setRegenerando] = useState(false);
   const [enviando, setEnviando] = useState<UploadTipo | null>(null);
   /** Id da versão sendo publicada — o botão que roda é só o dela. */
   const [publicando, setPublicando] = useState<string | null>(null);
@@ -170,13 +176,24 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
       .filter(o => visiveis.has(o.key));
   }, [merged, config?.colunasVisiveis, versoesLp, nomeVersaoDaRegra]);
 
-  // A LP serve um snapshot aprovado, não a tabela ao vivo: reajustar não muda
-  // o que o corretor vê. Há versão pendente quando alguma unidade daquela
-  // versão foi alterada depois da última publicação dela.
+  // A LP serve um snapshot aprovado, não a tabela ao vivo: nada da tabela chega
+  // ao corretor sem Publicar. O aviso de pendência tem que cobrir tudo que o
+  // snapshot congela — valores das unidades, nomes/ordem das colunas e as
+  // regras de cálculo. Olhar só as unidades deixava o painel dizer "sem
+  // pendências" com uma regra já editada esperando publicação.
+  //
+  // Coluna ou regra APAGADA depois da publicação não aparece aqui: sem o
+  // snapshot em mãos não há o que comparar. É seguro por outro motivo — o que
+  // sumiu do banco continua congelado no snapshot e não muda a página.
   const pendenciaDaVersao = (versao: SiengeTabelaVendaVersao) => {
     if (!versao.tabelaPublicadaEm) return null;
     const em = new Date(versao.tabelaPublicadaEm).getTime();
-    return unidades.filter(u => u.versaoId === versao.id && new Date(u.updatedAt).getTime() > em);
+    const depois = (iso: string) => new Date(iso).getTime() > em;
+    return {
+      unidades: unidades.filter(u => u.versaoId === versao.id && depois(u.updatedAt)),
+      colunas: colunas.filter(c => c.versaoId === versao.id && depois(c.updatedAt)),
+      regras: regras.filter(r => r.versaoId === versao.id && depois(r.updatedAt)),
+    };
   };
 
   const publicar = async (versao: SiengeTabelaVendaVersao) => {
@@ -195,6 +212,26 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
   const dirty = !!config && !!salvo && JSON.stringify(config) !== JSON.stringify(salvo);
 
   const patch = (p: Partial<LpCorretorConfig>) => setConfig(c => (c ? { ...c, ...p } : c));
+
+  // Rotação do token: grava direto, sem passar pelo Salvar. O motivo de
+  // rotacionar é sempre "este link não pode mais valer", e isso não pode ficar
+  // pendurado num botão que a pessoa talvez não aperte. Escreve nos dois
+  // estados para o campo não contar como alteração não salva.
+  const regenerarToken = async () => {
+    if (!config || regenerando) return;
+    setRegenerando(true);
+    setErro(null);
+    try {
+      const token = await regenerarTokenValidacaoLp(projectId);
+      setConfig(c => (c ? { ...c, validacaoToken: token } : c));
+      setSalvo(s => (s ? { ...s, validacaoToken: token } : s));
+      setCopiadoValidacao(false);
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao gerar um novo link de validação.');
+    } finally {
+      setRegenerando(false);
+    }
+  };
 
   // Três estados por coluna: oculta (não sai do banco), linha (aparece na linha
   // compacta) e detalhe (só ao expandir a unidade). colunasLinha é sempre um
@@ -288,6 +325,14 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
     });
   };
 
+  const copiarLinkValidacao = () => {
+    if (!config?.validacaoToken) return;
+    navigator.clipboard.writeText(lpValidacaoUrl(config.validacaoToken)).then(() => {
+      setCopiadoValidacao(true);
+      setTimeout(() => setCopiadoValidacao(false), 2000);
+    });
+  };
+
   if (carregando) {
     return (
       <div className="flex items-center justify-center gap-2 p-8 bg-zinc-900/40 border border-zinc-800 rounded-xl text-xs text-zinc-500">
@@ -368,13 +413,75 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
         </div>
       </div>
 
+      {/* Página de validação — a contrapartida do botão Publicar. A página do
+          corretor só muda quando alguém publica; esta reflete a tabela do
+          Orbit agora, para conferir um reajuste antes de soltá-lo. O endereço é
+          o token justamente porque ela mostra preço não publicado: derivá-lo do
+          slug faria a página pública entregar a de validação junto. */}
+      <div className="flex flex-col gap-2.5 p-3 bg-amber-500/[0.04] border border-amber-500/20 rounded-lg">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <ListChecks size={14} className={config.validacaoHabilitada ? 'text-amber-400 shrink-0' : 'text-zinc-600 shrink-0'} />
+            <span className="text-xs font-semibold text-zinc-200 shrink-0">Página de validação</span>
+            <span className="text-[11px] text-zinc-600 truncate">
+              {config.validacaoHabilitada ? '— espelha a tabela ao vivo, sem publicar' : '— o link está desligado'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => patch({ validacaoHabilitada: !config.validacaoHabilitada })}
+            className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${config.validacaoHabilitada ? 'bg-amber-500' : 'bg-zinc-700'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${config.validacaoHabilitada ? 'left-[22px]' : 'left-0.5'}`} />
+          </button>
+        </div>
+
+        <p className="text-[11px] text-zinc-500 leading-relaxed">
+          Mostra sempre o estado atual da tabela — valores, colunas e regras de cálculo — sem nunca precisar do botão Publicar.
+          Inclui as versões que ainda não foram liberadas ao corretor. Trate o link como senha: ele expõe preço não publicado.
+        </p>
+
+        {config.validacaoToken ? (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 bg-zinc-900/60 border border-zinc-800 rounded-lg px-2.5 py-2">
+              <Link2 size={12} className="text-zinc-600 shrink-0" />
+              <span className="text-[11px] text-zinc-600 shrink-0">/validacao/</span>
+              <span className="flex-1 min-w-0 truncate text-[11px] text-zinc-400 font-mono">{config.validacaoToken}</span>
+            </div>
+            <button type="button" onClick={copiarLinkValidacao} title="Copiar link de validação" className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0">
+              {copiadoValidacao ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            </button>
+            <a
+              href={lpValidacaoUrl(config.validacaoToken)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir página de validação"
+              className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0"
+            >
+              <ExternalLink size={13} />
+            </a>
+            <button
+              type="button"
+              onClick={regenerarToken}
+              disabled={regenerando}
+              title="Gerar um novo link — o atual para de funcionar na hora"
+              className="p-2 text-zinc-400 hover:text-amber-300 bg-zinc-900/60 border border-zinc-800 rounded-lg transition-colors shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={regenerando ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        ) : (
+          <p className="text-[11px] text-zinc-600">Salve a configuração uma vez para o link de validação ser gerado.</p>
+        )}
+      </div>
+
       {/* Versões servidas à LP. A página é uma só — banner, plantas e ficha são
           as mesmas; o que o botão de versão troca lá são as unidades, as colunas
           e os valores. Cada versão tem a própria publicação: reajustar não sobe
           sozinho, o corretor vê a última aprovada até alguém publicar. */}
       <Secao
         titulo="Versões na página"
-        descricao="Marque quais versões o corretor pode escolher. Com mais de uma marcada, a página exibe os botões de versão nos filtros da tabela. Versão sem publicação serve os valores ao vivo."
+        descricao="Marque quais versões o corretor pode escolher. Com mais de uma marcada, a página exibe os botões de versão nos filtros da tabela. Versão sem publicação não aparece na página."
       >
         {ordenadas.length === 0 ? (
           <p className="text-[11px] text-zinc-600">Este empreendimento ainda não tem versões de tabela de vendas.</p>
@@ -383,7 +490,10 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
             {ordenadas.map(v => {
               const pendentes = pendenciaDaVersao(v);
               const nunca = pendentes === null;
-              const temPendencia = !!pendentes && pendentes.length > 0;
+              const totalPendente = pendentes
+                ? pendentes.unidades.length + pendentes.colunas.length + pendentes.regras.length
+                : 0;
+              const temPendencia = totalPendente > 0;
               const alerta = v.lpVisivel && (temPendencia || nunca);
               return (
                 <div
@@ -408,11 +518,15 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
                           {!v.lpVisivel ? (
                             <>Não aparece na página. Marque para o corretor poder escolher esta condição.</>
                           ) : nunca ? (
-                            <>Servindo os valores ao vivo. Publique para congelar o que o corretor vê.</>
+                            <>Nunca publicada — a página não exibe esta versão. Publique para o corretor vê-la.</>
                           ) : temPendencia ? (
                             <>
-                              {pendentes!.length} {pendentes!.length === 1 ? 'unidade alterada' : 'unidades alteradas'} desde a última publicação
-                              ({new Date(v.tabelaPublicadaEm!).toLocaleString('pt-BR')}).
+                              {[
+                                pendentes!.unidades.length && `${pendentes!.unidades.length} ${pendentes!.unidades.length === 1 ? 'unidade' : 'unidades'}`,
+                                pendentes!.colunas.length && `${pendentes!.colunas.length} ${pendentes!.colunas.length === 1 ? 'coluna' : 'colunas'}`,
+                                pendentes!.regras.length && `${pendentes!.regras.length} ${pendentes!.regras.length === 1 ? 'regra' : 'regras'}`,
+                              ].filter(Boolean).join(', ')} desde a última publicação
+                              ({new Date(v.tabelaPublicadaEm!).toLocaleString('pt-BR')}). O corretor ainda vê a anterior.
                             </>
                           ) : (
                             <>Publicada em {new Date(v.tabelaPublicadaEm!).toLocaleString('pt-BR')}. Sem pendências.</>
@@ -448,9 +562,13 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
                     </div>
                   </div>
 
-                  {temPendencia && pendentes!.length <= 12 && (
+                  {temPendencia && totalPendente <= 12 && (
                     <p className="text-[10px] text-zinc-600 break-words">
-                      {pendentes!.map(u => u.unidade).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join(', ')}
+                      {[
+                        ...pendentes!.unidades.map(u => u.unidade).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+                        ...pendentes!.colunas.map(c => c.label),
+                        ...pendentes!.regras.map(r => r.titulo),
+                      ].join(', ')}
                     </p>
                   )}
                 </div>

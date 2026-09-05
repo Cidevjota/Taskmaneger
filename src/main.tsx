@@ -2,7 +2,7 @@ import {StrictMode, Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
 import './index.css';
 
-import { LP_CORRETOR_BASE_PATH, aplicarTemaLp, temaLpSalvo } from './lib/lpCorretor';
+import { LP_CORRETOR_BASE_PATH, LP_VALIDACAO_BASE_PATH, aplicarTemaLp, temaLpSalvo } from './lib/lpCorretor';
 
 // Carregados sob demanda para que os dois lados não paguem o bundle do outro —
 // a LP é aberta no celular do corretor e não pode arrastar junto os providers,
@@ -14,18 +14,25 @@ const LpCorretorPage = lazy(() => import('./components/LpCorretorPage'));
 // AuthProvider e de todo o resto do app, então quem abre o link não carrega —
 // nem alcança — nenhuma outra tela. O conteúdo vem da RPC get_lp_corretor,
 // a única coisa liberada para a chave anon.
-const lpSlug = (() => {
-  const prefix = `${LP_CORRETOR_BASE_PATH}/`;
+function segmentoDaRota(prefixo: string): string | null {
+  const prefix = `${prefixo}/`;
   const path = decodeURIComponent(window.location.pathname);
   if (!path.startsWith(prefix)) return null;
   return path.slice(prefix.length).replace(/\/+$/, '') || null;
-})();
+}
+
+const lpSlug = segmentoDaRota(LP_CORRETOR_BASE_PATH);
+
+// /validacao/<token>: a MESMA página da LP, servida ao vivo pela RPC de
+// validação. Mora aqui, junto da rota pública, porque compartilha a condição
+// que importa — renderizar fora do AuthProvider, sem arrastar o app interno.
+const lpToken = segmentoDaRota(LP_VALIDACAO_BASE_PATH);
 
 // A LP tem visual próprio e não segue a preferência do sistema nem a do usuário
 // do app interno: quem escolhe é quem abre o link, pelo botão de tema da própria
 // página, e a escolha vive numa chave só dela. Aplicado aqui, antes do render,
 // para a página não piscar no tema errado a cada carregamento.
-if (lpSlug) aplicarTemaLp(temaLpSalvo());
+if (lpSlug || lpToken) aplicarTemaLp(temaLpSalvo());
 
 // A meta viewport NÃO é alterada aqui de propósito. Acrescentar
 // `viewport-fit=cover` por JavaScript depois do carregamento fazia o Samsung
@@ -39,7 +46,9 @@ if (lpSlug) aplicarTemaLp(temaLpSalvo());
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Suspense fallback={<div className="min-h-screen bg-[#08080a]" />}>
-      {lpSlug ? <LpCorretorPage slug={lpSlug} /> : <AppRoot />}
+      {lpSlug ? <LpCorretorPage slug={lpSlug} />
+        : lpToken ? <LpCorretorPage validacaoToken={lpToken} />
+        : <AppRoot />}
     </Suspense>
   </StrictMode>,
 );

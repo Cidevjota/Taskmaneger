@@ -1546,6 +1546,8 @@ function mapLpCorretorConfig(r: any): LpCorretorConfig {
     colunasLinha: Array.isArray(r.colunas_linha) ? r.colunas_linha : [],
     colunaTipologia: r.coluna_tipologia ?? null,
     riRegistrado: r.ri_registrado ?? true,
+    validacaoHabilitada: r.validacao_habilitada ?? false,
+    validacaoToken: r.validacao_token ?? '',
     tabelaPublicadaEm: r.tabela_publicada_em ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -1557,7 +1559,7 @@ export async function fetchLpCorretorConfigs(): Promise<LpCorretorConfig[]> {
   // e não tem uso no painel — só a data da publicação importa aqui.
   const { data, error } = await supabase
     .from('sienge_lp_corretor')
-    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,colunas_visiveis,colunas_linha,coluna_tipologia,ri_registrado,tabela_publicada_em,created_at,updated_at');
+    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,colunas_visiveis,colunas_linha,coluna_tipologia,ri_registrado,validacao_habilitada,validacao_token,tabela_publicada_em,created_at,updated_at');
   if (error) throw error;
   return (data || []).map(mapLpCorretorConfig);
 }
@@ -1589,6 +1591,10 @@ export async function saveLpCorretorConfig(config: LpCorretorConfig) {
     colunas_linha: config.colunasLinha,
     coluna_tipologia: config.colunaTipologia,
     ri_registrado: config.riRegistrado,
+    validacao_habilitada: config.validacaoHabilitada,
+    // `validacao_token` fica fora de propósito: ele só muda por
+    // regenerarTokenValidacaoLp. Se viesse no upsert, salvar o painel com uma
+    // config carregada há dez minutos ressuscitaria um token já rotacionado.
     updated_at: new Date().toISOString(),
   }, { onConflict: 'project_id' });
   // 23505 = unique_violation; o único índice único além da PK é o do slug.
@@ -1606,5 +1612,24 @@ export async function fetchLpCorretorPublic(slug: string, versaoId?: string): Pr
   const { data, error } = await supabase.rpc('get_lp_corretor', { p_slug: slug, p_versao_id: versaoId ?? null });
   if (error) throw error;
   return (data as LpCorretorPublicData | null) ?? null;
+}
+
+/**
+ * Leitura da página de validação — mesmo payload da pública, montado pela mesma
+ * função no banco, porém a partir da tabela ao vivo. Não passa por publicação:
+ * é o estado atual do Orbit, sempre. Responde null com o token errado ou com a
+ * validação desligada no painel.
+ */
+export async function fetchLpCorretorValidacao(token: string, versaoId?: string): Promise<LpCorretorPublicData | null> {
+  const { data, error } = await supabase.rpc('get_lp_corretor_validacao', { p_token: token, p_versao_id: versaoId ?? null });
+  if (error) throw error;
+  return (data as LpCorretorPublicData | null) ?? null;
+}
+
+/** Rotaciona o token: o link de validação que já circulou para de responder. */
+export async function regenerarTokenValidacaoLp(projectId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('regenerar_token_validacao_lp', { p_project_id: projectId });
+  if (error) throw error;
+  return data as string;
 }
 
