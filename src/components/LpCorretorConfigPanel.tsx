@@ -138,17 +138,20 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
   const ordenadas = useMemo(() => [...versoes].sort((a, b) => a.sortOrder - b.sortOrder), [versoes]);
   const versoesLp = useMemo(() => ordenadas.filter(v => v.lpVisivel), [ordenadas]);
 
-  // As colunas que a LP pode exibir são as das versões liberadas. Uma key
-  // repetida entre versões é a mesma coluna e aparece uma vez só; regras têm id
-  // próprio por versão, então cada uma entra separada — marcar a de uma versão
-  // não faz a irmã aparecer na outra.
+  // Colunas de TODAS as versões, não só das liberadas. Marcar uma coluna aqui
+  // não a põe no ar: a leitura pública cruza esta lista com a versão servida, e
+  // versão não liberada não é servida. Restringir às liberadas criava um beco —
+  // para validar uma versão antes de soltá-la é preciso escolher as colunas
+  // dela, mas ela só entrava na lista depois de solta.
+  //
+  // Uma key repetida entre versões é a mesma coluna e aparece uma vez só;
+  // regras têm id próprio por versão, então cada uma entra separada — marcar a
+  // de uma versão não faz a irmã aparecer na outra.
   const merged = useMemo(() => {
-    const ids = new Set(versoesLp.map(v => v.id));
-    const doLp = colunas.filter(c => ids.has(c.versaoId));
     const porKey = new Map<string, SiengeTabelaVendaColuna>();
-    for (const c of doLp) if (!porKey.has(c.key)) porKey.set(c.key, c);
-    return mergeColunasRegras([...porKey.values()], regras.filter(r => ids.has(r.versaoId)));
-  }, [colunas, regras, versoesLp]);
+    for (const c of colunas) if (!porKey.has(c.key)) porKey.set(c.key, c);
+    return mergeColunasRegras([...porKey.values()], regras);
+  }, [colunas, regras]);
 
   // Nome da versão de cada regra — sem ele, duas versões com a mesma regra
   // ("Entrada 20%") viram duas linhas idênticas e indistinguíveis na lista.
@@ -170,11 +173,11 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
       .map(m => {
         const key = m.kind === 'coluna' ? m.item.key : `${REGRA_PREFIX}${m.item.id}`;
         const base = m.kind === 'coluna' ? m.item.label : m.item.titulo;
-        const daVersao = m.kind === 'regra' && versoesLp.length > 1 ? nomeVersaoDaRegra.get(m.item.id) : null;
+        const daVersao = m.kind === 'regra' && ordenadas.length > 1 ? nomeVersaoDaRegra.get(m.item.id) : null;
         return { key, label: daVersao ? `${base} · ${daVersao}` : base };
       })
       .filter(o => visiveis.has(o.key));
-  }, [merged, config?.colunasVisiveis, versoesLp, nomeVersaoDaRegra]);
+  }, [merged, config?.colunasVisiveis, ordenadas, nomeVersaoDaRegra]);
 
   // A LP serve um snapshot aprovado, não a tabela ao vivo: nada da tabela chega
   // ao corretor sem Publicar. O aviso de pendência tem que cobrir tudo que o
@@ -901,19 +904,20 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
 
       <Secao
         titulo="Colunas da tabela"
-        descricao="Colunas das versões liberadas acima. Unidade, valor e situação sempre aparecem na linha. Para cada coluna restante escolha: Oculta (não sai do banco), Linha (aparece na linha compacta) ou Detalhe (aparece só ao expandir a unidade, ao lado da planta) — o card da unidade sempre mostra tudo que não estiver oculto."
+        descricao="Colunas de todas as versões do empreendimento — marcar aqui a coluna de uma versão ainda não liberada não a põe na página, mas já a mostra na validação. Unidade, valor e situação sempre aparecem na linha. Para cada coluna restante escolha: Oculta (não sai do banco), Linha (aparece na linha compacta) ou Detalhe (aparece só ao expandir a unidade, ao lado da planta) — o card da unidade sempre mostra tudo que não estiver oculto."
       >
         {merged.length === 0 ? (
-          <p className="text-[11px] text-zinc-600">Nenhuma coluna nas versões liberadas para a página.</p>
+          <p className="text-[11px] text-zinc-600">Este empreendimento ainda não tem colunas na tabela de vendas.</p>
         ) : (
           <div className="flex flex-col gap-1.5">
             {merged.map(m => {
               const key = m.kind === 'coluna' ? m.item.key : `${REGRA_PREFIX}${m.item.id}`;
               const label = m.kind === 'coluna' ? m.item.label : m.item.titulo;
               const destino = destinoDe(key);
-              // Regra pertence a uma versão só; com várias liberadas, o nome
-              // dela é o que distingue duas regras homônimas.
-              const daVersao = m.kind === 'regra' && versoesLp.length > 1 ? nomeVersaoDaRegra.get(m.item.id) : null;
+              // Regra pertence a uma versão só; com mais de uma versão, o nome
+              // dela é o que distingue duas regras homônimas ("Valor m²" existe
+              // em quase todas).
+              const daVersao = m.kind === 'regra' && ordenadas.length > 1 ? nomeVersaoDaRegra.get(m.item.id) : null;
               return (
                 <div key={key} className="flex items-center gap-2">
                   <span className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-zinc-300 truncate">
