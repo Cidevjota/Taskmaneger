@@ -38,25 +38,29 @@ comment on column public.sienge_lp_corretor.imoveis is
   'Cadastro dos imóveis de um empreendimento de terceiros: [{id, nome, descricao, bookUrl, fotosUrl, imagens[], fichaTecnica[]}]. Ligado às unidades por sienge_tabela_vendas.imovel.';
 
 -- ─── Backfill do que já foi digitado à mão ────────────────────────────────
--- Sem a coluna nativa, o nome do imóvel foi parar em dois lugares no
--- empreendimento "Terceiros": numa coluna dinâmica rotulada "imóvel" e, nas
--- linhas mais antigas, na Descrição. A coluna dinâmica foi reaproveitada de uma
--- de área, então em parte das linhas ela ainda guarda o número (51,42) em vez
--- do nome — por isso o valor só é aceito quando NÃO é numérico, caindo para a
--- descrição no resto. Toca apenas projetos de terceiros e apenas linhas cujo
--- `imovel` ainda é null, então rodar de novo não desfaz edição manual.
+-- Sem a coluna nativa, o único lugar confiável onde o nome do imóvel já
+-- estava era uma coluna dinâmica antiga rotulada "imóvel" — reaproveitada de
+-- uma de área, então em parte das linhas ela ainda guarda o número (51,42) em
+-- vez do nome, e o valor só é aceito quando NÃO é numérico.
+--
+-- A Descrição NÃO entra como reserva: ao rodar isto pela primeira vez ela
+-- também virou fonte de fallback e produziu quatro "imóveis" que eram só o
+-- texto livre da unidade (ex.: "COBERTURA BARCELONA"), sem relação com o
+-- conceito de imóvel desta funcionalidade — decisão revertida manualmente em
+-- 06/09/2026 depois de o usuário notar a diferença na LP. Toca apenas
+-- projetos de terceiros e apenas linhas cujo `imovel` ainda é null, então
+-- rodar de novo não desfaz edição manual.
 -- `exists` em vez de UPDATE ... FROM projects: o alias da tabela alvo não pode
 -- ser referenciado de dentro de um LATERAL do FROM, e a expressão precisa
 -- enxergar `u.campos_extra`.
 update public.sienge_tabela_vendas u
-   set imovel = coalesce(
-         (select nullif(trim(u.campos_extra ->> c.key), '')
-            from public.sienge_tabela_vendas_colunas c
-           where c.versao_id = u.versao_id
-             and lower(translate(c.label, 'ÁÉÍÓÚÂÊÔÃÕÇáéíóúâêôãõç', 'AEIOUAEOAOCaeiouaeoaoc')) in ('imovel', 'imoveis')
-             and (u.campos_extra ->> c.key) !~ '^-?[0-9.,]+$'
-           limit 1),
-         nullif(trim(u.descricao), '')
+   set imovel = (
+         select nullif(trim(u.campos_extra ->> c.key), '')
+           from public.sienge_tabela_vendas_colunas c
+          where c.versao_id = u.versao_id
+            and lower(translate(c.label, 'ÁÉÍÓÚÂÊÔÃÕÇáéíóúâêôãõç', 'AEIOUAEOAOCaeiouaeoaoc')) in ('imovel', 'imoveis')
+            and (u.campos_extra ->> c.key) !~ '^-?[0-9.,]+$'
+          limit 1
        )
  where u.imovel is null
    and exists (select 1 from public.projects p where p.id = u.project_id and p.terceiros);
