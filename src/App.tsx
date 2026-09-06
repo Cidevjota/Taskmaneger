@@ -22,7 +22,7 @@ import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
 import { Task, TaskStatus, Project, Label, ViewType, SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeValidacao } from './types';
-import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeMensalidades, saveSiengeMensalidade, deleteSiengeMensalidade, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, fetchSiengeTabelaVendaVersoes, saveSiengeTabelaVendaVersao, deleteSiengeTabelaVendaVersao, duplicarSiengeTabelaVendaVersao, definirVersaoPrincipal, fetchSiengeTabelaVendaConfigs, saveSiengeTabelaVendaConfig, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, deleteAllSiengeTabelaVendasByProject, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, setSiengeTabelaVendasMargem, reverterSiengeTabelaVendasRevisao, alterarSituacaoUnidades, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
+import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, renameProject, deleteProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeMensalidades, saveSiengeMensalidade, deleteSiengeMensalidade, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, fetchSiengeTabelaVendaVersoes, saveSiengeTabelaVendaVersao, deleteSiengeTabelaVendaVersao, duplicarSiengeTabelaVendaVersao, definirVersaoPrincipal, fetchSiengeTabelaVendaConfigs, saveSiengeTabelaVendaConfig, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, deleteAllSiengeTabelaVendasByProject, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, setSiengeTabelaVendasMargem, reverterSiengeTabelaVendasRevisao, alterarSituacaoUnidades, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
 import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1277,9 +1277,45 @@ export default function App() {
     saveProject(newProject).catch(console.error);
   };
 
-  const handleUpdateProject = (updatedProject: Project) => {
+  const handleUpdateProject = async (updatedProject: Project) => {
+    const anterior = projects.find(p => p.id === updatedProject.id);
+    const renomeou = !!anterior && anterior.name !== updatedProject.name;
+
     queryClient.setQueryData<Project[]>(['projects'], prev => (prev || []).map(p => p.id === updatedProject.id ? updatedProject : p));
-    saveProject(updatedProject).catch(console.error);
+
+    try {
+      // O nome sai primeiro e sozinho: a RPC religa os títulos (presos por nome)
+      // na mesma transação. Só depois o upsert grava o resto dos campos.
+      if (renomeou) {
+        await renameProject(updatedProject.id, updatedProject.name);
+        queryClient.invalidateQueries({ queryKey: ['siengeTitles'] });
+        queryClient.invalidateQueries({ queryKey: ['siengeMensalidades'] });
+      }
+      await saveProject(updatedProject);
+    } catch (e: any) {
+      // Nome duplicado é a recusa esperada — o nome é chave de ligação, dois
+      // empreendimentos homônimos fundiriam o gasto dos dois no dashboard.
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      showToast(e?.message || 'Erro ao salvar o empreendimento.');
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    const alvo = projects.find(p => p.id === projectId);
+    queryClient.setQueryData<Project[]>(['projects'], prev => (prev || []).filter(p => p.id !== projectId));
+    if (currentProjectFilter === projectId) setCurrentProjectFilter(null);
+    try {
+      await deleteProject(projectId);
+      // O cascade do banco levou tarefas, unidades, vendas, metas e LP junto —
+      // recarrega tudo que pode ter encolhido em vez de tentar espelhar na mão.
+      ['tasks', 'siengeTabelaVendas', 'siengeTabelaVendaVersoes', 'siengeVendas',
+       'siengeProjectMetas', 'siengeCategoriaOrcamento', 'siengeTabelaVendaColunas',
+       'siengeCalculoRegras', 'siengeValidacoes']
+        .forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+    } catch (e: any) {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      showToast(e?.message || `Erro ao excluir ${alvo?.name || 'o empreendimento'}.`);
+    }
   };
 
   const handleResetDatabase = () => {
@@ -1524,6 +1560,7 @@ export default function App() {
               onSelectProjectFilter={handleSelectProjectFilter}
               onAddProject={handleAddProject}
               onUpdateProject={handleUpdateProject}
+              onDeleteProject={handleDeleteProject}
             />
           )}
 

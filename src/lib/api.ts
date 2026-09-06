@@ -422,6 +422,44 @@ export async function saveProject(project: Project) {
   if (error) throw error;
 }
 
+/**
+ * Renomear passa por RPC, e não por `saveProject`, porque o nome é chave de
+ * ligação: `sienge_titles.empreendimento` guarda o nome em texto e é assim que
+ * o Dashboard Analítico soma gasto por empreendimento. Trocar só o `projects.name`
+ * desliga os títulos do relatório sem erro nenhum — o gasto some das telas e
+ * continua no banco. A função no banco move os dois lados na mesma transação.
+ */
+export async function renameProject(projectId: string, novoNome: string) {
+  const { error } = await supabase.rpc('renomear_empreendimento', {
+    p_project_id: projectId,
+    p_novo_nome: novoNome,
+  });
+  if (error) throw error;
+}
+
+export interface ProjectDeleteImpact {
+  tarefas: number;
+  unidades: number;
+  versoes: number;
+  vendas: number;
+  metas: number;
+  temLp: boolean;
+  /** Títulos ligados por NOME: não são apagados, ficam órfãos. */
+  titulos: number;
+}
+
+/** O que a exclusão arrasta junto — o cascade do banco é invisível na tela. */
+export async function fetchProjectDeleteImpact(projectId: string): Promise<ProjectDeleteImpact> {
+  const { data, error } = await supabase.rpc('impacto_exclusao_empreendimento', { p_project_id: projectId });
+  if (error) throw error;
+  return data as ProjectDeleteImpact;
+}
+
+export async function deleteProject(projectId: string) {
+  const { error } = await supabase.from('projects').delete().eq('id', projectId);
+  if (error) throw error;
+}
+
 export async function fetchNotifications(userId: string): Promise<AppNotification[]> {
   const { data, error } = await supabase
     .from('notifications')

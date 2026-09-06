@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { FolderPlus, Image as ImageIcon, Megaphone, Tag, History, Copy, Check, ChevronRight, PieChart, Edit2, Building2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { FolderPlus, Image as ImageIcon, Megaphone, Tag, History, Copy, Check, ChevronRight, PieChart, Edit2, Building2, Trash2, AlertTriangle, Loader2, X } from 'lucide-react';
 import { Project, Task } from '../types';
+import { fetchProjectDeleteImpact, ProjectDeleteImpact } from '../lib/api';
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -8,6 +9,140 @@ interface ProjectsViewProps {
   onSelectProjectFilter: (projectId: string) => void;
   onAddProject: (project: Project) => void;
   onUpdateProject: (project: Project) => void;
+  onDeleteProject: (projectId: string) => Promise<void> | void;
+}
+
+/**
+ * Confirmação da exclusão. Vale a tela inteira porque o DELETE cascateia: leva
+ * tarefas, unidades da tabela de vendas, vendas congeladas, metas e a LP do
+ * Corretor junto — nada disso aparece no card, e aprovar às cegas aqui custa
+ * caro. Os números vêm do banco, não de estimativa da tela.
+ *
+ * Digitar o nome é proposital: o clique errado é o modo de falha real de um
+ * botão de lixeira num grid de cards.
+ */
+function DeleteProjectDialog({ project, onCancel, onConfirm }: {
+  project: Project;
+  onCancel: () => void;
+  onConfirm: () => Promise<void> | void;
+}) {
+  const [impact, setImpact] = useState<ProjectDeleteImpact | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [excluindo, setExcluindo] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    fetchProjectDeleteImpact(project.id)
+      .then(d => { if (ativo) setImpact(d); })
+      .catch(e => { if (ativo) setErro(e?.message || 'Não foi possível levantar o impacto da exclusão.'); });
+    return () => { ativo = false; };
+  }, [project.id]);
+
+  const podeExcluir = confirmText.trim() === project.name && !excluindo;
+
+  const linhas = impact ? ([
+    ['Tarefas', impact.tarefas],
+    ['Unidades da tabela de vendas', impact.unidades],
+    ['Versões da tabela de vendas', impact.versoes],
+    ['Vendas congeladas', impact.vendas],
+    ['Metas de VGV', impact.metas],
+  ] as const).filter(([, n]) => n > 0) : [];
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in" onClick={onCancel}>
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-md bg-[#121214] border border-zinc-800 rounded-xl shadow-2xl flex flex-col max-h-[85vh]"
+      >
+        <div className="flex items-start justify-between gap-3 p-4 border-b border-zinc-900">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+              <AlertTriangle size={15} className="text-red-400" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-zinc-100">Excluir empreendimento</h3>
+              <p className="text-[11px] text-zinc-500 truncate">{project.name}</p>
+            </div>
+          </div>
+          <button onClick={onCancel} className="p-1 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-4 flex flex-col gap-3 overflow-y-auto">
+          {erro && <p className="text-[11px] text-red-400">{erro}</p>}
+
+          {!impact && !erro ? (
+            <div className="flex items-center gap-2 text-[11px] text-zinc-500 py-2">
+              <Loader2 size={13} className="animate-spin" /> Levantando o que será apagado...
+            </div>
+          ) : impact && (
+            <>
+              {linhas.length > 0 ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] text-zinc-400">Esta ação apaga permanentemente, junto com o empreendimento:</p>
+                  <div className="flex flex-col rounded-lg border border-zinc-800 overflow-hidden">
+                    {linhas.map(([label, n]) => (
+                      <div key={label} className="flex items-center justify-between gap-3 px-3 py-1.5 text-[11px] bg-zinc-900/40 border-b border-zinc-800/60 last:border-b-0">
+                        <span className="text-zinc-400">{label}</span>
+                        <span className="text-red-400 font-semibold tabular-nums">{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-zinc-400">Este empreendimento não tem tarefas nem tabela de vendas vinculadas.</p>
+              )}
+
+              {impact.temLp && (
+                <p className="text-[11px] text-amber-400/90 flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                  A página pública da Tabela Corretor sai do ar junto.
+                </p>
+              )}
+
+              {/* Títulos se ligam por nome, não por chave: o cascade não os
+                  alcança e eles sobrevivem apontando para um nome extinto. */}
+              {impact.titulos > 0 && (
+                <p className="text-[11px] text-amber-400/90 flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                  {impact.titulos} {impact.titulos === 1 ? 'título financeiro continua' : 'títulos financeiros continuam'} no sistema, mas {impact.titulos === 1 ? 'fica órfão' : 'ficam órfãos'} — o gasto some do Dashboard Analítico.
+                </p>
+              )}
+
+              <div className="flex flex-col gap-1.5 pt-1">
+                <label className="text-[11px] text-zinc-400">
+                  Digite <span className="text-zinc-200 font-semibold">{project.name}</span> para confirmar:
+                </label>
+                <input
+                  autoFocus
+                  value={confirmText}
+                  onChange={e => setConfirmText(e.target.value)}
+                  placeholder={project.name}
+                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-700 outline-none focus:border-red-500/50 transition-colors"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-zinc-900">
+          <button onClick={onCancel} className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors">
+            Cancelar
+          </button>
+          <button
+            disabled={!podeExcluir}
+            onClick={async () => { setExcluindo(true); try { await onConfirm(); } finally { setExcluindo(false); } }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-white bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed"
+          >
+            {excluindo ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            {excluindo ? 'Excluindo...' : 'Excluir permanentemente'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const QUICK_SECTIONS = [
@@ -46,8 +181,10 @@ export default function ProjectsView({
   tasks,
   onSelectProjectFilter,
   onAddProject,
-  onUpdateProject
+  onUpdateProject,
+  onDeleteProject
 }: ProjectsViewProps) {
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
   const [newProjCode, setNewProjCode] = useState('');
@@ -275,13 +412,26 @@ export default function ProjectsView({
                 <span className="absolute top-2.5 right-2.5 text-[9px] font-mono font-bold uppercase tracking-wider text-zinc-200 bg-black/50 backdrop-blur-sm py-0.5 px-2 rounded-full border border-white/10">
                   {STATUS_LABEL[project.status]}
                 </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleEditClick(project); }}
-                  className="absolute top-2.5 left-2.5 opacity-0 group-hover:opacity-100 p-1 bg-black/50 backdrop-blur-sm rounded text-zinc-300 hover:text-white transition-opacity border border-white/10"
-                  title="Editar"
-                >
-                  <Edit2 size={10} />
-                </button>
+                {/* Editar e excluir. Ficavam invisíveis até o hover (e a
+                    lixeira não existia); agora aparecem esmaecidos e firmam no
+                    hover — descobrir que dá para renomear não deveria depender
+                    de passar o mouse no lugar certo. */}
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleEditClick(project); }}
+                    className="p-1.5 bg-black/50 backdrop-blur-sm rounded text-zinc-400 opacity-70 group-hover:opacity-100 hover:text-white hover:bg-black/70 transition-all border border-white/10"
+                    title="Editar empreendimento"
+                  >
+                    <Edit2 size={11} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setProjectToDelete(project); }}
+                    className="p-1.5 bg-black/50 backdrop-blur-sm rounded text-zinc-400 opacity-70 group-hover:opacity-100 hover:text-red-400 hover:bg-black/70 transition-all border border-white/10"
+                    title="Excluir empreendimento"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 flex flex-col flex-1">
@@ -350,6 +500,19 @@ export default function ProjectsView({
           );
         })}
       </div>
+
+      {projectToDelete && (
+        <DeleteProjectDialog
+          project={projectToDelete}
+          onCancel={() => setProjectToDelete(null)}
+          onConfirm={async () => {
+            await onDeleteProject(projectToDelete.id);
+            setProjectToDelete(null);
+            // O formulário podia estar aberto editando justamente este.
+            if (editingProjectId === projectToDelete.id) handleCancelForm();
+          }}
+        />
+      )}
     </div>
   );
 }
