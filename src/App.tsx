@@ -21,7 +21,7 @@ import { useAuth } from './context/AuthContext';
 import { useNotifications } from './context/NotificationContext';
 import Login from './components/Login';
 
-import { Task, Project, Label, ViewType, SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeValidacao } from './types';
+import { Task, TaskStatus, Project, Label, ViewType, SiengeTitle, SiengeMensalidade, SiengeLote, SiengeFatura, SiengeProjectMeta, SiengeCategoriaOrcamento, SiengeProjectTotal, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaColuna, SiengeCalculoRegra, SiengeValidacao } from './types';
 import { fetchTasks, fetchTaskBriefings, fetchProjects, fetchLabels, saveTask, patchTask, deleteTask, saveProject, fetchSiengeTitles, saveSiengeTitle, deleteSiengeTitle, fetchSiengeMensalidades, saveSiengeMensalidade, deleteSiengeMensalidade, fetchSiengeLotes, saveSiengeLote, deleteSiengeLote, fetchSiengeFaturas, saveSiengeFatura, deleteSiengeFatura, fetchSiengeAlcadaConfig, saveSiengeAlcadaConfig, SiengeTitleConflictError, fetchSiengeProjectMetas, saveSiengeProjectMeta, deleteSiengeProjectMeta, fetchSiengeCategoriaOrcamentos, saveSiengeCategoriaOrcamento, deleteSiengeCategoriaOrcamento, fetchSiengeTitleStatusHistory, fetchSiengeProjectTotais, saveSiengeProjectTotal, fetchSiengeProjectDisplays, saveSiengeProjectDisplay, fetchSiengeTabelaVendas, fetchSiengeTabelaVendaVersoes, saveSiengeTabelaVendaVersao, deleteSiengeTabelaVendaVersao, duplicarSiengeTabelaVendaVersao, definirVersaoPrincipal, fetchSiengeTabelaVendaConfigs, saveSiengeTabelaVendaConfig, saveSiengeTabelaVenda, deleteSiengeTabelaVenda, deleteAllSiengeTabelaVendasByProject, fetchSiengeTabelaVendaColunas, saveSiengeTabelaVendaColuna, deleteSiengeTabelaVendaColuna, fetchSiengeTabelaVendaRevisoes, applySiengeTabelaVendasReajuste, setSiengeTabelaVendasMargem, reverterSiengeTabelaVendasRevisao, alterarSituacaoUnidades, fetchSiengeVendas, fetchSiengeOrcamentoConfig, saveSiengeOrcamentoConfig, fetchSiengeCalculoRegras, saveSiengeCalculoRegra, deleteSiengeCalculoRegra, fetchSiengeValidacoes, saveSiengeValidacao, deleteSiengeValidacao, fetchSiengeCentrosCusto, addSiengeCentroCusto, fetchSiengeCategorias, addSiengeCategoria, renameSiengeCategoria, deleteSiengeCategoria, fetchSiengeSubcategorias, addSiengeSubcategoria, deleteSiengeSubcategoria } from './lib/api';
 import { buildSiengeTaxonomy } from './lib/siengeCategorias';
 import { supabase } from './lib/supabase';
@@ -1168,6 +1168,19 @@ export default function App() {
   };
 
   const handleAddTask = (newTask: Task) => {
+    // Tarefa criada já em 'in_progress'/'rework' (coluna do Kanban, "Nova Tarefa"
+    // dentro de Em Progresso/Refação) nunca passa pela transição de status que
+    // liga o cronômetro em handleUpdateTask — sem isto, ela ficava com
+    // timeTracking vazio para sempre e o card não mostrava o tempo trabalhado.
+    const runStates: TaskStatus[] = ['in_progress', 'rework'];
+    if (runStates.includes(newTask.status) && !newTask.timeTracking) {
+      const nowISO = new Date().toISOString();
+      newTask = {
+        ...newTask,
+        timeTracking: { accumulatedMs: 0, isTimerRunning: true, lastStartedAt: nowISO },
+        statusHistory: [{ status: newTask.status, enteredAt: nowISO }],
+      };
+    }
     markRecentlySaved(newTask.id);
     queryClient.setQueryData<Task[]>(['tasks'], prev => [newTask, ...(prev || [])]);
     saveTask(newTask).catch(console.error);
