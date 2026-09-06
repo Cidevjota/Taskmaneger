@@ -10,7 +10,7 @@ import SiengeAlocacaoModal from './SiengeAlocacaoModal';
 import SiengeSpendChart from './SiengeSpendChart';
 import { analyzeProjectsForPeriod, buildCategoriasBase } from '../lib/siengeMetasAnalysis';
 import { CENTRO_CUSTO_LABELS, SiengeTaxonomy } from '../lib/siengeCategorias';
-import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, categoriaKey, getRitmoMes, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
+import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, categoriaKey, getRitmoMes, getTitulosNoPeriodo, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
 
 const RESTRICTED_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
 
@@ -36,11 +36,34 @@ interface SiengeMetasDashboardProps {
 
 const RITMO_LABELS: Record<RitmoMes, string> = { acima: 'Acima do ritmo', dentro: 'Dentro do esperado', abaixo: 'Abaixo do ritmo' };
 const RITMO_STYLES: Record<RitmoMes, string> = {
-  acima: 'text-[#F85149] bg-[#F85149]/10',
-  dentro: 'text-[#3FB950] bg-[#3FB950]/10',
-  abaixo: 'text-[#D29922] bg-[#D29922]/10',
+  acima: 'text-red-400 bg-red-500/10 border-red-500/20',
+  dentro: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+  abaixo: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
 };
 const RITMO_ICONS: Record<RitmoMes, typeof TrendingUp> = { acima: TrendingUp, dentro: Minus, abaixo: TrendingDown };
+
+// ─── Vocabulário visual da barra de filtros ───────────────────────────────
+// O mesmo da Lista Compacta: rótulo em mono maiúsculo antes de cada grupo,
+// opções em pílula dentro de um trilho arredondado, paleta zinc e tudo dentro
+// de um card. Antes esta tela falava um dialeto só dela (paleta em hex própria,
+// 11px contra 12px, com e sem borda), e duas telas do mesmo app não deveriam
+// precisar ser reaprendidas uma depois da outra.
+const FILTER_LABEL = 'text-[10px] font-mono uppercase text-zinc-500 font-semibold shrink-0';
+const PILL_GROUP = 'flex items-center gap-1.5 bg-zinc-900/40 p-1 rounded-full border border-zinc-800/50 shrink-0';
+const PILL = 'px-2.5 py-1 rounded-full text-[10px] font-medium transition-all whitespace-nowrap';
+const PILL_ON = 'bg-zinc-800 text-zinc-100 shadow-sm';
+const PILL_OFF = 'bg-transparent text-zinc-500 hover:text-zinc-300';
+
+// Gatilhos de dropdown e botões de ação: mesma pílula dos grupos, agora como
+// controle único. O azul translúcido é o mesmo acento que a Lista Compacta usa
+// no toggle ativo — chapado (bg-blue-600) ele gritava no meio da paleta zinc.
+const CTRL = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-medium transition-all shrink-0';
+const CTRL_NEUTRAL = `${CTRL} bg-zinc-900/40 text-zinc-500 border-zinc-800/50 hover:text-zinc-300`;
+const CTRL_PRIMARY = `${CTRL} bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/15`;
+
+// Popover: o mesmo do menu "Colunas" da Lista Compacta.
+const MENU_SURFACE = 'bg-[#121214] border border-zinc-800 rounded-lg shadow-xl z-50 animate-fade-in';
+const MENU_ITEM = 'w-full flex items-center justify-between px-3 py-2 text-[11px] transition-colors';
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -58,32 +81,32 @@ function ProjectFilterDropdown({ projects, value, onChange }: { projects: Projec
     <div className="relative">
       <button
         onClick={() => setIsOpen(p => !p)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-normal bg-[#1A1A1C] text-[#A0A0A5] hover:bg-[#1F1F22] hover:text-[#EDEDED] transition-colors min-w-[160px]"
+        className={`${isOpen ? `${CTRL} bg-zinc-800 text-zinc-200 border-zinc-700` : CTRL_NEUTRAL} w-[190px]`}
       >
-        <Building2 size={12} className="text-[#6B6B70] shrink-0" />
+        <Building2 size={12} className="shrink-0" />
         <span className="truncate flex-1 text-left">{selected ? selected.name : 'Todos os Empreendimentos'}</span>
-        <ChevronDown size={12} className={`text-[#6B6B70] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown size={12} className={`shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 top-full mt-1.5 w-[220px] bg-[#111113] rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] z-50 animate-fade-in origin-top-right flex flex-col py-1 max-h-[280px] overflow-y-auto no-scrollbar">
+          <div className={`${MENU_SURFACE} absolute right-0 top-full mt-2 w-[220px] origin-top-right flex flex-col p-1 max-h-[280px] overflow-y-auto no-scrollbar`}>
             <button
               onClick={() => { onChange('all'); setIsOpen(false); }}
-              className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${value === 'all' ? 'text-blue-400' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}
+              className={`${MENU_ITEM} rounded ${value === 'all' ? 'text-blue-400' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}`}
             >
               <span>Todos os Empreendimentos</span>
-              {value === 'all' && <Check size={14} />}
+              {value === 'all' && <Check size={13} />}
             </button>
-            {projects.length > 0 && <div className="h-px bg-[#1F1F22] my-1 mx-2" />}
+            {projects.length > 0 && <div className="h-px bg-zinc-800 my-1 mx-2" />}
             {projects.map(p => (
               <button
                 key={p.id}
                 onClick={() => { onChange(p.id); setIsOpen(false); }}
-                className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${value === p.id ? 'text-blue-400' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}
+                className={`${MENU_ITEM} rounded ${value === p.id ? 'text-blue-400' : 'text-zinc-300 hover:bg-zinc-800/50 hover:text-zinc-100'}`}
               >
                 <span className="truncate pr-2 text-left">{p.name}</span>
-                {value === p.id && <Check size={14} className="shrink-0" />}
+                {value === p.id && <Check size={13} className="shrink-0" />}
               </button>
             ))}
           </div>
@@ -105,6 +128,8 @@ export default function SiengeMetasDashboard({
   const [filterProjectId, setFilterProjectId] = useState<string>('all');
   const [showMetasPanel, setShowMetasPanel] = useState(false);
   const [showAlocacaoPanel, setShowAlocacaoPanel] = useState(false);
+  /** Linha aberta no comparativo (chave da categoria), com os títulos que a compõem. */
+  const [openCategoria, setOpenCategoria] = useState<string | null>(null);
 
   const allowed = currentUser?.email === RESTRICTED_EMAIL;
 
@@ -336,56 +361,76 @@ export default function SiengeMetasDashboard({
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="flex-1 flex flex-col overflow-hidden min-h-0"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between view-pad-x py-4 short:py-2.5 border-b border-[#1F1F22] shrink-0">
-              <div className="flex items-center gap-3">
-                <div>
-                  <h1 className="text-sm font-medium text-[#EDEDED]">Dashboard Analítico</h1>
-                  <p className="text-[11px] text-[#6B6B70] mt-0.5">Comparativo de orçamento de marketing/comercial vs VGV por empreendimento</p>
-                </div>
-                {hasMetas && (
-                  <span title="Compara o gasto real do mês contra a projeção por meta — é só um sinal de ritmo, nunca decide estouro." className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${RITMO_STYLES[ritmo]}`}>
-                    <RitmoIcon size={12} /> Ritmo do mês: {RITMO_LABELS[ritmo]}
-                  </span>
-                )}
+            {/* Título da view */}
+            <div className="flex items-center justify-between gap-4 view-pad-x py-4 short:py-2.5 border-b border-zinc-900 shrink-0">
+              <div className="min-w-0">
+                <h1 className="text-sm font-bold text-zinc-100">Dashboard Analítico</h1>
+                <p className="text-[11px] text-zinc-600 mt-0.5 truncate">Comparativo de orçamento de marketing/comercial vs VGV por empreendimento</p>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-0.5 p-0.5 bg-[#141416] border border-[#1F1F22] rounded-md">
-                  {([
-                    { value: 'marketing', label: 'Marketing' },
-                    { value: 'comercial', label: 'Comercial' },
-                    { value: 'todos', label: 'Visão Geral' },
-                  ] as const).map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setFilterCentroCusto(opt.value)}
-                      title={opt.value === 'todos' ? 'Marketing e Comercial somados' : `Somente ${opt.label}`}
-                      className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                        filterCentroCusto === opt.value
-                          ? 'bg-blue-600 text-white'
-                          : 'text-[#6B6B70] hover:text-[#EDEDED] hover:bg-[#1F1F22]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+              {/* Pílula, e não controle: é leitura de estado, não coisa em que
+                  se clica — daí ficar junto do título e fora da barra. */}
+              {hasMetas && (
+                <span
+                  title="Compara o gasto real do mês contra a projeção por meta — é só um sinal de ritmo, nunca decide estouro."
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium whitespace-nowrap shrink-0 ${RITMO_STYLES[ritmo]}`}
+                >
+                  <RitmoIcon size={11} className="shrink-0" /> Ritmo do mês: {RITMO_LABELS[ritmo]}
+                </span>
+              )}
+            </div>
+
+            {/* Barra de filtros — mesmo card, mesmos rótulos e mesmas pílulas da
+                Lista Compacta. Filtros à esquerda, ações à direita. */}
+            <div className="view-pad-x pt-3 short:pt-2 shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-950/50 p-3 short:p-2 rounded-lg border border-zinc-900">
+                <div className="flex items-center gap-2 xl:gap-4 flex-wrap">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={FILTER_LABEL}>Centro de Custo:</span>
+                    <div className={PILL_GROUP}>
+                      {([
+                        { value: 'marketing', label: 'Marketing' },
+                        { value: 'comercial', label: 'Comercial' },
+                        { value: 'todos', label: 'Visão Geral' },
+                      ] as const).map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setFilterCentroCusto(opt.value)}
+                          title={opt.value === 'todos' ? 'Marketing e Comercial somados' : `Somente ${opt.label}`}
+                          className={`${PILL} ${filterCentroCusto === opt.value ? PILL_ON : PILL_OFF}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={FILTER_LABEL}>Empreendimento:</span>
+                    <ProjectFilterDropdown projects={visibleProjects} value={filterProjectId} onChange={setFilterProjectId} />
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={FILTER_LABEL}>Período:</span>
+                    <MonthFilterDropdown
+                      value={filterMonth}
+                      onChange={setFilterMonth}
+                      allLabel="Ver Todos"
+                      triggerClassName={`${CTRL_NEUTRAL} w-[150px]`}
+                      menuClassName={MENU_SURFACE}
+                    />
+                  </div>
                 </div>
-                <ProjectFilterDropdown projects={visibleProjects} value={filterProjectId} onChange={setFilterProjectId} />
-                <MonthFilterDropdown value={filterMonth} onChange={setFilterMonth} allLabel="Ver Todos" />
-                <button
-                  onClick={() => setShowMetasPanel(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-md transition-colors"
-                >
-                  {hasMetas ? <Settings2 size={13} /> : <Eye size={13} />}
-                  {hasMetas ? 'Ajustar Metas' : 'Ver Metas'}
-                </button>
-                <button
-                  onClick={() => setShowAlocacaoPanel(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-100 bg-[#1A1A1C] hover:bg-[#1F1F22] rounded-md transition-colors"
-                >
-                  <PieChart size={13} />
-                  Alocação de Orçamento
-                </button>
+
+                <div className="flex items-center gap-2 shrink-0 ml-auto">
+                  <button onClick={() => setShowMetasPanel(true)} className={CTRL_PRIMARY}>
+                    {hasMetas ? <Settings2 size={12} className="shrink-0" /> : <Eye size={12} className="shrink-0" />}
+                    {hasMetas ? 'Ajustar Metas' : 'Ver Metas'}
+                  </button>
+                  <button onClick={() => setShowAlocacaoPanel(true)} className={CTRL_NEUTRAL}>
+                    <PieChart size={12} className="shrink-0" />
+                    Alocação de Orçamento
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -714,7 +759,7 @@ export default function SiengeMetasDashboard({
 
             {/* Tabela comparativa entre empreendimentos */}
             <div className="flex flex-col gap-4">
-              <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Comparativo entre Empreendimentos (% do orçamento da categoria consumido)</h3>
+              <h3 className="text-[11px] font-medium text-[#6B6B70] uppercase tracking-[0.05em]">Comparativo entre Empreendimentos (gasto real por categoria)</h3>
               <div className="overflow-x-auto bg-[#111113] rounded-lg">
                 <table className="w-full text-xs">
                   <thead>
@@ -726,32 +771,94 @@ export default function SiengeMetasDashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {categoriasBase.map(({ centroCusto, categoria, obsoleta }) => (
-                      <tr key={`${centroCusto}-${categoria}`} className="border-b border-[#1F1F22] last:border-b-0 hover:bg-[#151519] transition-colors">
-                        <td className="px-4 py-2.5 pl-5 text-[#A0A0A5]">
-                          <span className="text-[#6B6B70] mr-1">{CENTRO_CUSTO_LABELS[centroCusto] || centroCusto} ·</span>{categoria}
-                          {obsoleta && (
-                            <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#8A6D3B] bg-[#3A2E17] border border-[#5C4718]" title="Categoria fora da configuração atual — aparece porque ainda há título lançado nela.">
-                              obsoleta
-                            </span>
-                          )}
-                        </td>
-                        {analysis.map(a => {
-                          // Gasto real acumulado da categoria, sobre o orçamento da categoria alocado
-                          // pela meta (% × VGV meta) — não sobre o VGV real vendido, que fica em 0 até
-                          // a primeira venda confirmada e deixaria a tabela sempre zerada.
-                          const gastoC = (budgetRealByProjectId.get(a.project.id)?.categorias || a.categorias).find(x => x.centroCusto === centroCusto && x.categoria === categoria)!;
-                          const metaC = a.categorias.find(x => x.centroCusto === centroCusto && x.categoria === categoria)!;
-                          const pctConsumido = metaC.orcamento > 0 ? (gastoC.gasto / metaC.orcamento) * 100 : 0;
-                          const over = metaC.percentual > 0 && pctConsumido > 100;
-                          return (
-                            <td key={a.project.id} className={`px-4 py-2.5 text-right font-normal ${over ? 'text-[#F85149]' : gastoC.gasto > 0 ? 'text-[#A0A0A5]' : 'text-[#3A3A3E]'}`}>
-                              {gastoC.gasto > 0 || metaC.percentual > 0 ? formatPct(pctConsumido) : '—'}
+                    {categoriasBase.map(({ centroCusto, categoria, obsoleta }) => {
+                      const rowKey = categoriaKey(centroCusto, categoria);
+                      const isOpen = openCategoria === rowKey;
+                      // Os mesmos títulos que somam os valores da linha, agora por
+                      // extenso: mesma função de filtro que alimenta o gasto.
+                      const titulosDaLinha = isOpen
+                        ? analysis.flatMap(a =>
+                            getTitulosNoPeriodo(scopedTitles, a.project.name, controleInicio, ateData, { centroCusto, categoria })
+                              .map(t => ({ titulo: t, projectName: a.project.name }))
+                          ).sort((x, y) => y.titulo.valor - x.titulo.valor)
+                        : [];
+                      const totalDaLinha = titulosDaLinha.reduce((s, x) => s + x.titulo.valor, 0);
+
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr
+                            onClick={() => setOpenCategoria(isOpen ? null : rowKey)}
+                            className={`border-b border-[#1F1F22] cursor-pointer transition-colors ${isOpen ? 'bg-[#151519]' : 'hover:bg-[#151519]'}`}
+                          >
+                            <td className="px-4 py-2.5 pl-5 text-[#A0A0A5]">
+                              <span className="inline-flex items-center gap-1.5">
+                                <ChevronDown size={12} className={`text-[#6B6B70] shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                                <span>
+                                  <span className="text-[#6B6B70] mr-1">{CENTRO_CUSTO_LABELS[centroCusto] || centroCusto} ·</span>{categoria}
+                                </span>
+                                {obsoleta && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-medium text-[#8A6D3B] bg-[#3A2E17] border border-[#5C4718]" title="Categoria fora da configuração atual — aparece porque ainda há título lançado nela.">
+                                    obsoleta
+                                  </span>
+                                )}
+                              </span>
                             </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                            {analysis.map(a => {
+                              // Gasto real acumulado da categoria. O vermelho continua
+                              // marcando estouro do orçamento alocado pela meta — só o
+                              // número exibido mudou de % para reais.
+                              const gastoC = (budgetRealByProjectId.get(a.project.id)?.categorias || a.categorias).find(x => x.centroCusto === centroCusto && x.categoria === categoria)!;
+                              const metaC = a.categorias.find(x => x.centroCusto === centroCusto && x.categoria === categoria)!;
+                              const over = metaC.percentual > 0 && metaC.orcamento > 0 && gastoC.gasto > metaC.orcamento;
+                              return (
+                                <td
+                                  key={a.project.id}
+                                  title={metaC.orcamento > 0 ? `Orçamento da categoria: ${formatCurrency(metaC.orcamento)} (${formatPct(metaC.orcamento > 0 ? (gastoC.gasto / metaC.orcamento) * 100 : 0)} consumido)` : undefined}
+                                  className={`px-4 py-2.5 text-right font-normal tabular-nums ${over ? 'text-[#F85149]' : gastoC.gasto > 0 ? 'text-[#A0A0A5]' : 'text-[#3A3A3E]'}`}
+                                >
+                                  {gastoC.gasto > 0 ? formatCurrency(gastoC.gasto) : '—'}
+                                </td>
+                              );
+                            })}
+                          </tr>
+
+                          {isOpen && (
+                            <tr className="border-b border-[#1F1F22]">
+                              <td colSpan={analysis.length + 1} className="p-0">
+                                <div className="bg-[#0C0C0E] px-5 py-3 border-l-2 border-blue-500/40">
+                                  <div className="flex items-center justify-between gap-3 mb-2">
+                                    <span className="text-[10px] font-mono uppercase tracking-[0.05em] text-[#6B6B70]">
+                                      Títulos que geraram o custo · {CENTRO_CUSTO_LABELS[centroCusto] || centroCusto} · {categoria}
+                                    </span>
+                                    <span className="text-[10px] text-[#6B6B70] shrink-0">
+                                      {titulosDaLinha.length} {titulosDaLinha.length === 1 ? 'título' : 'títulos'} · <span className="text-[#A0A0A5] tabular-nums">{formatCurrency(totalDaLinha)}</span>
+                                    </span>
+                                  </div>
+
+                                  {titulosDaLinha.length === 0 ? (
+                                    <p className="text-[11px] text-[#3A3A3E] py-1">Nenhum título lançado nesta categoria no período.</p>
+                                  ) : (
+                                    <div className="flex flex-col">
+                                      {titulosDaLinha.map(({ titulo: t, projectName }) => (
+                                        <div key={t.id} className="grid grid-cols-[1fr_130px_92px_110px] items-baseline gap-3 py-1.5 border-b border-[#1F1F22]/60 last:border-b-0 text-[11px]">
+                                          <span className="text-[#A8A8B2] truncate min-w-0" title={t.descricao || t.titulo}>
+                                            {t.titulo}
+                                            {t.descricao && <span className="text-[#6B6B70]"> · {t.descricao}</span>}
+                                          </span>
+                                          <span className="text-[#6B6B70] truncate">{projectName}</span>
+                                          <span className="text-[#6B6B70] tabular-nums">{t.vencimento?.split('-').reverse().join('/')}</span>
+                                          <span className="text-[#A0A0A5] text-right tabular-nums">{formatCurrency(t.valor)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

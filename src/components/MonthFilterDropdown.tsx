@@ -8,9 +8,19 @@ interface MonthFilterDropdownProps {
   value: MonthFilterValue;
   onChange: (val: MonthFilterValue) => void;
   allLabel?: string;
+  /**
+   * Substituem o acabamento do gatilho e do painel. Existem porque este
+   * dropdown é usado em duas barras com vocabulários visuais próprios (Títulos
+   * e Dashboard Analítico); sem isso, padronizar uma delas mexeria na outra.
+   */
+  triggerClassName?: string;
+  menuClassName?: string;
 }
 
-export default function MonthFilterDropdown({ value, onChange, allLabel = 'Todos os Meses' }: MonthFilterDropdownProps) {
+const TRIGGER_DEFAULT = 'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-normal bg-[#1A1A1C] text-[#A0A0A5] hover:bg-[#1F1F22] hover:text-[#EDEDED] transition-colors min-w-[140px]';
+const MENU_DEFAULT = 'bg-[#111113] rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)]';
+
+export default function MonthFilterDropdown({ value, onChange, allLabel = 'Todos os Meses', triggerClassName, menuClassName }: MonthFilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [panelYear, setPanelYear] = useState(value?.year ?? new Date().getFullYear());
@@ -29,15 +39,15 @@ export default function MonthFilterDropdown({ value, onChange, allLabel = 'Todos
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => { setPanelYear(value?.year ?? new Date().getFullYear()); setIsOpen(!isOpen); }}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-normal bg-[#1A1A1C] text-[#A0A0A5] hover:bg-[#1F1F22] hover:text-[#EDEDED] transition-colors min-w-[140px]"
+        className={triggerClassName ?? TRIGGER_DEFAULT}
       >
-        <Calendar size={12} className="text-[#6B6B70] shrink-0" />
-        <span className="truncate flex-1 text-left">{value ? `${MONTHS_FULL[value.month]} ${value.year}` : allLabel}</span>
-        <ChevronDown size={12} className={`text-[#6B6B70] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <Calendar size={13} className="text-[#6B6B70] shrink-0" />
+        <span className="truncate flex-1 text-left font-normal">{value ? `${MONTHS_FULL[value.month]} ${value.year}` : allLabel}</span>
+        <ChevronDown size={13} className={`text-[#6B6B70] shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1.5 w-[220px] bg-[#111113] rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] z-50 animate-fade-in origin-top-right flex flex-col overflow-hidden">
+        <div className={`absolute right-0 top-full mt-1.5 w-[220px] z-50 animate-fade-in origin-top-right flex flex-col overflow-hidden ${menuClassName ?? MENU_DEFAULT}`}>
           <button
             onClick={() => { onChange(null); setIsOpen(false); }}
             className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${!value ? 'text-blue-400' : 'text-[#A0A0A5] hover:bg-[#1A1A1C] hover:text-[#EDEDED]'}`}

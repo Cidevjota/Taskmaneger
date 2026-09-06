@@ -37,6 +37,24 @@ export function getVgvRealNoPeriodo(vendas: SiengeVenda[], deData: Date, ateData
 // Gasto dentro de uma janela [deData, ateData] pelo vencimento do título. Mesmas
 // regras de inclusão do acumulado (inclusive títulos sem categoria) — só muda o
 // limite inferior, para permitir o gasto de um mês isolado.
+export function getTitulosNoPeriodo(
+  titles: SiengeTitle[],
+  projectName: string,
+  deData: string,  // YYYY-MM-DD
+  ateData: Date,
+  filtro?: { centroCusto: SiengeCentroCusto; categoria: string },
+): SiengeTitle[] {
+  const ateStr = ateData.toISOString().slice(0, 10);
+  return titles.filter(t =>
+    t.empreendimento === projectName &&
+    t.vencimento && t.vencimento >= deData && t.vencimento <= ateStr &&
+    (!filtro || (t.centroCusto === filtro.centroCusto && t.categoria === filtro.categoria))
+  );
+}
+
+// O valor e a lista que o explica saem do MESMO filtro de propósito: quem abre
+// a linha para ver "de onde veio esse número" não pode receber um conjunto de
+// títulos que soma outra coisa.
 export function getGastoRealNoPeriodo(
   titles: SiengeTitle[],
   projectName: string,
@@ -44,13 +62,7 @@ export function getGastoRealNoPeriodo(
   ateData: Date,
   filtro?: { centroCusto: SiengeCentroCusto; categoria: string },
 ): number {
-  const ateStr = ateData.toISOString().slice(0, 10);
-  return titles
-    .filter(t =>
-      t.empreendimento === projectName &&
-      t.vencimento && t.vencimento >= deData && t.vencimento <= ateStr &&
-      (!filtro || (t.centroCusto === filtro.centroCusto && t.categoria === filtro.categoria))
-    )
+  return getTitulosNoPeriodo(titles, projectName, deData, ateData, filtro)
     .reduce((s, t) => s + t.valor, 0);
 }
 
