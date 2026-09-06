@@ -8,7 +8,10 @@ import SiengeMetasDashboard from './SiengeMetasDashboard';
 import SiengeVendasModal from './SiengeVendasModal';
 import { useAuth } from '../context/AuthContext';
 
-const METAS_DASHBOARD_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
+// Exportado: o Sidebar usa o mesmo e-mail para decidir se mostra "Tabela de
+// Vendas" como item próprio do menu — mesma regra de acesso de sempre, só que
+// checada num lugar novo agora que a aba saiu daqui.
+export const METAS_DASHBOARD_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
 
 interface SiengeViewProps {
   titles: SiengeTitle[];
@@ -82,6 +85,14 @@ interface SiengeViewProps {
   mensalidades: SiengeMensalidade[];
   onSaveMensalidade: (m: SiengeMensalidade) => void;
   onDeleteMensalidade: (id: string) => void;
+  /**
+   * Presente quando esta instância está servindo o item "Tabela de Vendas" do
+   * menu lateral, não a aba de dentro de Finanças: esconde a barra de abas
+   * (não há o que trocar) e trava o conteúdo nela, ignorando o estado interno
+   * de aba. As duas rotas compartilham o mesmo componente para não duplicar a
+   * fiação enorme de handlers que o App.tsx já monta uma vez.
+   */
+  forcedTab?: 'vendas';
 }
 
 export default function SiengeView({
@@ -95,12 +106,14 @@ export default function SiengeView({
   validacoes, onSaveValidacao, onDeleteValidacao,
   taxonomy, onAddCentroCusto, onAddCategoria, onRenameCategoria, onDeleteCategoria, onAddSubcategoria, onDeleteSubcategoria,
   mensalidades, onSaveMensalidade, onDeleteMensalidade,
+  forcedTab,
 }: SiengeViewProps) {
   const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas' | 'vendas'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
   const openFaturas = faturas.filter(f => f.status === 'aberto');
   const { currentUser } = useAuth();
   const showMetasTab = currentUser?.email === METAS_DASHBOARD_EMAIL;
+  const tab = forcedTab ?? activeTab;
 
   // Mesma regra de visibilidade/ordem usada no Dashboard Analítico — empreendimentos
   // ocultados via "Ajustar Metas" também somem da Tabela de Vendas.
@@ -118,7 +131,9 @@ export default function SiengeView({
 
   return (
     <div className="flex flex-col h-full bg-[#08080a]">
-      {/* View Header with Tabs */}
+      {/* View Header with Tabs — ausente no modo dedicado: lá a navegação é o
+          próprio menu lateral, e uma barra de abas com uma aba só seria ruído. */}
+      {!forcedTab && (
       <div className="flex items-center gap-4 xl:gap-6 view-pad-x pt-4 short:pt-2.5 border-b border-zinc-800/60 shrink-0 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('titulos')}
@@ -172,23 +187,12 @@ export default function SiengeView({
             Dashboard Analítico
           </button>
         )}
-        {showMetasTab && (
-          <button
-            onClick={() => setActiveTab('vendas')}
-            className={`pb-3 short:pb-2 text-sm short:text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors border-b-2 ${
-              activeTab === 'vendas'
-                ? 'text-zinc-100 border-blue-500'
-                : 'text-zinc-500 border-transparent hover:text-zinc-300'
-            }`}
-          >
-            Tabela de Vendas
-          </button>
-        )}
       </div>
+      )}
 
       {/* Content Area */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'titulos' ? (
+        {tab === 'titulos' ? (
           <SiengeKanban
             titles={titles}
             openLotes={openLotes}
@@ -212,7 +216,7 @@ export default function SiengeView({
             onSaveMensalidade={onSaveMensalidade}
             onDeleteMensalidade={onDeleteMensalidade}
           />
-        ) : activeTab === 'lotes' ? (
+        ) : tab === 'lotes' ? (
           <SiengeLotes
             lotes={lotes}
             titles={titles}
@@ -220,7 +224,7 @@ export default function SiengeView({
             onSaveLote={onSaveLote}
             onDeleteLote={onDeleteLote}
           />
-        ) : activeTab === 'faturas' ? (
+        ) : tab === 'faturas' ? (
           <SiengeFaturas
             faturas={faturas}
             titles={titles}
@@ -231,7 +235,7 @@ export default function SiengeView({
             projects={projects}
             taxonomy={taxonomy}
           />
-        ) : activeTab === 'vendas' ? (
+        ) : tab === 'vendas' ? (
           <SiengeVendasModal
             projects={visibleProjects}
             unidades={tabelaVendas}

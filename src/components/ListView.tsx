@@ -26,7 +26,10 @@ import {
   Tag as TagIcon,
   Eye,
   EyeOff,
-  Minus
+  Minus,
+  Check,
+  LayoutGrid,
+  AlignJustify
 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Project, Label } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -36,6 +39,15 @@ import PriorityPicker from './PriorityPicker';
 import AssigneePicker from './AssigneePicker';
 
 type EditorPresence = { name: string; avatarUrl?: string; color: string };
+
+// Data local (não UTC): a virada tem que bater com a meia-noite de quem está
+// usando o app, não com a de Greenwich.
+function todayDateStr(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
 
 interface ListViewProps {
   tasks: Task[];
@@ -50,7 +62,7 @@ interface ListViewProps {
 
 type GroupByOption = 'none' | 'status' | 'priority';
 
-export type ColumnId = 'status' | 'title' | 'labels' | 'project' | 'priority' | 'dueDate' | 'assignee' | 'reminder';
+export type ColumnId = 'seen' | 'status' | 'title' | 'labels' | 'project' | 'priority' | 'dueDate' | 'assignee' | 'reminder';
 
 export interface ColumnDef {
   id: ColumnId;
@@ -60,6 +72,7 @@ export interface ColumnDef {
 }
 
 const defaultColumns: ColumnDef[] = [
+  { id: 'seen', label: 'To do', width: 50, visible: true },
   { id: 'status', label: 'Status', width: 140, visible: true },
   { id: 'title', label: 'Nome da Tarefa', width: 350, visible: true },
   { id: 'labels', label: 'Tags', width: 120, visible: true },
@@ -97,9 +110,77 @@ export default function ListView({
     }
   }, [currentUser]);
   const [groupBy, setGroupBy] = useState<GroupByOption>('status');
+
+  // Marcação "vista hoje" — puramente visual, local ao navegador. Não é dado
+  // da tarefa: é um lembrete de "já olhei essa" que reseta sozinho à meia-noite,
+  // então nunca precisou ir para o banco nem sincronizar entre dispositivos.
+  const seenStorageKey = 'orbit:listSeenToday';
+  const [seenDate, setSeenDate] = useState(todayDateStr);
+  const [seenIds, setSeenIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(seenStorageKey);
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw) as { date: string; ids: string[] };
+      return parsed.date === todayDateStr() ? new Set(parsed.ids) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // A aba pode ficar aberta atravessando a meia-noite sem recarregar — sem
+  // este relógio, as marcações só sumiriam no próximo F5 do dia seguinte.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = todayDateStr();
+      setSeenDate(prev => {
+        if (prev === now) return prev;
+        setSeenIds(new Set());
+        try { localStorage.removeItem(seenStorageKey); } catch { /* privado/bloqueado: vale só nesta sessão */ }
+        return now;
+      });
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const toggleSeen = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation(); // não abre a tarefa ao marcar
+    setSeenIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+      try {
+        localStorage.setItem(seenStorageKey, JSON.stringify({ date: todayDateStr(), ids: [...next] }));
+      } catch { /* privado/bloqueado: vale só nesta sessão */ }
+      return next;
+    });
+  };
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [inlineNewTaskText, setInlineNewTaskText] = useState('');
   const [showColToggle, setShowColToggle] = useState(false);
+
+  // Densidade da lista compacta — reduz o espaçamento vertical das linhas,
+  // igual ao "Modo Compacto" que o Kanban já tem. Padrão true: a Lista Compacta
+  // nasce compacta, "Normal" é a opção alternativa, não o ponto de partida.
+  // Persistido no perfil quando logado, senão em localStorage.
+  const [isCompactList, setIsCompactList] = useState<boolean>(() => {
+    if (typeof currentUser?.preferences?.listViewCompact === 'boolean') return currentUser.preferences.listViewCompact;
+    try {
+      const stored = localStorage.getItem('listViewCompact');
+      return stored === null ? true : stored === 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleCompactList = () => {
+    setIsCompactList(prev => {
+      const next = !prev;
+      try { localStorage.setItem('listViewCompact', String(next)); } catch { /* privado/bloqueado: vale só nesta sessão */ }
+      if (currentUser) {
+        updateProfile({ preferences: { ...(currentUser.preferences || {}), listViewCompact: next } }).catch(console.error);
+      }
+      return next;
+    });
+  };
 
   // Column management state
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
@@ -406,6 +487,21 @@ export default function ListView({
     const project = projects.find(p => p.id === task.projectId);
     
     switch (col.id) {
+      case 'seen': {
+        const isSeen = seenIds.has(task.id);
+        return (
+          <button
+            type="button"
+            onClick={(e) => toggleSeen(e, task.id)}
+            title={isSeen ? 'Marcada como vista hoje — some sozinha à meia-noite' : 'Marcar como vista hoje'}
+            className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+              isSeen ? 'bg-zinc-600 border-zinc-500' : 'bg-zinc-900/60 border-zinc-700 hover:border-zinc-500'
+            }`}
+          >
+            {isSeen && <Check size={11} className="text-zinc-200" />}
+          </button>
+        );
+      }
       case 'status':
         return (
           <StatusPicker
@@ -547,20 +643,30 @@ export default function ListView({
     }
   };
 
-  const renderList = (taskList: Task[]) => (
+  // Vistas descem para o fim da lista — a fila do que ainda falta olhar fica
+  // sempre no topo. Sort estável: dentro de cada grupo (vistas/não vistas) a
+  // ordem já decidida por prioridade/prazo é preservada.
+  const withSeenLast = (list: Task[]) =>
+    [...list].sort((a, b) => Number(seenIds.has(a.id)) - Number(seenIds.has(b.id)));
+
+  const renderList = (taskListIn: Task[]) => {
+    const taskList = withSeenLast(taskListIn);
+    const headerPad = isCompactList ? 'px-3 py-1' : 'px-4 py-2';
+    const cellPad = isCompactList ? 'px-3 py-1' : 'px-4 py-2.5';
+    return (
     <div className="border border-zinc-900 rounded-lg bg-[#121214]/40 flex flex-col select-none relative w-max min-w-full">
-      
+
       {/* Table Header Row */}
       <div className="flex items-stretch bg-zinc-950/95 backdrop-blur-md border-b border-zinc-900 sticky top-0 z-10 text-[10px] uppercase font-mono tracking-wider text-zinc-500 font-semibold rounded-t-lg">
         {columns.filter(c => c.visible !== false).map((col) => (
-          <div 
+          <div
             key={col.id}
             draggable
             onDragStart={(e) => handleDragStart(e, col.id)}
             onDragOver={(e) => handleDragOver(e, col.id)}
             onDragEnd={handleDragEnd}
             style={{ width: col.width }}
-            className={`relative flex items-center px-4 py-2 hover:bg-zinc-900/60 transition-colors shrink-0 ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+            className={`relative flex items-center ${headerPad} hover:bg-zinc-900/60 transition-colors shrink-0 ${draggedColumn === col.id ? 'opacity-50' : ''}`}
           >
             <GripVertical size={12} className="opacity-0 hover:opacity-100 cursor-grab text-zinc-600 absolute left-1" />
             <span className="truncate">{col.label}</span>
@@ -578,6 +684,7 @@ export default function ListView({
         <AnimatePresence initial={false}>
         {taskList.map(task => {
           const presence = editingMap[task.id];
+          const isSeen = seenIds.has(task.id);
           return (
             <motion.div
               key={task.id}
@@ -587,14 +694,18 @@ export default function ListView({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               onClick={() => onSelectTask(task)}
-              className="relative flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350"
+              className={`relative flex items-stretch hover:bg-zinc-900/50 transition-all cursor-pointer group text-xs text-zinc-350 ${isSeen ? 'bg-zinc-800/30' : ''}`}
               style={presence ? { borderLeft: `2px solid ${presence.color}` } : undefined}
             >
               {columns.filter(c => c.visible !== false).map(col => (
                 <div
                   key={col.id}
                   style={{ width: col.width }}
-                  className="px-4 py-2.5 shrink-0 flex flex-col justify-center"
+                  // A caixa de "vista" fica sempre nítida — é o marcador do
+                  // estado, apagar ela junto escondia a única pista de por que
+                  // a linha ficou apagada. Tudo mais escurece bem forte para a
+                  // fila do que falta olhar saltar aos olhos.
+                  className={`shrink-0 flex flex-col justify-center ${cellPad} ${isSeen && col.id !== 'seen' ? 'opacity-25 saturate-0' : ''}`}
                 >
                   {renderCellContent(task, col)}
                 </div>
@@ -615,7 +726,7 @@ export default function ListView({
         </AnimatePresence>
 
         {/* Quick Add inline row */}
-        <form onSubmit={handleInlineAddSubmit} className="flex items-center gap-3 px-4 py-2 bg-zinc-950/80">
+        <form onSubmit={handleInlineAddSubmit} className={`flex items-center gap-3 ${headerPad} bg-zinc-950/80`}>
           <div className="p-1 text-zinc-650 shrink-0">
             <Plus size={13} />
           </div>
@@ -634,7 +745,8 @@ export default function ListView({
         </form>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderGroupedContent = () => {
     if (groupBy === 'status') {
@@ -879,8 +991,22 @@ export default function ListView({
           </div>
         </div>
 
+        {/* Compact mode toggle */}
+        <div className="flex items-center shrink-0 ml-auto">
+          <button
+            onClick={toggleCompactList}
+            title={isCompactList ? 'Modo Normal' : 'Modo Compacto'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
+              isCompactList ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {isCompactList ? <LayoutGrid size={12} /> : <AlignJustify size={12} />}
+            <span>{isCompactList ? 'Normal' : 'Compacto'}</span>
+          </button>
+        </div>
+
         {/* Column Toggler */}
-        <div className="flex items-center gap-2 shrink-0 ml-auto relative">
+        <div className="flex items-center gap-2 shrink-0 relative">
           <button
             onClick={() => setShowColToggle(!showColToggle)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-[10px] font-medium ${

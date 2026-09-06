@@ -1316,6 +1316,8 @@ export default function App() {
         return 'Calendário';
       case 'settings':
         return 'Ajustes';
+      case 'sienge_vendas':
+        return 'Tabela de Vendas';
       default:
         return 'Workspace';
     }
@@ -1532,8 +1534,12 @@ export default function App() {
             />
           )}
 
-          {activeView === 'sienge' && (
+          {/* Finanças e Tabela de Vendas são a mesma instância: a segunda é a
+              primeira travada na aba de vendas e sem barra de abas. Compartilhar
+              o componente evita duplicar toda a fiação de handlers abaixo. */}
+          {(activeView === 'sienge' || activeView === 'sienge_vendas') && (
             <SiengeView
+              forcedTab={activeView === 'sienge_vendas' ? 'vendas' : undefined}
               titles={siengeTitles}
               statusHistory={siengeTitleStatusHistory}
               lotes={siengeLotes}

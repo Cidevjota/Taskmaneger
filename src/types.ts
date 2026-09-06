@@ -329,7 +329,7 @@ export interface UserDocument {
   updatedAt: string;
 }
 
-export type ViewType = 'home' | 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge' | 'dashboard';
+export type ViewType = 'home' | 'inbox' | 'tasks_board' | 'tasks_list' | 'projects' | 'calendar' | 'settings' | 'sienge' | 'sienge_vendas' | 'dashboard';
 
 export type SiengeStatus = 'a_lancar' | 'aprovacao_1' | 'aprovacao_2' | 'aprovacao_3' | 'aguardando_pagamento' | 'recusados' | 'pago';
 

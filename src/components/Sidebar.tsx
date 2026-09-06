@@ -28,9 +28,11 @@ import {
   Search,
   Receipt,
   BarChart2,
+  Table2,
   Home
 } from 'lucide-react';
 import { ViewType, Project, Task } from '../types';
+import { METAS_DASHBOARD_EMAIL } from './SiengeView';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useMediaQuery, SHORT_SCREEN } from '../hooks/useMediaQuery';
@@ -462,6 +464,24 @@ export default function Sidebar({
                 <Receipt size={14} className={`relative z-10 ${activeView === 'sienge' ? 'text-blue-400' : 'text-zinc-550'}`} />
                 {!collapsed && <span className="relative z-10">Finanças</span>}
               </button>
+
+              {/* Mesma regra de acesso de quando era aba dentro de Finanças. */}
+              {currentUser?.email === METAS_DASHBOARD_EMAIL && (
+                <button
+                  onClick={() => setActiveView('sienge_vendas')}
+                  className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    activeView === 'sienge_vendas'
+                      ? 'text-blue-300'
+                      : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                  }`}
+                >
+                  {activeView === 'sienge_vendas' && (
+                    <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-blue-500/10 border border-blue-500/20 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                  )}
+                  <Table2 size={14} className={`relative z-10 ${activeView === 'sienge_vendas' ? 'text-blue-400' : 'text-zinc-550'}`} />
+                  {!collapsed && <span className="relative z-10">Tabela de Vendas</span>}
+                </button>
+              )}
 
               {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
 
