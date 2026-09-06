@@ -457,6 +457,14 @@ function DetalheUnidade({ unidade, entradas, plantas, terceiros, imovel, colspan
 }) {
   const [indice, setIndice] = useState(0);
   const planta = plantas[indice];
+  // O endereço é só mais um item da ficha técnica, mas quem abre a linha quer
+  // saber onde fica o imóvel antes de qualquer outro detalhe — sobe para o
+  // resumo em vez de esperar lá embaixo, entre os itens da ficha.
+  const enderecoItem = imovel?.fichaTecnica.find(i => {
+    const label = i.label.trim().toLowerCase();
+    return label === 'endereço' || label === 'endereco';
+  }) || null;
+  const fichaTecnicaSemEndereco = imovel?.fichaTecnica.filter(i => i.id !== enderecoItem?.id) || [];
   return (
     <tr className="animate-fade-in">
       {/* O card é sticky à esquerda e tem a largura da área visível, não a da
@@ -540,6 +548,18 @@ function DetalheUnidade({ unidade, entradas, plantas, terceiros, imovel, colspan
                   <dd className="text-sm font-semibold text-zinc-100">{imovel?.nome || unidade.imovel?.trim() || '—'}</dd>
                 </div>
               )}
+              {enderecoItem && (
+                // O endereço é só mais um item da ficha técnica, mas quem abre
+                // a unidade quer saber onde ela fica antes de qualquer outro
+                // detalhe — sobe para o resumo em vez de esperar lá embaixo,
+                // entre os itens da ficha do imóvel.
+                <div className="min-w-0 col-span-2">
+                  <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Endereço</dt>
+                  <dd className="text-xs font-medium text-zinc-300">
+                    {enderecoItem.url?.trim() ? <LinkAbrir url={enderecoItem.url.trim()} /> : enderecoItem.valor}
+                  </dd>
+                </div>
+              )}
               <div className="min-w-0">
                 <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Situação</dt>
                 <dd className="text-xs font-medium text-zinc-300">{LP_SITUACAO_LABELS[unidade.situacao]}</dd>
@@ -579,10 +599,10 @@ function DetalheUnidade({ unidade, entradas, plantas, terceiros, imovel, colspan
             {/* A ficha do imóvel — o que num empreendimento próprio fica no topo
                 da página — só existe a partir daqui, repetida em cada unidade
                 dele. bookUrl vai null: ele já é uma linha do resumo acima. */}
-            {imovel && imovel.fichaTecnica.length > 0 && (
+            {imovel && fichaTecnicaSemEndereco.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Informações do imóvel</p>
-                <Informacoes itens={imovel.fichaTecnica} bookUrl={null} />
+                <Informacoes itens={fichaTecnicaSemEndereco} bookUrl={null} />
               </div>
             )}
             {!imovel && unidade.descricao && <p className="text-xs text-zinc-500">{unidade.descricao}</p>}
