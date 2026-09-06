@@ -311,6 +311,9 @@ export interface Project {
   coverImage?: string | null;
   code?: string | null;
   buildProgress?: number | null; // 0-100, evolução da obra
+  // Empreendimento de terceiros (não é da incorporadora). Chega ao payload
+  // público da Tabela Corretor para a página se apresentar de outro jeito.
+  terceiros?: boolean;
 }
 
 export type UserDocumentKind = 'link' | 'note' | 'document';
@@ -824,7 +827,7 @@ export interface LpCorretorPublicData {
     colunaTipologia: LpCorretorColunaKey | null;
     atualizadoEm: string;
   };
-  projeto: { id: string; nome: string; coverImage: string | null };
+  projeto: { id: string; nome: string; coverImage: string | null; terceiros: boolean };
   colunas: LpCorretorPublicColuna[];
   regras: LpCorretorPublicRegra[];
   unidades: LpCorretorPublicUnidade[];

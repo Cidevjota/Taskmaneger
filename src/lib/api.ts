@@ -13,6 +13,7 @@ export async function fetchProjects(): Promise<Project[]> {
     coverImage: p.cover_image,
     code: p.code,
     buildProgress: p.build_progress,
+    terceiros: p.terceiros ?? false,
   })) as Project[];
 }
 
@@ -418,6 +419,7 @@ export async function saveProject(project: Project) {
     cover_image: project.coverImage ?? null,
     code: project.code ?? null,
     build_progress: project.buildProgress ?? null,
+    terceiros: project.terceiros ?? false,
   });
   if (error) throw error;
 }

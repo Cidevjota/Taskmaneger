@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FolderPlus, Image as ImageIcon, Megaphone, Tag, History, Copy, Check, ChevronRight, PieChart, Edit2, Building2, Trash2, AlertTriangle, Loader2, X } from 'lucide-react';
 import { Project, Task } from '../types';
 import { fetchProjectDeleteImpact, ProjectDeleteImpact } from '../lib/api';
@@ -185,11 +185,18 @@ export default function ProjectsView({
   onDeleteProject
 }: ProjectsViewProps) {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  // Referências, e não document.querySelector: o seletor global pegava o
+  // primeiro `.overflow-y-auto` do documento, que é o do menu lateral. Clicar
+  // em editar rolava o menu e deixava o formulário fora da tela — parecia que
+  // o botão não fazia nada.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
   const [newProjCode, setNewProjCode] = useState('');
   const [newProjCoverImage, setNewProjCoverImage] = useState('');
   const [newProjBuildProgress, setNewProjBuildProgress] = useState(0);
+  const [newProjTerceiros, setNewProjTerceiros] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
@@ -217,6 +224,7 @@ export default function ProjectsView({
           code: newProjCode.trim() || null,
           coverImage: newProjCoverImage.trim() || null,
           buildProgress: newProjBuildProgress,
+          terceiros: newProjTerceiros,
         });
       }
     } else {
@@ -229,6 +237,7 @@ export default function ProjectsView({
         code: newProjCode.trim() || null,
         coverImage: newProjCoverImage.trim() || null,
         buildProgress: newProjBuildProgress,
+        terceiros: newProjTerceiros,
       };
       onAddProject(newProj);
     }
@@ -238,6 +247,7 @@ export default function ProjectsView({
     setNewProjCode('');
     setNewProjCoverImage('');
     setNewProjBuildProgress(0);
+    setNewProjTerceiros(false);
     setShowAddForm(false);
     setEditingProjectId(null);
   };
@@ -249,11 +259,23 @@ export default function ProjectsView({
     setNewProjCode(project.code || '');
     setNewProjCoverImage(project.coverImage || '');
     setNewProjBuildProgress(project.buildProgress || 0);
+    setNewProjTerceiros(!!project.terceiros);
     setShowAddForm(true);
-    // Scroll to top where form is
-    const container = document.querySelector('.overflow-y-auto');
-    if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // O formulário nasce no topo da lista, longe do card em que se clicou. Rolar
+  // até ele e já deixar o nome selecionado é o que torna o clique no lápis
+  // visivelmente uma edição — e não um botão que não responde.
+  useEffect(() => {
+    if (!showAddForm) return;
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    // Depois da montagem do formulário, senão o ref ainda está vazio.
+    const id = requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+      if (editingProjectId) nameInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [showAddForm, editingProjectId]);
 
   const handleCancelForm = () => {
     setShowAddForm(false);
@@ -263,10 +285,11 @@ export default function ProjectsView({
     setNewProjCode('');
     setNewProjCoverImage('');
     setNewProjBuildProgress(0);
+    setNewProjTerceiros(false);
   };
 
   return (
-    <div className="flex-1 flex flex-col view-pad overflow-y-auto select-none view-gap bg-[#08080a]">
+    <div ref={scrollRef} className="flex-1 flex flex-col view-pad overflow-y-auto select-none view-gap bg-[#08080a]">
 
       {/* Projects Title Banner */}
       <div className="flex items-center justify-between bg-zinc-950/50 p-4 rounded-lg border border-zinc-900">
@@ -289,6 +312,7 @@ export default function ProjectsView({
               setNewProjCode('');
               setNewProjCoverImage('');
               setNewProjBuildProgress(0);
+              setNewProjTerceiros(false);
               setShowAddForm(true);
             }
           }}
@@ -312,6 +336,7 @@ export default function ProjectsView({
             <div className="col-span-2">
               <label className="text-[9px] text-zinc-550 font-bold uppercase block mb-1">Nome</label>
               <input
+                ref={nameInputRef}
                 type="text"
                 required
                 placeholder="Ex. Green Park..."
@@ -361,6 +386,26 @@ export default function ProjectsView({
                 className="w-full bg-[#08080a] border border-zinc-900 p-2 text-xs rounded text-zinc-200 outline-none focus:border-zinc-750 resize-none"
               />
             </div>
+
+            {/* Terceiros: fato do empreendimento, não configuração de página —
+                por isso mora aqui e não no painel da Tabela Corretor. A LP lê o
+                flag pelo payload público. */}
+            <div className="col-span-2">
+              <div className="flex items-center justify-between gap-3 bg-[#08080a] border border-zinc-900 rounded p-2.5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-zinc-300">Empreendimento de terceiros</p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5">Não é da incorporadora. A Tabela Corretor se apresenta de outro jeito.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNewProjTerceiros(v => !v)}
+                  aria-pressed={newProjTerceiros}
+                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${newProjTerceiros ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${newProjTerceiros ? 'left-[22px]' : 'left-0.5'}`} />
+                </button>
+              </div>
+            </div>
           </div>
           <div className="flex justify-end gap-2 text-xs">
             <button
@@ -409,9 +454,19 @@ export default function ProjectsView({
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0" />
-                <span className="absolute top-2.5 right-2.5 text-[9px] font-mono font-bold uppercase tracking-wider text-zinc-200 bg-black/50 backdrop-blur-sm py-0.5 px-2 rounded-full border border-white/10">
-                  {STATUS_LABEL[project.status]}
-                </span>
+                <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                  {project.terceiros && (
+                    <span
+                      title="Empreendimento de terceiros — a Tabela Corretor se apresenta de outro jeito."
+                      className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 backdrop-blur-sm py-0.5 px-2 rounded-full border border-amber-400/30"
+                    >
+                      Terceiros
+                    </span>
+                  )}
+                  <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-zinc-200 bg-black/50 backdrop-blur-sm py-0.5 px-2 rounded-full border border-white/10">
+                    {STATUS_LABEL[project.status]}
+                  </span>
+                </div>
                 {/* Editar e excluir. Ficavam invisíveis até o hover (e a
                     lixeira não existia); agora aparecem esmaecidos e firmam no
                     hover — descobrir que dá para renomear não deveria depender
