@@ -1,4 +1,4 @@
-import { LpCorretorPlanta, LpCorretorPublicColuna, LpCorretorPublicRegra, LpCorretorPublicUnidade, SiengeColunaTipo, SiengeVendaSituacao } from '../types';
+import { LpCorretorImovel, LpCorretorPlanta, LpCorretorPublicColuna, LpCorretorPublicRegra, LpCorretorPublicUnidade, SiengeColunaTipo, SiengeVendaSituacao } from '../types';
 
 export const LP_CORRETOR_BASE_PATH = '/tabela';
 // Rota da página de validação. Separada de /tabela de propósito: ela serve a
@@ -196,6 +196,31 @@ export function faixaDe(valores: number[]): [number, number] {
 }
 
 /** Ordenação natural das unidades (101, 102, ..., 1001). */
-export function sortUnidades(unidades: LpCorretorPublicUnidade[]): LpCorretorPublicUnidade[] {
-  return [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
+export function sortUnidades(unidades: LpCorretorPublicUnidade[], agruparPorImovel = false): LpCorretorPublicUnidade[] {
+  return [...unidades].sort((a, b) => {
+    // Terceiros: as unidades de um mesmo imóvel formam um bloco. Ordenar só
+    // pelo número intercalaria imóveis diferentes, e a coluna Imóvel viraria
+    // uma coluna de nomes alternados em vez de um agrupamento.
+    if (agruparPorImovel) {
+      const ia = a.imovel?.trim() || '￿';
+      const ib = b.imovel?.trim() || '￿';
+      const porImovel = ia.localeCompare(ib, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      if (porImovel !== 0) return porImovel;
+    }
+    return a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true });
+  });
+}
+
+/**
+ * Cadastro do imóvel a que a unidade pertence, ou null. O vínculo é o nome —
+ * comparado sem caixa nem espaço sobrando, porque de um lado ele foi digitado
+ * na tabela de vendas e do outro escolhido no painel.
+ */
+export function imovelDaUnidade(
+  imoveis: LpCorretorImovel[],
+  nome: string | null | undefined
+): LpCorretorImovel | null {
+  const alvo = (nome || '').trim().toLowerCase();
+  if (!alvo) return null;
+  return imoveis.find(im => im.nome.trim().toLowerCase() === alvo) || null;
 }

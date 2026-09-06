@@ -2648,6 +2648,7 @@ export default function SiengeVendasModal({
                 key={selectedProjectId}
                 projectId={selectedProjectId}
                 projectName={selectedProject?.name || ''}
+                terceiros={!!selectedProject?.terceiros}
                 versoes={projectVersoes}
                 onSaveVersao={onSaveVersao}
                 // Todas as versões, não só a aberta: a LP escolhe quais libera
@@ -2985,6 +2986,7 @@ export default function SiengeVendasModal({
               regras={projectRegras}
               validacoes={projectValidacoes}
               mostrarValidacao={showValidar}
+              terceiros={!!selectedProject?.terceiros}
               editavel={edicaoLivre}
               onSave={onSaveUnidade}
               onDelete={onDeleteUnidade}

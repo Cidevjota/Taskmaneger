@@ -248,7 +248,13 @@ export function exportSiengeVendasCsv(
 ): string {
   const delimiter = ';';
   const merged = mergeColunasRegras(colunas, regras);
+  // A coluna do imóvel só existe em empreendimentos de terceiros. Ela entra
+  // quando alguma linha a preenche, em vez de por flag: assim o CSV de um
+  // empreendimento próprio continua exatamente como sempre foi, sem ganhar uma
+  // coluna vazia que voltaria na reimportação.
+  const temImovel = unidades.some(u => !!u.imovel?.trim());
   const header = [
+    ...(temImovel ? ['Imóvel'] : []),
     'Unidade',
     'Valor da Unidade',
     ...merged.map(m => m.kind === 'coluna' ? m.item.label : m.item.titulo),
@@ -260,6 +266,7 @@ export function exportSiengeVendasCsv(
   const sorted = [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
   for (const item of sorted) {
     const row = [
+      ...(temImovel ? [item.imovel || ''] : []),
       item.unidade,
       formatBrNumber(item.valorTabela),
       ...merged.map(m => {
@@ -333,7 +340,7 @@ export function parseSiengeVendasRows(
   const existingByUnidade = new Map(existingUnidades.map(u => [normalize(u.unidade), u]));
 
   type ColEntry =
-    | { type: 'unidade' | 'valor' | 'situacao' | 'descricao' | 'comprador' | 'regra' }
+    | { type: 'unidade' | 'imovel' | 'valor' | 'situacao' | 'descricao' | 'comprador' | 'regra' }
     | { type: 'coluna'; coluna: SiengeTabelaVendaColuna };
 
   const novasColunas: SiengeTabelaVendaColuna[] = [];
@@ -343,6 +350,7 @@ export function parseSiengeVendasRows(
   const colMap: ColEntry[] = header.map((h, idx) => {
     const n = normalize(h);
     if (n === 'unidade') return { type: 'unidade' };
+    if (n === 'imovel') return { type: 'imovel' };
     if (n === 'valor da unidade' || n === 'valor' || n === 'valor de tabela' || n === 'valor tabela') return { type: 'valor' };
     if (n === 'situacao' || n === 'disponibilidade' || n === 'status') return { type: 'situacao' };
     if (n === 'descricao') return { type: 'descricao' };
@@ -369,6 +377,7 @@ export function parseSiengeVendasRows(
   const unidades: SiengeTabelaVendaUnidade[] = [];
   for (const cells of dataRows) {
     let unidadeNome = '';
+    let imovel: string | null = null;
     let valorTabela = 0;
     let situacao: SiengeVendaSituacao = 'disponivel';
     let descricao: string | null = null;
@@ -378,6 +387,7 @@ export function parseSiengeVendasRows(
     colMap.forEach((entry, idx) => {
       const raw = (cells[idx] ?? '').trim();
       if (entry.type === 'unidade') unidadeNome = raw;
+      else if (entry.type === 'imovel') imovel = raw || null;
       else if (entry.type === 'valor') valorTabela = parseBrNumber(raw);
       else if (entry.type === 'situacao') situacao = situacaoFromLabel(raw);
       else if (entry.type === 'descricao') descricao = raw || null;
@@ -394,6 +404,10 @@ export function parseSiengeVendasRows(
       projectId,
       versaoId,
       unidade: unidadeNome,
+      // Sem a coluna na planilha o imóvel já cadastrado é preservado: quem
+      // exporta de um empreendimento próprio e importa noutro não zera o
+      // vínculo de uma linha que já tinha imóvel.
+      imovel: imovel ?? existing?.imovel ?? null,
       valorTabela,
       situacao,
       camposExtra,

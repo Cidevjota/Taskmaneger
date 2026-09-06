@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, Image as ImageIcon, Link2, ListChecks, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Upload, UploadCloud, X } from 'lucide-react';
-import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao } from '../types';
+import { LpCorretorConfig, LpCorretorFichaItem, LpCorretorImagem, LpCorretorImovel, LpCorretorPlanta, SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao } from '../types';
 import { LpCorretorSlugConflictError, fetchLpCorretorConfigs, publicarTabelaLpCorretorVersao, regenerarTokenValidacaoLp, saveLpCorretorConfig } from '../lib/api';
 import { REGRA_PREFIX, lpCorretorUrl, lpValidacaoUrl, slugifyLpSlug } from '../lib/lpCorretor';
 import { mergeColunasRegras } from '../lib/siengeVendasTabela';
@@ -9,6 +9,13 @@ import { UPLOAD_LIMITS, sanitizeFileName, uploadToStorage } from '../lib/storage
 interface LpCorretorConfigPanelProps {
   projectId: string;
   projectName: string;
+  /**
+   * Empreendimento de terceiros. A LP deixa de descrever um prédio e passa a
+   * descrever uma carteira: galeria, informações e book saem do topo da página
+   * e viram cadastro por imóvel, exibido ao expandir a linha. Por isso as
+   * seções de material do empreendimento dão lugar a "Imóveis".
+   */
+  terceiros: boolean;
   /** Todas as versões do empreendimento — cada uma pode ir para a LP ou não. */
   versoes: SiengeTabelaVendaVersao[];
   onSaveVersao: (versao: SiengeTabelaVendaVersao) => Promise<void> | void;
@@ -45,6 +52,7 @@ function emptyConfig(projectId: string, projectName: string): LpCorretorConfig {
     imagens: [],
     plantas: [],
     fichaTecnica: [],
+    imoveis: [],
     bookUrl: null,
     observacoes: null,
     cvcrmUrlTemplate: null,
@@ -79,6 +87,14 @@ function legendaInicialDoArquivo(nomeArquivo: string): string {
     .trim();
 }
 
+// Comparação de nome de imóvel. O vínculo entre a tabela de vendas e o cadastro
+// é o nome puro, então caixa e espaço sobrando não podem separar 'Allure ' de
+// 'allure' — quem digitou na tabela e quem escolheu no painel são a mesma
+// pessoa em momentos diferentes.
+function normalizarNome(nome: string): string {
+  return nome.trim().toLowerCase();
+}
+
 function Secao({ titulo, descricao, children }: { titulo: string; descricao?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2.5 pt-4 border-t border-zinc-800/70 first:pt-0 first:border-0">
@@ -91,7 +107,7 @@ function Secao({ titulo, descricao, children }: { titulo: string; descricao?: st
   );
 }
 
-export default function LpCorretorConfigPanel({ projectId, projectName, versoes, onSaveVersao, colunas, regras, unidades, onClose }: LpCorretorConfigPanelProps) {
+export default function LpCorretorConfigPanel({ projectId, projectName, terceiros, versoes, onSaveVersao, colunas, regras, unidades, onClose }: LpCorretorConfigPanelProps) {
   const [config, setConfig] = useState<LpCorretorConfig | null>(null);
   const [salvo, setSalvo] = useState<LpCorretorConfig | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -100,7 +116,9 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
   const [copiado, setCopiado] = useState(false);
   const [copiadoValidacao, setCopiadoValidacao] = useState(false);
   const [regenerando, setRegenerando] = useState(false);
-  const [enviando, setEnviando] = useState<UploadTipo | null>(null);
+  // Além dos UploadTipo fixos, guarda 'imovel:<id>:imagens' | 'imovel:<id>:book'
+  // — um por card, para o spinner ficar no botão que foi clicado.
+  const [enviando, setEnviando] = useState<string | null>(null);
   /** Id da versão sendo publicada — o botão que roda é só o dela. */
   const [publicando, setPublicando] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -216,6 +234,24 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
 
   const patch = (p: Partial<LpCorretorConfig>) => setConfig(c => (c ? { ...c, ...p } : c));
 
+  // Nomes de imóvel presentes na tabela de vendas — a única fonte da lista do
+  // cadastro. Vem de todas as versões do empreendimento: o imóvel é da unidade,
+  // não da condição comercial.
+  const imoveisDaTabela = useMemo(
+    () => [...new Set(unidades.map(u => u.imovel?.trim()).filter((v): v is string => !!v))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+    [unidades]
+  );
+
+  const imoveisSemCadastro = useMemo(
+    () => imoveisDaTabela.filter(n => !(config?.imoveis || []).some(im => normalizarNome(im.nome) === normalizarNome(n))),
+    [imoveisDaTabela, config]
+  );
+
+  const patchImovel = (id: string, mudanca: (im: LpCorretorImovel) => Partial<LpCorretorImovel>) => {
+    setConfig(c => (c ? { ...c, imoveis: c.imoveis.map(im => (im.id === id ? { ...im, ...mudanca(im) } : im)) } : c));
+  };
+
   // Rotação do token: grava direto, sem passar pelo Salvar. O motivo de
   // rotacionar é sempre "este link não pode mais valer", e isso não pode ficar
   // pendurado num botão que a pessoa talvez não aperte. Escreve nos dois
@@ -292,6 +328,27 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
     }
   };
 
+  /** Mesmo upload, endereçado a um imóvel em vez de à página inteira. */
+  const handleUploadImovel = async (imovelId: string, tipo: 'imagens' | 'book', files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setEnviando(`imovel:${imovelId}:${tipo}`);
+    setErro(null);
+    try {
+      if (tipo === 'imagens') {
+        const urls = await Promise.all(Array.from(files).map(f => uploadLpFile(projectId, f)));
+        const novas: LpCorretorImagem[] = urls.map(url => ({ id: crypto.randomUUID(), url, legenda: '' }));
+        patchImovel(imovelId, im => ({ imagens: [...im.imagens, ...novas] }));
+      } else {
+        const url = await uploadLpFile(projectId, files[0]);
+        patchImovel(imovelId, () => ({ bookUrl: url }));
+      }
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao enviar o arquivo.');
+    } finally {
+      setEnviando(null);
+    }
+  };
+
   const salvar = async () => {
     if (!config) return;
     const slug = slugifyLpSlug(config.slug);
@@ -308,6 +365,18 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
       cvcrmUrlTemplate: config.cvcrmUrlTemplate?.trim() || null,
       bookUrl: config.bookUrl?.trim() || null,
       fichaTecnica: config.fichaTecnica.filter(i => i.label.trim() || i.valor.trim()),
+      // Imóvel sem nome não tem como ser encontrado pela tabela (o vínculo é
+      // por nome), então é descartado em vez de virar cadastro órfão.
+      imoveis: config.imoveis
+        .filter(im => im.nome.trim())
+        .map(im => ({
+          ...im,
+          nome: im.nome.trim(),
+          descricao: im.descricao?.trim() || null,
+          bookUrl: im.bookUrl?.trim() || null,
+          fotosUrl: im.fotosUrl?.trim() || null,
+          fichaTecnica: im.fichaTecnica.filter(i => i.label.trim() || i.valor.trim()),
+        })),
     };
     try {
       await saveLpCorretorConfig(normalizado);
@@ -699,6 +768,232 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
         />
       </Secao>
 
+      {terceiros && (
+        <Secao
+          titulo="Imóveis"
+          descricao="Um cadastro por imóvel da tabela. Aqui não existe material “do empreendimento”: fotos, descrição, informações, book e álbum pertencem ao imóvel e aparecem quando o corretor abre uma unidade dele — repetidos para todas as unidades do mesmo imóvel. O vínculo é pelo nome, por isso o imóvel se escolhe na lista da tabela de vendas em vez de se digitar."
+        >
+          {imoveisDaTabela.length === 0 ? (
+            <p className="text-[11px] text-zinc-600">
+              Nenhuma unidade da tabela tem imóvel preenchido ainda. Preencha a coluna “Imóvel” na Tabela de Vendas e os nomes aparecem aqui para cadastrar.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {config.imoveis.map(imovel => {
+                const naTabela = imoveisDaTabela.some(n => normalizarNome(n) === normalizarNome(imovel.nome));
+                const totalUnidades = unidades.filter(u => normalizarNome(u.imovel || '') === normalizarNome(imovel.nome)).length;
+                // Cada nome da tabela pertence a um cadastro só: oferecer um já
+                // usado por outro card criaria dois cadastros para o mesmo
+                // imóvel e a LP mostraria só o primeiro.
+                const disponiveis = imoveisDaTabela.filter(n =>
+                  normalizarNome(n) === normalizarNome(imovel.nome)
+                  || !config.imoveis.some(outro => outro.id !== imovel.id && normalizarNome(outro.nome) === normalizarNome(n))
+                );
+                return (
+                  <div key={imovel.id} className="flex flex-col gap-2 p-3 bg-zinc-900/30 border border-zinc-800/70 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={naTabela ? imovel.nome : ''}
+                        onChange={e => patchImovel(imovel.id, () => ({ nome: e.target.value }))}
+                        className={`${INPUT_CLASS} font-semibold`}
+                      >
+                        <option value="">Selecione o imóvel...</option>
+                        {disponiveis.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                      </select>
+                      <span className="text-[10px] text-zinc-600 shrink-0 whitespace-nowrap">
+                        {totalUnidades} {totalUnidades === 1 ? 'unidade' : 'unidades'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => patch({ imoveis: config.imoveis.filter(i => i.id !== imovel.id) })}
+                        title="Remover este cadastro (não mexe nas unidades da tabela)"
+                        className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+
+                    {/* O nome existe no cadastro mas sumiu da tabela: nenhuma
+                        linha vai abrir este material, e apagar por conta
+                        própria destruiria fotos e textos já enviados. */}
+                    {imovel.nome.trim() && !naTabela && (
+                      <p className="flex items-start gap-1.5 text-[10px] text-amber-400">
+                        <AlertTriangle size={11} className="shrink-0 mt-px" />
+                        “{imovel.nome}” não corresponde a nenhuma unidade da tabela — este cadastro não aparece na página. Escolha o imóvel certo na lista acima ou corrija a coluna Imóvel na Tabela de Vendas.
+                      </p>
+                    )}
+
+                    <textarea
+                      value={imovel.descricao || ''}
+                      onChange={e => patchImovel(imovel.id, () => ({ descricao: e.target.value }))}
+                      rows={2}
+                      placeholder="Descrição do imóvel — exibida ao lado das fotos quando a unidade é aberta."
+                      className={`${INPUT_CLASS} resize-y leading-relaxed`}
+                    />
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={imovel.bookUrl || ''}
+                        onChange={e => patchImovel(imovel.id, () => ({ bookUrl: e.target.value }))}
+                        placeholder="Link do book (ou envie o PDF)"
+                        className={INPUT_CLASS}
+                      />
+                      <input
+                        id={`lp-imovel-book-${imovel.id}`}
+                        type="file"
+                        accept="application/pdf"
+                        className="hidden"
+                        onChange={e => { handleUploadImovel(imovel.id, 'book', e.target.files); e.target.value = ''; }}
+                      />
+                      <label
+                        htmlFor={`lp-imovel-book-${imovel.id}`}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-300 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 rounded-lg transition-colors shrink-0 cursor-pointer"
+                      >
+                        {enviando === `imovel:${imovel.id}:book` ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} PDF
+                      </label>
+                      <input
+                        type="text"
+                        value={imovel.fotosUrl || ''}
+                        onChange={e => patchImovel(imovel.id, () => ({ fotosUrl: e.target.value }))}
+                        placeholder="Link do álbum de fotos (Drive, site...)"
+                        className={INPUT_CLASS}
+                      />
+                    </div>
+
+                    {/* Fotos do imóvel: viram o carrossel da linha expandida, no
+                        lugar onde um empreendimento próprio mostra a planta. */}
+                    {imovel.imagens.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        {imovel.imagens.map(img => (
+                          <div key={img.id} className="flex items-center gap-2">
+                            <button type="button" onClick={() => setPreview(img.url)} title="Ver foto em tamanho maior" className="shrink-0">
+                              <img src={img.url} alt="" className="w-12 h-12 object-cover rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors cursor-zoom-in" />
+                            </button>
+                            <input
+                              type="text"
+                              value={img.legenda}
+                              onChange={e => patchImovel(imovel.id, im => ({ imagens: im.imagens.map(i => i.id === img.id ? { ...i, legenda: e.target.value } : i) }))}
+                              placeholder="Legenda (opcional)"
+                              className={INPUT_CLASS}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => patchImovel(imovel.id, im => ({ imagens: im.imagens.filter(i => i.id !== img.id) }))}
+                              className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Informações do imóvel: o que num empreendimento próprio
+                        fica no topo da página. */}
+                    {imovel.fichaTecnica.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        {imovel.fichaTecnica.map(item => (
+                          <div key={item.id} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={item.label}
+                              onChange={e => patchImovel(imovel.id, im => ({ fichaTecnica: im.fichaTecnica.map(i => i.id === item.id ? { ...i, label: e.target.value } : i) }))}
+                              placeholder="Item (ex.: Tipologia)"
+                              className={INPUT_CLASS}
+                            />
+                            <input
+                              type="text"
+                              value={item.valor}
+                              onChange={e => patchImovel(imovel.id, im => ({ fichaTecnica: im.fichaTecnica.map(i => i.id === item.id ? { ...i, valor: e.target.value } : i) }))}
+                              disabled={!!item.url?.trim()}
+                              title={item.url?.trim() ? 'Ignorado: com link preenchido a linha mostra “Abrir”' : undefined}
+                              placeholder="Valor"
+                              className={`${INPUT_CLASS} disabled:opacity-40`}
+                            />
+                            <input
+                              type="text"
+                              value={item.url || ''}
+                              onChange={e => patchImovel(imovel.id, im => ({ fichaTecnica: im.fichaTecnica.map(i => i.id === item.id ? { ...i, url: e.target.value } : i) }))}
+                              placeholder="Link (opcional)"
+                              className={INPUT_CLASS}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => patchImovel(imovel.id, im => ({ fichaTecnica: im.fichaTecnica.filter(i => i.id !== item.id) }))}
+                              className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        id={`lp-imovel-imgs-${imovel.id}`}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={e => { handleUploadImovel(imovel.id, 'imagens', e.target.files); e.target.value = ''; }}
+                      />
+                      <label
+                        htmlFor={`lp-imovel-imgs-${imovel.id}`}
+                        className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                      >
+                        {enviando === `imovel:${imovel.id}:imagens` ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} strokeWidth={3} />} Adicionar fotos
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => patchImovel(imovel.id, im => ({ fichaTecnica: [...im.fichaTecnica, { id: crypto.randomUUID(), label: '', valor: '', url: '' }] }))}
+                        className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        <Plus size={11} strokeWidth={3} /> Adicionar informação
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {imoveisSemCadastro.length > 0 && (
+            <p className="text-[11px] text-zinc-500">
+              Sem cadastro: <span className="text-zinc-300">{imoveisSemCadastro.join(', ')}</span>. As unidades desses imóveis abrem sem fotos nem informações.
+            </p>
+          )}
+
+          {imoveisDaTabela.length > 0 && (
+            <button
+              type="button"
+              onClick={() => patch({
+                imoveis: [...config.imoveis, {
+                  id: crypto.randomUUID(),
+                  // Já nasce apontando para o primeiro imóvel sem cadastro: é
+                  // quase sempre o que se quer, e evita salvar um card em branco.
+                  nome: imoveisSemCadastro[0] || '',
+                  descricao: null,
+                  bookUrl: null,
+                  fotosUrl: null,
+                  imagens: [],
+                  fichaTecnica: [],
+                }],
+              })}
+              className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors self-start"
+            >
+              <Plus size={11} strokeWidth={3} /> Adicionar imóvel
+            </button>
+          )}
+        </Secao>
+      )}
+
+      {/* Material do empreendimento inteiro. Num empreendimento de terceiros
+          nada disso existe — cada linha da tabela é de um imóvel diferente, e
+          o material dela está no cadastro acima. */}
+      {!terceiros && (
+      <>
       <Secao titulo="Imagens do Produto" descricao="Galeria do menu de informações.">
         <input ref={imagensInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => { handleUpload('imagens', e.target.files); e.target.value = ''; }} />
         {config.imagens.length > 0 && (
@@ -901,6 +1196,8 @@ export default function LpCorretorConfigPanel({ projectId, projectName, versoes,
           </button>
         </div>
       </Secao>
+      </>
+      )}
 
       <Secao
         titulo="Colunas da tabela"

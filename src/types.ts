@@ -563,6 +563,11 @@ export interface SiengeTabelaVendaUnidade {
   projectId: string;
   versaoId: string;
   unidade: string;
+  // Só em empreendimentos de terceiros (Project.terceiros): a tabela reúne
+  // unidades de imóveis diferentes, e é este campo que diz de qual. Casa por
+  // nome com LpCorretorImovel.nome. Null no resto — um empreendimento próprio
+  // é um imóvel só.
+  imovel: string | null;
   valorTabela: number;
   situacao: SiengeVendaSituacao;
   camposExtra: Record<string, number | string>;
@@ -718,6 +723,28 @@ export interface LpCorretorPlanta {
   andares: string[];
 }
 
+// Imóvel de um empreendimento de terceiros. Ali a LP não descreve um prédio:
+// descreve uma carteira de imóveis avulsos, e cada linha da tabela pertence a
+// um deles. Por isso o material de apresentação que num empreendimento próprio
+// vale para a página inteira (galeria, ficha, book) vive aqui, um conjunto por
+// imóvel, e aparece só ao expandir a unidade.
+//
+// A ligação com as unidades é pelo nome: `nome` casa com
+// SiengeTabelaVendaUnidade.imovel. Nome é a chave porque é o que o usuário
+// digita na tabela e escolhe no cadastro — um id oculto obrigaria a repicar
+// toda linha importada por planilha.
+export interface LpCorretorImovel {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  /** PDF ou link do material de vendas do imóvel. */
+  bookUrl: string | null;
+  /** Álbum externo de fotos (Drive, site do proprietário...). */
+  fotosUrl: string | null;
+  imagens: LpCorretorImagem[];
+  fichaTecnica: LpCorretorFichaItem[];
+}
+
 // Chave de coluna visível na LP: a key de uma coluna real ou 'regra:<id>'
 // para uma coluna calculada — mesmo espaço de nomes usado nas validações.
 export type LpCorretorColunaKey = string;
@@ -735,6 +762,9 @@ export interface LpCorretorConfig {
   imagens: LpCorretorImagem[];
   plantas: LpCorretorPlanta[];
   fichaTecnica: LpCorretorFichaItem[];
+  // Só alimentado em empreendimentos de terceiros; nos próprios fica vazio e a
+  // LP nem olha para ele. Ver LpCorretorImovel.
+  imoveis: LpCorretorImovel[];
   bookUrl: string | null;
   observacoes: string | null;
   // {unidade} é trocado pelo nome da unidade ao montar o botão "Reservar".
@@ -784,6 +814,8 @@ export interface LpCorretorPublicRegra {
 export interface LpCorretorPublicUnidade {
   id: string;
   unidade: string;
+  /** Terceiros: a que imóvel esta linha pertence. Null nos próprios. */
+  imovel: string | null;
   valorTabela: number;
   situacao: SiengeVendaSituacao;
   descricao: string | null;
@@ -820,6 +852,7 @@ export interface LpCorretorPublicData {
     imagens: LpCorretorImagem[];
     plantas: LpCorretorPlanta[];
     fichaTecnica: LpCorretorFichaItem[];
+    imoveis: LpCorretorImovel[];
     bookUrl: string | null;
     observacoes: string | null;
     cvcrmUrlTemplate: string | null;

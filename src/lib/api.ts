@@ -1017,6 +1017,7 @@ function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
     projectId: r.project_id,
     versaoId: r.versao_id,
     unidade: r.unidade,
+    imovel: r.imovel ?? null,
     valorTabela: Number(r.valor_tabela),
     situacao: r.situacao,
     camposExtra: r.campos_extra || {},
@@ -1043,6 +1044,7 @@ export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
     project_id: item.projectId,
     versao_id: item.versaoId,
     unidade: item.unidade,
+    imovel: item.imovel,
     valor_tabela: item.valorTabela,
     situacao: item.situacao,
     campos_extra: item.camposExtra || {},
@@ -1579,6 +1581,7 @@ function mapLpCorretorConfig(r: any): LpCorretorConfig {
     imagens: Array.isArray(r.imagens) ? r.imagens : [],
     plantas: Array.isArray(r.plantas) ? r.plantas : [],
     fichaTecnica: Array.isArray(r.ficha_tecnica) ? r.ficha_tecnica : [],
+    imoveis: Array.isArray(r.imoveis) ? r.imoveis : [],
     bookUrl: r.book_url ?? null,
     observacoes: r.observacoes ?? null,
     cvcrmUrlTemplate: r.cvcrm_url_template ?? null,
@@ -1599,7 +1602,7 @@ export async function fetchLpCorretorConfigs(): Promise<LpCorretorConfig[]> {
   // e não tem uso no painel — só a data da publicação importa aqui.
   const { data, error } = await supabase
     .from('sienge_lp_corretor')
-    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,colunas_visiveis,colunas_linha,coluna_tipologia,ri_registrado,validacao_habilitada,validacao_token,tabela_publicada_em,created_at,updated_at');
+    .select('project_id,slug,publicada,titulo,subtitulo,descricao,logo_empreendimento_url,banner_url,imagens,plantas,ficha_tecnica,book_url,observacoes,cvcrm_url_template,imoveis,colunas_visiveis,colunas_linha,coluna_tipologia,ri_registrado,validacao_habilitada,validacao_token,tabela_publicada_em,created_at,updated_at');
   if (error) throw error;
   return (data || []).map(mapLpCorretorConfig);
 }
@@ -1624,6 +1627,7 @@ export async function saveLpCorretorConfig(config: LpCorretorConfig) {
     imagens: config.imagens,
     plantas: config.plantas,
     ficha_tecnica: config.fichaTecnica,
+    imoveis: config.imoveis,
     book_url: config.bookUrl,
     observacoes: config.observacoes,
     cvcrm_url_template: config.cvcrmUrlTemplate,

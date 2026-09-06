@@ -110,9 +110,16 @@ export async function baixarTabelaPdf({ data, unidades, entradasLinha, nome }: B
   const versao = data.versoes.find(v => v.id === data.versaoId) || null;
   const temReserva = !!config.cvcrmUrlTemplate?.trim();
 
+  // Terceiros: o PDF sai com a mesma coluna Imóvel da tela — a tabela reúne
+  // imóveis diferentes, e sem ela o arquivo vira uma lista de números soltos.
+  // `off` é o deslocamento que ela impõe aos índices de coluna usados no
+  // alinhamento abaixo.
+  const temImovel = data.projeto.terceiros && unidades.some(u => !!u.imovel?.trim());
+  const off = temImovel ? 1 : 0;
+
   // Retrato para tabelas enxutas; a partir de seis colunas a folha deitada é o
   // que impede os valores de quebrarem em duas linhas.
-  const totalColunas = 2 + entradasLinha.length + (temReserva ? 1 : 0);
+  const totalColunas = 2 + off + entradasLinha.length + (temReserva ? 1 : 0);
   const paisagem = totalColunas > 5;
   const doc = new jsPDF({ orientation: paisagem ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
 
@@ -196,6 +203,7 @@ export async function baixarTabelaPdf({ data, unidades, entradasLinha, nome }: B
 
   // ── Tabela ──────────────────────────────────────────────────────────────
   const head = [[
+    ...(temImovel ? ['Imóvel'] : []),
     'Un.',
     'Valor',
     ...entradasLinha.map(e => e.label),
@@ -208,6 +216,7 @@ export async function baixarTabelaPdf({ data, unidades, entradasLinha, nome }: B
     const reservaUrl = disponivel ? buildReservaUrl(config.cvcrmUrlTemplate, u.unidade) : null;
     if (reservaUrl) linksPorLinha.set(i, reservaUrl);
     return [
+      ...(temImovel ? [u.imovel?.trim() || '—'] : []),
       u.unidade,
       u.valorTabela > 0 ? formatMoeda(u.valorTabela) : '—',
       ...entradasLinha.map(e => formatLpValor(e.tipo, e.read(u))),
@@ -243,15 +252,17 @@ export async function baixarTabelaPdf({ data, unidades, entradasLinha, nome }: B
       halign: 'right',
     },
     columnStyles: {
+      // Imóvel (quando existe) e unidade à esquerda; o valor, à direita.
       0: { halign: 'left', fontStyle: 'bold' },
-      1: { halign: 'right', fontStyle: 'bold' },
+      ...(temImovel ? { 1: { halign: 'left' as const, fontStyle: 'bold' as const } } : {}),
+      [1 + off]: { halign: 'right' as const, fontStyle: 'bold' as const },
     },
     didParseCell: cell => {
       if (cell.section === 'head') {
-        if (cell.column.index === 0) cell.cell.styles.halign = 'left';
+        if (cell.column.index <= off) cell.cell.styles.halign = 'left';
         return;
       }
-      if (cell.column.index > 1 && cell.column.index !== colunaReserva) cell.cell.styles.halign = 'right';
+      if (cell.column.index > off && cell.column.index !== colunaReserva) cell.cell.styles.halign = 'right';
       if (cell.column.index === colunaReserva) cell.cell.styles.halign = 'right';
 
       const u = unidades[cell.row.index];

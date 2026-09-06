@@ -13,6 +13,13 @@ interface SiengeVendasTableProps {
   validacoes: SiengeValidacao[];
   mostrarValidacao: boolean;
   /**
+   * Empreendimento de terceiros: a tabela reúne unidades de imóveis
+   * diferentes, então ganha a coluna Imóvel — a primeira de todas, porque é ela
+   * que separa os blocos; ler "unidade 503" sem saber de que imóvel não diz
+   * nada. Em empreendimento próprio a coluna não existe.
+   */
+  terceiros: boolean;
+  /**
    * Edição livre: com o toggle desligado a tabela vira somente leitura. Só a
    * situação nunca é editável aqui — ela passa obrigatoriamente pelo painel
    * "Alterar Situação", que exige motivo e registra o congelamento da venda.
@@ -83,6 +90,11 @@ const CELL_PAD = 'px-3 py-2.5';
 // "Descrição". Só a Descrição (w-full) deve herdar essa sobra; todo o resto
 // aqui é CELL_TIGHT.
 const CELL_TIGHT = 'w-px whitespace-nowrap';
+// Os imóveis já digitados viram sugestão nos campos da coluna Imóvel. O vínculo
+// com o cadastro da Tabela Corretor é POR NOME, então um 'Allure ' com espaço
+// sobrando quebraria a ligação em silêncio — a lista existe para que a segunda
+// unidade do mesmo imóvel seja escolhida, não redigitada.
+const IMOVEIS_DATALIST_ID = 'sienge-imoveis-cadastrados';
 const TXT_PRIMARY = 'text-xs font-semibold text-zinc-100 tabular-nums';   // unidade, valor de tabela
 const TXT_VALUE = 'text-xs text-zinc-300 tabular-nums';                   // demais números (digitados ou calculados)
 const TXT_MUTED = 'text-xs text-zinc-500';                                // texto livre, descrição
@@ -280,7 +292,7 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
 }
 
 
-function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, validacoesValorUnidade, mostrarValidacao, editavel, onSave, onDelete }: {
+function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, validacoesValorUnidade, mostrarValidacao, terceiros, editavel, onSave, onDelete }: {
   item: SiengeTabelaVendaUnidade;
   index: number;
   colunas: SiengeTabelaVendaColuna[];
@@ -289,6 +301,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   validacoesParcelas: SiengeValidacao[];
   validacoesValorUnidade: SiengeValidacao[];
   mostrarValidacao: boolean;
+  terceiros: boolean;
   editavel: boolean;
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
@@ -303,19 +316,22 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   const savedCampos = Object.fromEntries(colunas.map(c => [c.key, campoToText(c, item.camposExtra[c.key], displayCasas)]));
 
   const [unidadeText, setUnidadeText] = useState(item.unidade);
+  const [imovelText, setImovelText] = useState(item.imovel || '');
   const [valorText, setValorText] = useState(savedValorText);
   const [camposText, setCamposText] = useState<Record<string, string>>(savedCampos);
   const [descricaoText, setDescricaoText] = useState(item.descricao || '');
 
   useEffect(() => {
     setUnidadeText(item.unidade);
+    setImovelText(item.imovel || '');
     setValorText(savedValorText);
     setCamposText(savedCampos);
     setDescricaoText(item.descricao || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.unidade, item.valorTabela, item.camposExtra, item.descricao, colunas, displayCasas]);
+  }, [item.unidade, item.imovel, item.valorTabela, item.camposExtra, item.descricao, colunas, displayCasas]);
 
   const dirty = unidadeText !== item.unidade || valorText !== savedValorText
+    || imovelText !== (item.imovel || '')
     || descricaoText !== (item.descricao || '')
     || colunas.some(c => camposText[c.key] !== savedCampos[c.key]);
 
@@ -329,7 +345,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   // direto burlaria o registro que alimenta o histórico e o orçamento real.
   const commit = () => {
     if (!unidadeText.trim()) return;
-    onSave({ ...draftItem, unidade: unidadeText.trim(), descricao: descricaoText.trim() || null, updatedAt: new Date().toISOString() });
+    onSave({ ...draftItem, unidade: unidadeText.trim(), imovel: imovelText.trim() || null, descricao: descricaoText.trim() || null, updatedAt: new Date().toISOString() });
   };
 
   return (
@@ -340,6 +356,21 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
       // segundos para terminar de se montar.
       style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }}
     >
+      {terceiros && (
+        <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
+          <input
+            type="text"
+            list={IMOVEIS_DATALIST_ID}
+            value={imovelText}
+            readOnly={!editavel}
+            onChange={e => setImovelText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+            placeholder="Imóvel"
+            style={chWidth(imovelText, 'Imóvel', 8)}
+            className={`bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none ${RO(editavel)}`}
+          />
+        </td>
+      )}
       <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <input
           type="text"
@@ -435,17 +466,19 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   );
 }
 
-function NewUnidadeRow({ projectId, versaoId, colunas, merged, mostrarValidacao, existingUnidades, onSave, onCancel }: {
+function NewUnidadeRow({ projectId, versaoId, colunas, merged, mostrarValidacao, terceiros, existingUnidades, onSave, onCancel }: {
   projectId: string;
   versaoId: string;
   colunas: SiengeTabelaVendaColuna[];
   merged: ColunaOuRegra[];
   mostrarValidacao: boolean;
+  terceiros: boolean;
   existingUnidades: string[];
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onCancel: () => void;
 }) {
   const [unidadeText, setUnidadeText] = useState('');
+  const [imovelText, setImovelText] = useState('');
   const [valorText, setValorText] = useState('');
   const [camposText, setCamposText] = useState<Record<string, string>>({});
   const [descricaoText, setDescricaoText] = useState('');
@@ -466,6 +499,7 @@ function NewUnidadeRow({ projectId, versaoId, colunas, merged, mostrarValidacao,
       projectId,
       versaoId,
       unidade: trimmed,
+      imovel: imovelText.trim() || null,
       valorTabela: parseCurrencyInput(valorText),
       camposExtra,
       // Sem margem por padrão: unidade nova reajusta o valor cheio até alguém
@@ -485,6 +519,19 @@ function NewUnidadeRow({ projectId, versaoId, colunas, merged, mostrarValidacao,
 
   return (
     <tr className={NEW_ROW_CLASS}>
+      {terceiros && (
+        <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
+          <input
+            type="text"
+            list={IMOVEIS_DATALIST_ID}
+            value={imovelText}
+            onChange={e => setImovelText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') add(); }}
+            placeholder="Imóvel"
+            className={`w-28 bg-transparent ${TXT_VALUE} placeholder-zinc-700 outline-none`}
+          />
+        </td>
+      )}
       <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <input
           type="text"
@@ -573,7 +620,7 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-export default function SiengeVendasTable({ projectId, versaoId, unidades, allUnidadeNames, colunas, regras, validacoes, mostrarValidacao, editavel, onSave, onDelete, onSaveColuna, onSaveRegra }: SiengeVendasTableProps) {
+export default function SiengeVendasTable({ projectId, versaoId, unidades, allUnidadeNames, colunas, regras, validacoes, mostrarValidacao, terceiros, editavel, onSave, onDelete, onSaveColuna, onSaveRegra }: SiengeVendasTableProps) {
   const [addingNew, setAddingNew] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -585,12 +632,29 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
   const [modoCientifico, setModoCientifico] = useState(false);
   const casasDecimais = modoCientifico ? 8 : 2;
   const merged = mergeColunasRegras(colunas, regras);
-  const sorted = [...unidades].sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true }));
+  // Em terceiros a tabela agrupa por imóvel antes de ordenar pela unidade: as
+  // linhas de um mesmo imóvel são um bloco, e alfabetar só por unidade
+  // intercalaria imóveis diferentes. Sem imóvel a linha vai para o fim, onde
+  // se vê que falta preencher.
+  const sorted = [...unidades].sort((a, b) => {
+    if (terceiros) {
+      const ia = a.imovel?.trim() || '￿';
+      const ib = b.imovel?.trim() || '￿';
+      const porImovel = ia.localeCompare(ib, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      if (porImovel !== 0) return porImovel;
+    }
+    return a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true });
+  });
+
+  // Nomes já usados, para a datalist dos campos de imóvel.
+  const imoveisConhecidos = terceiros
+    ? [...new Set(unidades.map(u => u.imovel?.trim()).filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    : [];
   const validacoesParcelas = validacoes.filter(v => v.tipo === 'parcelas');
   const validacoesValorUnidade = validacoes.filter(v => v.tipo === 'valor_unidade');
   const validacaoCols = mostrarValidacao ? 2 : 0;
 
-  const totalCols = 3 + merged.length + validacaoCols + 2; // unidade + valor + actions... usado no colSpan da linha "adicionar"
+  const totalCols = 3 + merged.length + validacaoCols + 2 + (terceiros ? 1 : 0); // unidade + valor + actions... usado no colSpan da linha "adicionar"
   const sumValor = sum(sorted.map(u => u.valorTabela));
 
   const resetDrag = () => { setDragIndex(null); setOverIndex(null); };
@@ -631,9 +695,15 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
           {modoCientifico ? '0,00000000' : '0,00 ›'}
         </button>
       </div>
+      {imoveisConhecidos.length > 0 && (
+        <datalist id={IMOVEIS_DATALIST_ID}>
+          {imoveisConhecidos.map(nome => <option key={nome} value={nome} />)}
+        </datalist>
+      )}
       <table className="w-full border-separate border-spacing-y-1">
         <thead>
           <tr>
+            {terceiros && <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Imóvel</th>}
             <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Unidade</th>
             <th className={`text-left px-3 py-1.5 ${TXT_HEAD} ${TH_STICKY} ${CELL_TIGHT}`}>Valor da Unidade</th>
             {merged.map((m, idx) => (
@@ -691,6 +761,7 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
               validacoesParcelas={validacoesParcelas}
               validacoesValorUnidade={validacoesValorUnidade}
               mostrarValidacao={mostrarValidacao}
+              terceiros={terceiros}
               editavel={editavel}
               onSave={onSave}
               onDelete={onDelete}
@@ -703,6 +774,7 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
               colunas={colunas}
               merged={merged}
               mostrarValidacao={mostrarValidacao}
+              terceiros={terceiros}
               existingUnidades={allUnidadeNames}
               onSave={onSave}
               onCancel={() => setAddingNew(false)}
@@ -726,6 +798,7 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
             <tr className="[&>td]:bg-zinc-900/70 [&>td]:border-y [&>td]:border-zinc-800 [&>td:first-child]:border-l [&>td:first-child]:rounded-l-lg [&>td:last-child]:border-r [&>td:last-child]:rounded-r-lg">
               {/* Sob filtro a soma é das linhas visíveis, não do empreendimento.
                   Sem dizer isso, um total financeiro menor passaria por total real. */}
+              {terceiros && <td className={`${CELL_PAD}`} />}
               <td className={`${CELL_PAD} ${TXT_HEAD} ${CELL_TIGHT}`}>
                 {sorted.length < allUnidadeNames.length ? `Soma (${sorted.length} de ${allUnidadeNames.length})` : 'Soma'}
               </td>

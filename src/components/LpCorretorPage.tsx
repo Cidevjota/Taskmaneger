@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Images, Loader2, MapPin, ListChecks, Moon, Sun, X, ArrowUpRight, MessageCircle, Phone, Mail, Instagram, Globe, Download } from 'lucide-react';
-import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
+import { LpCorretorImagem, LpCorretorFichaItem, LpCorretorImovel, LpCorretorPlanta, LpCorretorPublicData, LpCorretorPublicUnidade, SiengeVendaSituacao } from '../types';
 import { fetchLpCorretorPublic, fetchLpCorretorValidacao } from '../lib/api';
-import { LP_SITUACAO_LABELS, LP_TEMA_STORAGE_KEY, LpTema, aplicarTemaLp, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, mergeLpColunas, plantasDaUnidade, sortUnidades, temaLpSalvo, valorNumerico } from '../lib/lpCorretor';
+import { LP_SITUACAO_LABELS, LP_TEMA_STORAGE_KEY, LpTema, aplicarTemaLp, buildReservaUrl, colunaMetragem, faixaDe, formatLpValor, formatMoeda, imovelDaUnidade, mergeLpColunas, plantasDaUnidade, sortUnidades, temaLpSalvo, valorNumerico } from '../lib/lpCorretor';
 import { baixarTabelaPdf } from '../lib/lpCorretorPdf';
 import { LP_EMPRESA, canaisDeContato } from '../lib/lpCorretorEmpresa';
 
@@ -437,11 +437,19 @@ function FaixaSlider({ min, max, step = 'any', valor, onChange, formatar }: {
  * cabem os dados que a linha compacta não mostra — no celular a tabela rola na
  * horizontal e boa parte das colunas fica fora da tela.
  */
-function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, larguraVisivel }: {
+function DetalheUnidade({ unidade, entradas, plantas, terceiros, imovel, colspan, reservaUrl, larguraVisivel }: {
   unidade: LpCorretorPublicUnidade;
   /** Todas as colunas visíveis (linha + detalhe) — o card mostra todas elas. */
   entradas: ReturnType<typeof mergeLpColunas>;
   plantas: LpCorretorPlanta[];
+  /** Terceiros: troca a planta pelo carrossel do imóvel e abre o resumo com ele. */
+  terceiros: boolean;
+  /**
+   * O cadastro do imóvel a que esta unidade pertence, com o material que num
+   * empreendimento próprio ficaria no topo da página. Null quando não é
+   * terceiros — e também quando é, mas aquele imóvel ainda não foi cadastrado.
+   */
+  imovel: LpCorretorImovel | null;
   colspan: number;
   reservaUrl: string | null;
   /** Largura visível do container que rola — define a largura do card. */
@@ -458,9 +466,20 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
         <div className="sticky left-0" style={{ width: larguraVisivel || undefined }}>
           <div className={`${GUTTER} py-5`}>
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Plantas. A coluna inteira para em 500px — não só a imagem — para a
+          {terceiros ? (
+            /* Terceiros: as fotos são do imóvel, não da tabela — é o mesmo
+               carrossel que num empreendimento próprio abre no topo da página,
+               só que aqui ele pertence à linha que foi aberta. */
+            <div className="flex flex-col gap-2 min-w-0">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fotos do imóvel</p>
+              {imovel && imovel.imagens.length > 0
+                ? <SliderImagens imagens={imovel.imagens} />
+                : <p className="text-xs text-zinc-600">Nenhuma foto publicada para este imóvel.</p>}
+            </div>
+          ) : (
+          /* Plantas. A coluna inteira para em 500px — não só a imagem — para a
               legenda e os indicadores acompanharem a largura da planta em vez
-              de atravessarem o card. */}
+              de atravessarem o card. */
           <div className="flex flex-col gap-2 min-w-0 max-w-[500px]">
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Plantas</p>
             {planta ? (
@@ -504,11 +523,23 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
               <p className="text-xs text-zinc-600">Nenhuma planta publicada para esta unidade.</p>
             )}
           </div>
+          )}
 
           {/* Demais informações */}
           <div className="flex flex-col gap-3 min-w-0">
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Informações da unidade</p>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+              {terceiros ? 'Resumo da unidade' : 'Informações da unidade'}
+            </p>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+              {terceiros && (
+                // Sem cadastro ainda, vale o nome escrito na própria linha: o
+                // corretor precisa saber de que imóvel é a unidade que abriu,
+                // mesmo que o material dele não tenha sido publicado.
+                <div className="min-w-0 col-span-2">
+                  <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Imóvel</dt>
+                  <dd className="text-sm font-semibold text-zinc-100">{imovel?.nome || unidade.imovel?.trim() || '—'}</dd>
+                </div>
+              )}
               <div className="min-w-0">
                 <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Situação</dt>
                 <dd className="text-xs font-medium text-zinc-300">{LP_SITUACAO_LABELS[unidade.situacao]}</dd>
@@ -526,8 +557,35 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
                   <dd className="text-xs font-medium text-zinc-300">{formatLpValor(e.tipo, e.read(unidade))}</dd>
                 </div>
               ))}
+              {/* Book e álbum do imóvel fecham o resumo: são material do
+                  imóvel, mas quem abriu a linha veio pela unidade e é aqui que
+                  vai procurá-los. */}
+              {imovel?.bookUrl?.trim() && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Book</dt>
+                  <dd><LinkAbrir url={imovel.bookUrl.trim()} /></dd>
+                </div>
+              )}
+              {imovel?.fotosUrl?.trim() && (
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Fotos</dt>
+                  <dd><LinkAbrir url={imovel.fotosUrl.trim()} /></dd>
+                </div>
+              )}
             </dl>
-            {unidade.descricao && <p className="text-xs text-zinc-500">{unidade.descricao}</p>}
+            {imovel?.descricao?.trim() && (
+              <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">{imovel.descricao.trim()}</p>
+            )}
+            {/* A ficha do imóvel — o que num empreendimento próprio fica no topo
+                da página — só existe a partir daqui, repetida em cada unidade
+                dele. bookUrl vai null: ele já é uma linha do resumo acima. */}
+            {imovel && imovel.fichaTecnica.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Informações do imóvel</p>
+                <Informacoes itens={imovel.fichaTecnica} bookUrl={null} />
+              </div>
+            )}
+            {!imovel && unidade.descricao && <p className="text-xs text-zinc-500">{unidade.descricao}</p>}
             {reservaUrl && (
               <a
                 href={reservaUrl}
@@ -552,7 +610,7 @@ function DetalheUnidade({ unidade, entradas, plantas, colspan, reservaUrl, largu
  * celular rola na horizontal com a coluna da unidade fixa à esquerda — é a
  * única referência de qual linha se está lendo. No desktop cabe inteira.
  */
-function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas, cvcrmTemplate }: {
+function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas, terceiros, imoveis, cvcrmTemplate }: {
   /** Todas as unidades da versão — o PDF sai completo, sem filtro. */
   unidades: LpCorretorPublicUnidade[];
   /** Quais passam pelos filtros da tela; as demais só existem no PDF. */
@@ -562,13 +620,22 @@ function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas,
   /** Quais delas vão na linha compacta; o resto só no card expandido. */
   chavesLinha: Set<string>;
   plantas: LpCorretorPlanta[];
+  /**
+   * Empreendimento de terceiros: liga a coluna Imóvel. Vem do projeto, e não
+   * de "tem cadastro?": a coluna precisa existir desde a primeira unidade
+   * preenchida, inclusive vazia — é assim que se vê que falta preencher.
+   */
+  terceiros: boolean;
+  /** Cadastro dos imóveis. Vazio em empreendimento próprio. */
+  imoveis: LpCorretorImovel[];
   cvcrmTemplate: string | null;
 }) {
   const [expandida, setExpandida] = useState<string | null>(null);
   const temReserva = !!cvcrmTemplate?.trim();
   const stickyBg = 'bg-[#08080a]';
   const entradasLinha = useMemo(() => entradas.filter(e => chavesLinha.has(e.id)), [entradas, chavesLinha]);
-  const colspan = 2 + entradasLinha.length + (temReserva ? 1 : 0) + 1;
+  const temImovel = terceiros;
+  const colspan = 2 + (temImovel ? 1 : 0) + entradasLinha.length + (temReserva ? 1 : 0) + 1;
 
   // O card expandido precisa ter a largura da área visível, não a da tabela —
   // é o que permite mantê-lo inteiro na tela enquanto as linhas rolam por baixo.
@@ -589,7 +656,11 @@ function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas,
       <table className="w-full border-collapse">
         <thead>
           <tr className={`${ROW_GUTTER} [&>th]:py-2 [&>th]:px-2 [&>th]:border-b [&>th]:border-zinc-800 [&>th]:text-[9px] lg:[&>th]:text-[10px] [&>th]:font-bold [&>th]:text-zinc-500 [&>th]:uppercase [&>th]:tracking-wider [&>th]:whitespace-nowrap`}>
-            <th className={`sticky left-0 z-10 ${stickyBg} lg:static text-left`}>Un.</th>
+            {/* Em terceiros o imóvel é a âncora da linha, não o número: é ele
+                que fica fixo à esquerda quando a tabela rola, porque "503"
+                sozinho não diz de que imóvel se está falando. */}
+            {temImovel && <th className={`sticky left-0 z-10 ${stickyBg} lg:static text-left`}>Imóvel</th>}
+            <th className={temImovel ? 'text-left' : `sticky left-0 z-10 ${stickyBg} lg:static text-left`}>Un.</th>
             <th className="text-right">Valor</th>
             {entradasLinha.map(e => <th key={e.id} className="text-right">{e.label}</th>)}
             {temReserva && <th />}
@@ -625,7 +696,14 @@ function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas,
                   {/* A célula fixa precisa de fundo opaco próprio: o realce
                       translúcido da linha deixaria as outras colunas passarem
                       por trás dela durante a rolagem horizontal. */}
-                  <td className={`sticky left-0 z-10 lg:static lg:bg-transparent ${aberta ? 'bg-[#101623]' : stickyBg}`}>
+                  {temImovel && (
+                    <td className={`sticky left-0 z-10 lg:static lg:bg-transparent ${aberta ? 'bg-[#101623]' : stickyBg}`}>
+                      <span className={`block max-w-[160px] truncate text-xs font-semibold ${aberta ? 'text-blue-300' : disponivel ? 'text-zinc-200' : 'text-zinc-600'}`}>
+                        {u.imovel?.trim() || '—'}
+                      </span>
+                    </td>
+                  )}
+                  <td className={temImovel ? '' : `sticky left-0 z-10 lg:static lg:bg-transparent ${aberta ? 'bg-[#101623]' : stickyBg}`}>
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
                       {/* data-sit sobrevive à virada de tema do PDF: lá o fundo
                           das classes utilitárias é zerado, e o ponto é
@@ -677,6 +755,8 @@ function UnidadesTabela({ unidades, visiveisIds, entradas, chavesLinha, plantas,
                     unidade={u}
                     entradas={entradas}
                     plantas={plantasDaUnidade(plantas, u.unidade)}
+                    terceiros={terceiros}
+                    imovel={imovelDaUnidade(imoveis, u.imovel)}
                     colspan={colspan}
                     reservaUrl={reservaUrl}
                     larguraVisivel={larguraVisivel}
@@ -758,7 +838,12 @@ export default function LpCorretorPage({ slug, validacaoToken }: LpCorretorPageP
     () => new Set(data?.config.colunasLinha || []),
     [data]
   );
-  const unidades = useMemo(() => (data ? sortUnidades(data.unidades) : []), [data]);
+  // Terceiros: a tabela reúne imóveis diferentes, e a ordem agrupa por imóvel
+  // antes do número da unidade.
+  const unidades = useMemo(
+    () => (data ? sortUnidades(data.unidades, data.projeto.terceiros) : []),
+    [data]
+  );
   const colArea = useMemo(() => (data ? colunaMetragem(data.colunas) : null), [data]);
 
   // Tipologia: qual coluna carrega esse dado é decidido no painel, antes de
@@ -829,7 +914,11 @@ export default function LpCorretorPage({ slug, validacaoToken }: LpCorretorPageP
   const { config, projeto } = data;
   const banner = config.bannerUrl || projeto.coverImage;
   const canais = canaisDeContato();
-  const temInfo = config.imagens.length > 0 || config.fichaTecnica.length > 0 || !!config.bookUrl;
+  // Em terceiros não existe "o produto": a página é uma carteira de imóveis, e
+  // galeria, ficha e book pertencem a cada um deles — saem do topo e passam a
+  // abrir junto com a linha da unidade. Sobra a capa seguida da tabela.
+  const temInfo = !projeto.terceiros
+    && (config.imagens.length > 0 || config.fichaTecnica.length > 0 || !!config.bookUrl);
   const disponiveis = unidades.filter(u => u.situacao === 'disponivel').length;
   const nome = config.titulo || projeto.nome;
   const versaoAtual = data.versoes.find(v => v.id === data.versaoId) || null;
@@ -1139,6 +1228,8 @@ export default function LpCorretorPage({ slug, validacaoToken }: LpCorretorPageP
             entradas={entradas}
             chavesLinha={chavesLinha}
             plantas={config.plantas}
+            terceiros={projeto.terceiros}
+            imoveis={projeto.terceiros ? config.imoveis : []}
             cvcrmTemplate={config.cvcrmUrlTemplate}
           />
         </div>
