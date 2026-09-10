@@ -186,12 +186,16 @@ export interface CrmNextAction {
   createdAt: string;
 }
 
+/** Unidade do intervalo de uma etapa da cadência — minutos para ações rápidas, horas para o resto. */
+export type CrmIntervaloUnidade = 'minutos' | 'horas';
+
 export interface CrmCadenciaEtapa {
   id: string;
   cadenciaId: string;
   ordem: number;
   tipo: string;
-  intervaloHoras: number;
+  intervaloValor: number;
+  intervaloUnidade: CrmIntervaloUnidade;
   mensagem?: string | null;
   ativo: boolean;
 }
@@ -200,14 +204,12 @@ export interface CrmCadencia {
   id: string;
   nome: string;
   descricao?: string | null;
+  /** Etapa do funil (prefixo "etapa:") ou situação específica que dispara a cadência. */
   gatilho: string;
   ativo: boolean;
-  maxTentativas: number;
   horaInicio: string;
   horaFim: string;
   diasSemana: number[];
-  prioridade: CrmPrioridade;
-  slaHoras: number;
   ordem: number;
 }
 

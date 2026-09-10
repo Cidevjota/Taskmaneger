@@ -69,16 +69,16 @@ const toAction = (r: any): CrmNextAction => ({
 
 const toCadencia = (r: any): CrmCadencia => ({
   id: r.id, nome: r.nome, descricao: r.descricao, gatilho: r.gatilho, ativo: r.ativo,
-  maxTentativas: r.max_tentativas,
   horaInicio: String(r.hora_inicio).slice(0, 5),
   horaFim: String(r.hora_fim).slice(0, 5),
   diasSemana: r.dias_semana || [],
-  prioridade: r.prioridade, slaHoras: r.sla_horas, ordem: r.ordem,
+  ordem: r.ordem,
 });
 
 const toCadenciaEtapa = (r: any): CrmCadenciaEtapa => ({
   id: r.id, cadenciaId: r.cadencia_id, ordem: r.ordem, tipo: r.tipo,
-  intervaloHoras: r.intervalo_horas, mensagem: r.mensagem, ativo: r.ativo,
+  intervaloValor: r.intervalo_valor, intervaloUnidade: r.intervalo_unidade,
+  mensagem: r.mensagem, ativo: r.ativo,
 });
 
 function unwrap<T>(data: T | null, error: any, contexto: string): T {
@@ -322,12 +322,9 @@ export async function saveCrmCadencia(c: Partial<CrmCadencia> & { nome: string }
     descricao: c.descricao ?? null,
     gatilho: c.gatilho ?? 'manual',
     ativo: c.ativo ?? true,
-    max_tentativas: c.maxTentativas ?? 5,
     hora_inicio: c.horaInicio ?? '09:00',
     hora_fim: c.horaFim ?? '18:00',
     dias_semana: c.diasSemana ?? [1, 2, 3, 4, 5],
-    prioridade: c.prioridade ?? 'media',
-    sla_horas: c.slaHoras ?? 24,
     ordem: c.ordem ?? 0,
   };
   if (c.id) payload.id = c.id;
@@ -351,7 +348,8 @@ export async function saveCrmCadenciaEtapa(e: Partial<CrmCadenciaEtapa> & { cade
     cadencia_id: e.cadenciaId,
     ordem: e.ordem ?? 0,
     tipo: e.tipo,
-    intervalo_horas: e.intervaloHoras ?? 24,
+    intervalo_valor: e.intervaloValor ?? 24,
+    intervalo_unidade: e.intervaloUnidade ?? 'horas',
     mensagem: e.mensagem ?? null,
     ativo: e.ativo ?? true,
   };

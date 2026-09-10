@@ -171,7 +171,7 @@ export default function CrmLeadsKanban({
         <select
           value={filtros.proximaAcao}
           onChange={e => set({ proximaAcao: e.target.value as CrmLeadFilters['proximaAcao'] })}
-          className={`${selectCls} w-40`}
+          className={`${selectCls} !w-40 shrink-0`}
         >
           <option value="todas">Próxima ação: todas</option>
           <option value="atrasadas">Atrasadas</option>
@@ -190,16 +190,6 @@ export default function CrmLeadsKanban({
         >
           Atrasados
         </button>
-
-        <select
-          value={filtros.enviadosCv}
-          onChange={e => set({ enviadosCv: e.target.value as CrmLeadFilters['enviadosCv'] })}
-          className={`${selectCls} w-36`}
-        >
-          <option value="incluir">CV CRM: incluir</option>
-          <option value="ocultar">CV CRM: ocultar</option>
-          <option value="somente">CV CRM: somente</option>
-        </select>
 
         <button
           onClick={() => setPainelFiltros(p => !p)}

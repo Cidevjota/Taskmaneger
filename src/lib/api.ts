@@ -1032,10 +1032,25 @@ function mapSiengeTabelaVendaUnidade(r: any): SiengeTabelaVendaUnidade {
   };
 }
 
+const TABELA_VENDAS_PAGE = 1000;
+
 export async function fetchSiengeTabelaVendas(): Promise<SiengeTabelaVendaUnidade[]> {
-  const { data, error } = await supabase.from('sienge_tabela_vendas').select('*');
-  if (error) throw error;
-  return (data || []).map(mapSiengeTabelaVendaUnidade);
+  // O PostgREST corta em 1000 linhas e não avisa: a tabela já passou disso
+  // somando os projetos, e o que sobrava sumia do VGV/saldo sem erro nenhum.
+  // O order('id') é o que mantém as páginas estáveis — sem ORDER BY o Postgres
+  // não garante a mesma ordem entre as consultas, e as faixas pulariam linhas.
+  const rows: any[] = [];
+  for (let from = 0; ; from += TABELA_VENDAS_PAGE) {
+    const { data, error } = await supabase
+      .from('sienge_tabela_vendas')
+      .select('*')
+      .order('id')
+      .range(from, from + TABELA_VENDAS_PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < TABELA_VENDAS_PAGE) break;
+  }
+  return rows.map(mapSiengeTabelaVendaUnidade);
 }
 
 export async function saveSiengeTabelaVenda(item: SiengeTabelaVendaUnidade) {
