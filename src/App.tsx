@@ -36,6 +36,7 @@ import TaskSheet from './components/TaskSheet';
 import KanbanView from './components/KanbanView';
 import ListView from './components/ListView';
 import CalendarView from './components/CalendarView';
+import CrmView from './components/crm/CrmView';
 import ProjectsView from './components/ProjectsView';
 import SettingsView from './components/SettingsView';
 import InboxView from './components/InboxView';
@@ -1350,6 +1351,8 @@ export default function App() {
         return 'Empreendimentos Globais';
       case 'calendar':
         return 'Calendário';
+      case 'crm':
+        return 'CRM';
       case 'settings':
         return 'Ajustes';
       case 'sienge_vendas':
@@ -1551,6 +1554,10 @@ export default function App() {
               socialMediaFilter={socialMediaFilter}
               setSocialMediaFilter={setSocialMediaFilter}
             />
+          )}
+
+          {activeView === 'crm' && (
+            <CrmView projects={projects} />
           )}
 
           {activeView === 'projects' && (

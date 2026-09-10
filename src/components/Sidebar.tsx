@@ -4,7 +4,8 @@ import {
   Columns3, 
   List, 
   FolderKanban, 
-  Calendar, 
+  Calendar,
+  Headset,
   Settings as SettingsIcon, 
   ChevronLeft, 
   ChevronRight, 
@@ -446,6 +447,21 @@ export default function Sidebar({
                 )}
                 <Calendar size={14} className={`relative z-10 ${activeView === 'calendar' ? 'text-zinc-200' : 'text-zinc-550'}`} />
                 {!collapsed && <span className="relative z-10">Calendário</span>}
+              </button>
+
+              <button
+                onClick={() => setActiveView('crm')}
+                className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  activeView === 'crm'
+                    ? 'text-zinc-100'
+                    : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
+                }`}
+              >
+                {activeView === 'crm' && (
+                  <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-zinc-900/80 border border-zinc-800/50 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
+                )}
+                <Headset size={14} className={`relative z-10 ${activeView === 'crm' ? 'text-zinc-200' : 'text-zinc-550'}`} />
+                {!collapsed && <span className="relative z-10">CRM</span>}
               </button>
 
               {!collapsed && <div className="border-t border-zinc-900/80 my-1" />}
