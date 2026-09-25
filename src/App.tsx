@@ -577,6 +577,7 @@ export default function App() {
         else if (table === 'sienge_centros_custo') invalidate('siengeCentrosCusto');
         else if (table === 'sienge_categorias') invalidate('siengeCategorias');
         else if (table === 'sienge_subcategorias') invalidate('siengeSubcategorias');
+        else if (table === 'relatorio_vendas_config') invalidate('relatorioVendasConfig');
       };
       const siengeCh = supabase
         .channel('sienge-changes', { config: { private: true } })
@@ -1357,6 +1358,8 @@ export default function App() {
         return 'Ajustes';
       case 'sienge_vendas':
         return 'Tabela de Vendas';
+      case 'sienge_vendas_dashboard':
+        return 'Dashboard de Vendas';
       default:
         return 'Workspace';
     }
@@ -1581,9 +1584,9 @@ export default function App() {
           {/* Finanças e Tabela de Vendas são a mesma instância: a segunda é a
               primeira travada na aba de vendas e sem barra de abas. Compartilhar
               o componente evita duplicar toda a fiação de handlers abaixo. */}
-          {(activeView === 'sienge' || activeView === 'sienge_vendas') && (
+          {(activeView === 'sienge' || activeView === 'sienge_vendas' || activeView === 'sienge_vendas_dashboard') && (
             <SiengeView
-              forcedTab={activeView === 'sienge_vendas' ? 'vendas' : undefined}
+              forcedTab={activeView === 'sienge_vendas' ? 'vendas' : activeView === 'sienge_vendas_dashboard' ? 'vendas_dashboard' : undefined}
               titles={siengeTitles}
               statusHistory={siengeTitleStatusHistory}
               lotes={siengeLotes}

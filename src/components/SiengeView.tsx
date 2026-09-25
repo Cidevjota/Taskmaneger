@@ -6,6 +6,7 @@ import SiengeLotes from './SiengeLotes';
 import SiengeFaturas from './SiengeFaturas';
 import SiengeMetasDashboard from './SiengeMetasDashboard';
 import SiengeVendasModal from './SiengeVendasModal';
+import SiengeVendasDashboard from './SiengeVendasDashboard';
 import { useAuth } from '../context/AuthContext';
 
 // Exportado: o Sidebar usa o mesmo e-mail para decidir se mostra "Tabela de
@@ -92,7 +93,7 @@ interface SiengeViewProps {
    * de aba. As duas rotas compartilham o mesmo componente para não duplicar a
    * fiação enorme de handlers que o App.tsx já monta uma vez.
    */
-  forcedTab?: 'vendas';
+  forcedTab?: 'vendas' | 'vendas_dashboard';
 }
 
 export default function SiengeView({
@@ -108,7 +109,7 @@ export default function SiengeView({
   mensalidades, onSaveMensalidade, onDeleteMensalidade,
   forcedTab,
 }: SiengeViewProps) {
-  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas' | 'vendas'>('titulos');
+  const [activeTab, setActiveTab] = useState<'titulos' | 'lotes' | 'faturas' | 'metas' | 'vendas' | 'vendas_dashboard'>('titulos');
   const openLotes = lotes.filter(l => l.status === 'aberto');
   const openFaturas = faturas.filter(f => f.status === 'aberto');
   const { currentUser } = useAuth();
@@ -234,6 +235,12 @@ export default function SiengeView({
             openLotes={openLotes}
             projects={projects}
             taxonomy={taxonomy}
+          />
+        ) : tab === 'vendas_dashboard' ? (
+          <SiengeVendasDashboard
+            projects={visibleProjects}
+            unidades={tabelaVendas}
+            versoes={tabelaVendaVersoes}
           />
         ) : tab === 'vendas' ? (
           <SiengeVendasModal

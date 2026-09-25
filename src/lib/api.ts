@@ -1692,3 +1692,104 @@ export async function regenerarTokenValidacaoLp(projectId: string): Promise<stri
   return data as string;
 }
 
+
+// ─── Relatório semanal do Dashboard de Vendas por e-mail ──────────
+// Linha única (id = 'default'); o envio é da Edge Function `relatorio-vendas`,
+// agendada pelo pg_cron. Ver migration 20260925120000.
+
+export interface RelatorioVendasConfig {
+  ativo: boolean;
+  emails: string[];
+  diaSemana: number; // 0 = domingo … 6 = sábado
+  hora: string; // 'HH:MM', horário de Brasília
+  remetenteEmail: string | null;
+  remetenteNome: string;
+  ultimoEnvioEm: string | null;
+  ultimoEnvioStatus: string | null;
+  /** Fora do Dashboard de Vendas (tela e e-mail), sem afetar a Tabela de Vendas. */
+  projetosExcluidos: string[];
+}
+
+export async function fetchRelatorioVendasConfig(): Promise<RelatorioVendasConfig | null> {
+  const { data, error } = await supabase.from('relatorio_vendas_config').select('*').eq('id', 'default').maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    ativo: data.ativo,
+    emails: data.emails || [],
+    diaSemana: data.dia_semana,
+    hora: data.hora,
+    remetenteEmail: data.remetente_email,
+    remetenteNome: data.remetente_nome,
+    ultimoEnvioEm: data.ultimo_envio_em,
+    ultimoEnvioStatus: data.ultimo_envio_status,
+    projetosExcluidos: data.projetos_excluidos || [],
+  };
+}
+
+export async function saveRelatorioVendasProjetosExcluidos(projectIds: string[]) {
+  const { error } = await supabase.from('relatorio_vendas_config')
+    .update({ projetos_excluidos: projectIds, updated_at: new Date().toISOString() })
+    .eq('id', 'default');
+  if (error) throw error;
+}
+
+// Não envia projetos_excluidos: o upsert só grava as colunas presentes, então a
+// lista de exclusão (editada no filtro do Dashboard) fica intacta.
+export async function saveRelatorioVendasConfig(config: Omit<RelatorioVendasConfig, 'ultimoEnvioEm' | 'ultimoEnvioStatus' | 'projetosExcluidos'>) {
+  const { error } = await supabase.from('relatorio_vendas_config').upsert({
+    id: 'default',
+    ativo: config.ativo,
+    emails: config.emails,
+    dia_semana: config.diaSemana,
+    hora: config.hora,
+    remetente_email: config.remetenteEmail,
+    remetente_nome: config.remetenteNome,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+/** Dispara o relatório agora para a lista salva, sem afetar o agendamento. */
+export async function enviarRelatorioVendasAgora(): Promise<number> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Sessão expirada. Faça login novamente.');
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/relatorio-vendas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: '{}',
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Erro ${res.status}`);
+  return body.enviados ?? 0;
+}
+
+// Foto diária do resumo (ver migration 20260925140000). Mesma regra da Edge
+// Function relatorio-vendas: fechamento de 7 dias antes de hoje (Brasília) ou,
+// enquanto o histórico não tem uma semana, a foto mais antiga antes de hoje.
+export interface RelatorioVendasSnapshotRow {
+  projectId: string;
+  situacao: SiengeVendaSituacao;
+  unidades: number;
+  vgv: number;
+}
+
+export async function fetchRelatorioVendasBaseline(hoje: string, alvo: string): Promise<{ referencia: string | null; rows: RelatorioVendasSnapshotRow[] }> {
+  const { data: antes, error } = await supabase.from('relatorio_vendas_snapshots')
+    .select('referencia').lte('referencia', alvo).order('referencia', { ascending: false }).limit(1);
+  if (error) throw error;
+  let referencia: string | null = antes?.[0]?.referencia ?? null;
+  if (!referencia) {
+    const { data: primeira } = await supabase.from('relatorio_vendas_snapshots')
+      .select('referencia').lt('referencia', hoje).order('referencia', { ascending: true }).limit(1);
+    referencia = primeira?.[0]?.referencia ?? null;
+  }
+  if (!referencia) return { referencia: null, rows: [] };
+  const { data, error: rowsError } = await supabase.from('relatorio_vendas_snapshots')
+    .select('project_id, situacao, unidades, vgv').eq('referencia', referencia);
+  if (rowsError) throw rowsError;
+  return {
+    referencia,
+    rows: (data || []).map((r: any) => ({ projectId: r.project_id, situacao: r.situacao, unidades: Number(r.unidades), vgv: Number(r.vgv) })),
+  };
+}
