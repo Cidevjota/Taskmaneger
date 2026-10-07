@@ -14,6 +14,11 @@ import { useAuth } from '../context/AuthContext';
 // checada num lugar novo agora que a aba saiu daqui.
 export const METAS_DASHBOARD_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
 
+// Administradores (permissionLevel 1) enxergam tudo; fora deles, só o e-mail
+// acima tem acesso às telas de vendas e metas.
+export const canAccessMetasDashboard = (user?: { email?: string; permissionLevel?: number } | null) =>
+  !!user && (Number(user.permissionLevel) === 1 || user.email === METAS_DASHBOARD_EMAIL);
+
 interface SiengeViewProps {
   titles: SiengeTitle[];
   statusHistory: SiengeTitleStatusHistoryEntry[];
@@ -113,7 +118,7 @@ export default function SiengeView({
   const openLotes = lotes.filter(l => l.status === 'aberto');
   const openFaturas = faturas.filter(f => f.status === 'aberto');
   const { currentUser } = useAuth();
-  const showMetasTab = currentUser?.email === METAS_DASHBOARD_EMAIL;
+  const showMetasTab = canAccessMetasDashboard(currentUser);
   const tab = forcedTab ?? activeTab;
 
   // Mesma regra de visibilidade/ordem usada no Dashboard Analítico — empreendimentos
@@ -232,6 +237,7 @@ export default function SiengeView({
             onSaveFatura={onSaveFatura}
             onDeleteFatura={onDeleteFatura}
             onSaveTitle={onSaveTitle}
+            onDeleteTitle={onDeleteTitle}
             openLotes={openLotes}
             projects={projects}
             taxonomy={taxonomy}

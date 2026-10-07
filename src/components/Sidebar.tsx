@@ -34,7 +34,7 @@ import {
   Home
 } from 'lucide-react';
 import { ViewType, Project, Task } from '../types';
-import { METAS_DASHBOARD_EMAIL } from './SiengeView';
+import { canAccessMetasDashboard } from './SiengeView';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useMediaQuery, SHORT_SCREEN } from '../hooks/useMediaQuery';
@@ -483,7 +483,7 @@ export default function Sidebar({
               </button>
 
               {/* Mesma regra de acesso de quando era aba dentro de Finanças. */}
-              {currentUser?.email === METAS_DASHBOARD_EMAIL && (
+              {canAccessMetasDashboard(currentUser) && (
                 <button
                   onClick={() => setActiveView('sienge_vendas')}
                   className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
@@ -500,7 +500,7 @@ export default function Sidebar({
                 </button>
               )}
 
-              {currentUser?.email === METAS_DASHBOARD_EMAIL && (
+              {canAccessMetasDashboard(currentUser) && (
                 <button
                   onClick={() => setActiveView('sienge_vendas_dashboard')}
                   className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${

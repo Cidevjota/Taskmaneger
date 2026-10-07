@@ -17,6 +17,7 @@ interface SiengeFaturasProps {
   onDeleteFatura: (id: string) => void;
   // Despesas e o título gerado são gravados na mesma tabela dos títulos.
   onSaveTitle: (title: SiengeTitle) => void;
+  onDeleteTitle: (id: string) => void;
   openLotes: SiengeLote[];
   projects: Project[];
   taxonomy: SiengeTaxonomy;
@@ -346,6 +347,7 @@ function FaturaRow({
   onGerarTitulo,
   onNovaDespesa,
   onEditDespesa,
+  onDeleteDespesa,
 }: {
   fatura: SiengeFatura;
   titles: SiengeTitle[];
@@ -354,10 +356,12 @@ function FaturaRow({
   onGerarTitulo: (fatura: SiengeFatura) => void;
   onNovaDespesa: (fatura: SiengeFatura) => void;
   onEditDespesa: (despesa: SiengeTitle) => void;
+  onDeleteDespesa: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteDespesaId, setConfirmDeleteDespesaId] = useState<string | null>(null);
 
   const despesas = titles.filter(t => t.faturaId === fatura.id);
   const totalValue = despesas.reduce((s, t) => s + t.valor, 0);
@@ -507,7 +511,7 @@ function FaturaRow({
                   <th className="text-left px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Empreendimento</th>
                   <th className="text-center px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider w-16">Anexo</th>
                   <th className="text-right px-4 py-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Valor</th>
-                  <th className="w-16 px-4 py-2" />
+                  <th className="w-28 px-4 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -521,14 +525,31 @@ function FaturaRow({
                     <td className="px-4 py-2.5 text-zinc-400 truncate max-w-[160px]">{t.empreendimento || '—'}</td>
                     <td className="px-4 py-2.5 text-center"><DespesaAnexos despesa={t} /></td>
                     <td className="px-4 py-2.5 text-right font-semibold text-emerald-400">{formatCurrency(t.valor)}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={() => onEditDespesa(t)}
-                        title="Editar despesa"
-                        className="p-1.5 text-zinc-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                      >
-                        <Pencil size={13} />
-                      </button>
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      {confirmDeleteDespesaId === t.id ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <span className="text-[10px] text-red-400">Excluir?</span>
+                          <button onClick={() => { onDeleteDespesa(t.id); setConfirmDeleteDespesaId(null); }} className="px-2 py-0.5 text-[10px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded hover:bg-red-500/20 transition-colors">Sim</button>
+                          <button onClick={() => setConfirmDeleteDespesaId(null)} className="px-2 py-0.5 text-[10px] text-zinc-600 hover:text-zinc-400 rounded transition-colors">Não</button>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => onEditDespesa(t)}
+                            title="Editar despesa"
+                            className="p-1.5 text-zinc-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteDespesaId(t.id)}
+                            title="Excluir despesa"
+                            className="p-1.5 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -543,7 +564,7 @@ function FaturaRow({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function SiengeFaturas({
-  faturas, titles, onSaveFatura, onDeleteFatura, onSaveTitle, openLotes, projects, taxonomy,
+  faturas, titles, onSaveFatura, onDeleteFatura, onSaveTitle, onDeleteTitle, openLotes, projects, taxonomy,
 }: SiengeFaturasProps) {
   const [showNewModal, setShowNewModal] = useState(false);
   const [despesaModalOpen, setDespesaModalOpen] = useState(false);
@@ -785,6 +806,7 @@ export default function SiengeFaturas({
                 onGerarTitulo={setGerarTituloFatura}
                 onNovaDespesa={(f) => { setDespesaFatura(f); setEditingDespesa(null); setDespesaModalOpen(true); }}
                 onEditDespesa={handleEditDespesa}
+                onDeleteDespesa={onDeleteTitle}
               />
             ))
           )}
@@ -824,6 +846,7 @@ export default function SiengeFaturas({
         despesaMode
         onClose={() => { setDespesaModalOpen(false); setDespesaFatura(null); setEditingDespesa(null); }}
         onSave={(t) => { onSaveTitle(t); setDespesaModalOpen(false); setDespesaFatura(null); setEditingDespesa(null); }}
+        onDelete={onDeleteTitle}
         initialData={editingDespesa}
         initialFaturaId={despesaFatura?.id}
         openLotes={openLotes}

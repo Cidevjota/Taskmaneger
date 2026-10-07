@@ -12,7 +12,7 @@ import { analyzeProjectsForPeriod, buildCategoriasBase } from '../lib/siengeMeta
 import { CENTRO_CUSTO_LABELS, SiengeTaxonomy } from '../lib/siengeCategorias';
 import { analyzeProjectBudgetReal, analyzeProjectBudgetPeriodo, categoriaKey, getRitmoMes, getTitulosNoPeriodo, ORCAMENTO_PCT, RitmoMes } from '../lib/siengeVendasBudget';
 
-const RESTRICTED_EMAIL = 'cidnei@uchoaempreendimentos.com.br';
+import { canAccessMetasDashboard } from './SiengeView';
 
 interface SiengeMetasDashboardProps {
   titles: SiengeTitle[];
@@ -131,7 +131,7 @@ export default function SiengeMetasDashboard({
   /** Linha aberta no comparativo (chave da categoria), com os títulos que a compõem. */
   const [openCategoria, setOpenCategoria] = useState<string | null>(null);
 
-  const allowed = currentUser?.email === RESTRICTED_EMAIL;
+  const allowed = canAccessMetasDashboard(currentUser);
 
   // Empreendimentos ocultados (via "Ajustar Metas") somem do dashboard, mas
   // continuam existindo normalmente no resto do app — e na própria "Ajustar Metas",

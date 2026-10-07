@@ -101,6 +101,8 @@ export default function SiengeTitleModal({
   const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
   const [assigneeId, setAssigneeId] = useState('');
   const [pdfFiles, setPdfFiles] = useState<{ id: string, file: File | null }[]>([{ id: Date.now().toString(), file: null }]);
+  // Cópia editável dos anexos já gravados: remover um aqui só vale ao salvar.
+  const [savedAttachments, setSavedAttachments] = useState<SiengeTitle['attachments']>(undefined);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -189,6 +191,7 @@ export default function SiengeTitleModal({
       setResolveVencimento('');
       setResolveObservacao('');
       setPdfFiles([{ id: Date.now().toString(), file: null }]);
+      setSavedAttachments(initialData?.attachments);
     }
   }, [isOpen, initialData, initialStatus, despesaMode, initialFaturaId]);
 
@@ -248,8 +251,8 @@ export default function SiengeTitleModal({
       // salvos (carregados sob demanda) mais os enviados agora. Se o título foi aberto
       // a partir da listagem — que não traz a coluna —, mandar `[]` apagaria no banco os
       // anexos existentes, e era assim que as despesas perdiam o PDF ao serem editadas.
-      const allAttachments = initialData?.attachments !== undefined
-        ? [...initialData.attachments, ...newAttachments]
+      const allAttachments = savedAttachments !== undefined
+        ? [...savedAttachments, ...newAttachments]
         : (newAttachments.length > 0 ? newAttachments : undefined);
 
       const title: SiengeTitle = withVencimentoOriginal({
@@ -403,8 +406,17 @@ export default function SiengeTitleModal({
     setPdfFiles(prev => [...prev, { id: Date.now().toString(), file: null }]);
   };
 
+  // Com um campo só, "remover" troca por um campo novo (id novo remonta o input e
+  // descarta o arquivo escolhido) em vez de deixar o formulário sem campo nenhum.
   const handleRemovePdfField = (idToRemove: string) => {
-    setPdfFiles(prev => prev.filter(p => p.id !== idToRemove));
+    setPdfFiles(prev => {
+      const rest = prev.filter(p => p.id !== idToRemove);
+      return rest.length > 0 ? rest : [{ id: Date.now().toString(), file: null }];
+    });
+  };
+
+  const handleRemoveSavedAttachment = (idToRemove: string) => {
+    setSavedAttachments(prev => prev?.filter(a => a.id !== idToRemove));
   };
 
   const handleFileChange = (id: string, file: File | null) => {
@@ -1199,10 +1211,11 @@ export default function SiengeTitleModal({
                     onChange={(e) => handleFileChange(pdf.id, e.target.files?.[0] || null)}
                     className="flex-1 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none transition-all focus:border-blue-500/50 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-500/10 file:text-blue-400 hover:file:bg-blue-500/20"
                   />
-                  {pdfFiles.length > 1 && (
+                  {(pdfFiles.length > 1 || pdf.file) && (
                     <button
                       type="button"
                       onClick={() => handleRemovePdfField(pdf.id)}
+                      title="Remover arquivo"
                       className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                     >
                       <Trash2 size={15} />
@@ -1214,17 +1227,30 @@ export default function SiengeTitleModal({
                 <div className="mt-2 pt-2 border-t border-zinc-800">
                   <span className="text-[10px] text-zinc-500 font-medium uppercase mb-2 block">Anexos Salvos:</span>
                   <div className="flex flex-col gap-1.5">
-                    {initialData.attachments.map(att => (
+                    {(savedAttachments || []).map(att => (
                       <div key={att.id} className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg border border-zinc-800/60">
                         <Paperclip size={12} className="text-blue-400 shrink-0" />
                         <span className="truncate flex-1">{att.name}</span>
-                        {att.url && (
-                          <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 shrink-0 underline">
+                        {(att.url || att.data) && (
+                          <a href={att.url || att.data} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 shrink-0 underline">
                             Abrir
                           </a>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSavedAttachment(att.id)}
+                          title="Excluir anexo"
+                          className="p-1 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors shrink-0"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     ))}
+                    {savedAttachments && savedAttachments.length < initialData.attachments.length && (
+                      <p className="text-[10px] text-amber-400/80">
+                        {initialData.attachments.length - savedAttachments.length} anexo(s) será(ão) removido(s) ao salvar.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
