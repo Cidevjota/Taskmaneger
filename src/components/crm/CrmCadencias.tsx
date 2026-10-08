@@ -26,6 +26,9 @@ const GATILHOS_SITUACAO = [
   { id: 'manual',           label: 'Manual' },
 ];
 
+/** Gatilhos que o motor do banco já executa (crm_cadencia_ao_criar_lead). */
+const GATILHOS_COM_MOTOR = ['lead_novo', 'etapa:novo'];
+
 /** Agrupa as etapas em blocos D0, D1, D2… pelo dia gravado em cada uma. */
 function agruparPorDia(etapas: CrmCadenciaEtapa[]) {
   const grupos: { dia: number; etapas: CrmCadenciaEtapa[] }[] = [];
@@ -38,9 +41,8 @@ function agruparPorDia(etapas: CrmCadenciaEtapa[]) {
 }
 
 /**
- * Cadastro e configuração das cadências. Nenhum job as executa nesta entrega —
- * os critérios de disparo ainda serão definidos; o que existe aqui é o
- * parâmetro que o motor vai ler quando chegar.
+ * Cadastro e configuração das cadências. Quem as executa é o banco (migration
+ * crm_cadencia_motor): aqui ficam só os parâmetros que o motor lê.
  */
 export default function CrmCadencias({
   cadencias, etapas, podeEditar, onSalvarCadencia, onExcluirCadencia, onSalvarEtapa, onExcluirEtapa,
@@ -261,8 +263,19 @@ function CadenciaEditor({
 
       <p className="flex items-start gap-1.5 text-[11px] text-zinc-500 bg-zinc-900/40 border border-zinc-900 rounded-md px-2.5 py-2">
         <Info size={12} className="shrink-0 mt-px text-zinc-600" />
-        As cadências estão em modo de configuração: os parâmetros abaixo ficam gravados,
-        mas nenhum job dispara as etapas ainda — os critérios serão definidos depois.
+        {GATILHOS_COM_MOTOR.includes(cadencia.gatilho) ? (
+          <>
+            Esta cadência roda sozinha: todo lead que entra em "Novo" recebe a primeira etapa como
+            próxima ação, e concluir a ação agenda a seguinte. Ela para quando o cliente responde,
+            quando o lead muda de etapa no funil ou quando a ação é cancelada. Nada é enviado ao
+            cliente automaticamente — WhatsApp e ligação são tarefas da SDR.
+          </>
+        ) : (
+          <>
+            Este gatilho ainda não dispara etapas: por enquanto só "Lead novo sem resposta" roda
+            sozinho. Os parâmetros abaixo ficam gravados para quando o gatilho for ligado.
+          </>
+        )}
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">

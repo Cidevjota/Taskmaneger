@@ -93,6 +93,16 @@ export default function CrmView({ projects }: Props) {
     [acoes, leadAberto?.id]
   );
 
+  const cadenciaDaAcao = useMemo(() => {
+    const etapa = cadEtapas.find(e => e.id === acaoDoLead?.cadenciaEtapaId);
+    if (!etapa) return null;
+    const irmas = cadEtapas
+      .filter(e => e.cadenciaId === etapa.cadenciaId)
+      .sort((a, b) => a.dia - b.dia || a.ordem - b.ordem);
+    const nome = cadencias.find(c => c.id === etapa.cadenciaId)?.nome ?? '';
+    return `${nome} · etapa ${irmas.indexOf(etapa) + 1}/${irmas.length}`;
+  }, [acaoDoLead?.cadenciaEtapaId, cadEtapas, cadencias]);
+
   // Realtime: a migration publica todas as tabelas do CRM no tópico 'crm-changes'.
   useEffect(() => {
     if (!currentUser) return;
@@ -258,6 +268,7 @@ export default function CrmView({ projects }: Props) {
             isNovo={!leadAberto.id}
             eventos={eventosDoLead}
             acao={acaoDoLead}
+            cadenciaDaAcao={cadenciaDaAcao}
             eventTypes={eventTypes}
             origens={origens}
             faixas={faixas}

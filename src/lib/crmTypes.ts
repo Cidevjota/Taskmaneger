@@ -184,6 +184,8 @@ export interface CrmNextAction {
   responsavelId?: string | null;
   concluidaEm?: string | null;
   createdAt: string;
+  /** Etapa da cadência que gerou a ação; null quando a ação foi marcada à mão. */
+  cadenciaEtapaId?: string | null;
 }
 
 /** Unidade do intervalo de uma etapa da cadência — minutos para ações rápidas, horas para o resto. */

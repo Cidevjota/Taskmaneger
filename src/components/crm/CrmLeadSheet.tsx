@@ -25,6 +25,8 @@ interface Props {
   isNovo: boolean;
   eventos: CrmLeadEvent[];
   acao: CrmNextAction | null;
+  /** "Primeiro contato padrão · etapa 2/9" quando a ação veio de uma cadência. */
+  cadenciaDaAcao?: string | null;
   eventTypes: CrmEventType[];
   origens: CrmOrigem[];
   faixas: CrmFaixaInvestimento[];
@@ -53,7 +55,7 @@ const hojeISO = () => {
 
 export default function CrmLeadSheet(props: Props) {
   const {
-    lead, isNovo, eventos, acao, eventTypes, origens, faixas, projects, users,
+    lead, isNovo, eventos, acao, cadenciaDaAcao, eventTypes, origens, faixas, projects, users,
     config, podeEditar, onClose, onSalvar, onExcluir,
     onRegistrarEvento, onExcluirEvento, onSalvarAcao, onConcluirAcao, onCancelarAcao,
   } = props;
@@ -243,6 +245,7 @@ export default function CrmLeadSheet(props: Props) {
                 ? `Próxima ação: ${acao.tipo} · ${quandoCurto(acao.agendadoPara)} · ${CRM_PRIORIDADES.find(p => p.id === acao.prioridade)?.label}`
                 : 'Sem próxima ação definida — todo lead ativo precisa de uma.'}
             </span>
+            {acao && cadenciaDaAcao && <span className="opacity-70 truncate">cadência {cadenciaDaAcao}</span>}
             {acao && <span className="ml-auto uppercase tracking-wider text-[9px] font-bold opacity-80">{corAcao.label}</span>}
           </div>
 

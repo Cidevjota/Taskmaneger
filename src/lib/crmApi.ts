@@ -65,6 +65,7 @@ const toAction = (r: any): CrmNextAction => ({
   id: r.id, leadId: r.lead_id, tipo: r.tipo, agendadoPara: r.agendado_para,
   prioridade: r.prioridade, status: r.status, observacao: r.observacao,
   responsavelId: r.responsavel_id, concluidaEm: r.concluida_em, createdAt: r.created_at,
+  cadenciaEtapaId: r.cadencia_etapa_id ?? null,
 });
 
 const toCadencia = (r: any): CrmCadencia => ({
