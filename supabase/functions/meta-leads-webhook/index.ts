@@ -138,6 +138,17 @@ async function gravarLead(supabase: any, ctx: any, lead: any, formName: string):
       .map((f: any) => `${legivel(f.name)}: ${(f.values || []).map(legivel).join(', ')}`),
   ].filter(Boolean).join('\n');
 
+  // Marca o lead como visto antes de gravar. É este registro, e não o card, que
+  // diz "já importei": assim um card excluído pela SDR não volta na varredura
+  // seguinte, e webhook e varredura não gravam o mesmo lead duas vezes.
+  const metaLeadId = String(lead.id);
+  const { error: jaVisto } = await supabase
+    .from('crm_meta_leads_vistos').insert({ meta_lead_id: metaLeadId });
+  if (jaVisto) {
+    if (jaVisto.code !== '23505') console.error('visto', metaLeadId, jaVisto);
+    return false;
+  }
+
   const { error } = await supabase.from('crm_leads').insert({
     nome: nome || 'Lead sem nome',
     telefone: campo(fields, ['whatsapp', 'phone', 'telefone']) || null,
@@ -149,10 +160,13 @@ async function gravarLead(supabase: any, ctx: any, lead: any, formName: string):
     faixa_id: faixa?.id ?? null,
     entrada_em: lead.created_time,
     observacoes,
-    meta_lead_id: String(lead.id),
+    meta_lead_id: metaLeadId,
   });
-  // 23505 = já ingerido por outra entrega do mesmo evento (ou pelo outro caminho).
-  if (error && error.code !== '23505') console.error('insert', lead.id, error);
+  if (error && error.code !== '23505') {
+    console.error('insert', metaLeadId, error);
+    // Desfaz a marca para a próxima varredura tentar de novo.
+    await supabase.from('crm_meta_leads_vistos').delete().eq('meta_lead_id', metaLeadId);
+  }
   return !error;
 }
 
@@ -202,7 +216,7 @@ async function varrerFormularios(supabase: any) {
   // Tira da lista o que já entrou — sem isso cada minuto geraria uma violação de
   // unicidade por lead da janela no log do Postgres.
   const { data: existentes } = await supabase
-    .from('crm_leads').select('meta_lead_id')
+    .from('crm_meta_leads_vistos').select('meta_lead_id')
     .in('meta_lead_id', recentes.map((x: any) => String(x.lead.id)));
   const jaTem = new Set((existentes || []).map((x: any) => x.meta_lead_id));
   const pendentes = recentes.filter((x: any) => !jaTem.has(String(x.lead.id)));
