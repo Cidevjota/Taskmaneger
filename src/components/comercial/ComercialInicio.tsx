@@ -1,22 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Users, FileText, Bookmark, BadgeCheck, Undo2, Plus } from 'lucide-react';
-import { Project, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeVenda } from '../../types';
+import { Users, FileText, Bookmark, BadgeCheck, Undo2, Plus, Paperclip, X } from 'lucide-react';
+import { Project, SiengeProjectDisplay, SiengeTabelaVendaUnidade, SiengeTabelaVendaVersao, SiengeVenda, SiengeVendaSituacao } from '../../types';
 import { SITUACAO_LABELS } from '../../lib/siengeVendasTabela';
 import { fetchCrmLeads } from '../../lib/crmApi';
 import {
   COMERCIAL_TRANSICOES, ComercialMovimento, ComercialMovimentoTipo,
-  fetchComercialMovimentos, registrarMovimentoComercial,
+  criarProposta, fetchComercialMovimentos, fetchComercialPropostas, registrarMovimentoComercial,
 } from '../../lib/comercialApi';
+import PropostasKanban from './PropostasKanban';
 import { Campo, CrmButton, inputCls, selectCls } from '../crm/CrmShared';
 
-export type ComercialTab = 'inicio' | 'vendas' | 'vendas_dashboard';
+export type ComercialTab = 'inicio' | 'vendas' | 'vendas_dashboard' | 'historico';
 
 const ABAS: { id: ComercialTab; label: string }[] = [
   { id: 'inicio',           label: 'Início' },
   { id: 'vendas',           label: 'Tabela de Vendas' },
   { id: 'vendas_dashboard', label: 'Dashboard' },
+  { id: 'historico',        label: 'Histórico' },
 ];
 
 export function ComercialTabBar({ tab, onChange }: { tab: ComercialTab; onChange: (tab: ComercialTab) => void }) {
@@ -37,11 +39,17 @@ export function ComercialTabBar({ tab, onChange }: { tab: ComercialTab; onChange
   );
 }
 
-const TIPOS: { id: ComercialMovimentoTipo; label: string; feito: string; ativo: string; chip: string }[] = [
+type FormTipo = ComercialMovimentoTipo | 'proposta';
+
+const TIPOS: { id: FormTipo; label: string; feito: string; ativo: string; chip: string }[] = [
   { id: 'venda',    label: 'Venda',    feito: 'Venda lançada',    ativo: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40', chip: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25' },
   { id: 'distrato', label: 'Distrato', feito: 'Distrato lançado', ativo: 'bg-rose-500/15 text-rose-300 border-rose-500/40',          chip: 'text-rose-400 bg-rose-500/10 border-rose-500/25' },
   { id: 'reserva',  label: 'Reserva',  feito: 'Reserva lançada',  ativo: 'bg-amber-500/15 text-amber-300 border-amber-500/40',       chip: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
+  { id: 'proposta', label: 'Proposta', feito: 'Proposta adicionada', ativo: 'bg-violet-500/15 text-violet-300 border-violet-500/40', chip: 'text-violet-400 bg-violet-500/10 border-violet-500/25' },
 ];
+
+// Proposta não muda a situação da unidade; só limita quais unidades aparecem.
+const SITUACOES_PROPOSTA: SiengeVendaSituacao[] = ['disponivel', 'reservado'];
 
 const RESERVA_STATUS_LABELS: Record<string, string> = {
   convertida: 'virou venda',
@@ -86,14 +94,18 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
   const queryClient = useQueryClient();
   const movimentos = useQuery({ queryKey: ['comercialMovimentos'], queryFn: fetchComercialMovimentos, staleTime: 30_000 }).data ?? [];
   const leads = useQuery({ queryKey: ['crmLeads'], queryFn: fetchCrmLeads, staleTime: 30_000 }).data ?? [];
+  const propostas = useQuery({ queryKey: ['comercialPropostas'], queryFn: fetchComercialPropostas, staleTime: 30_000 }).data ?? [];
 
-  const [tipo, setTipo] = useState<ComercialMovimentoTipo>('venda');
+  const [tipo, setTipo] = useState<FormTipo>('venda');
   const [cliente, setCliente] = useState('');
   const [corretor, setCorretor] = useState('');
+  const [imobiliaria, setImobiliaria] = useState('');
   const [projectId, setProjectId] = useState('');
   const [unidadeId, setUnidadeId] = useState('');
   const [data, setData] = useState(hojeIso());
   const [diasParaCair, setDiasParaCair] = useState(7);
+  const [fluxoPagamento, setFluxoPagamento] = useState('');
+  const [arquivos, setArquivos] = useState<File[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
@@ -112,17 +124,24 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
     return projects.filter(p => ids.has(p.id));
   }, [projects, unidadesPrincipais]);
 
-  const transicao = COMERCIAL_TRANSICOES[tipo];
+  const ehProposta = tipo === 'proposta';
+  const transicao = ehProposta ? null : COMERCIAL_TRANSICOES[tipo];
+  const situacoesElegiveis = ehProposta ? SITUACOES_PROPOSTA : transicao!.de;
   const unidadesElegiveis = useMemo(
     () => unidadesPrincipais
-      .filter(u => u.projectId === projectId && transicao.de.includes(u.situacao))
+      .filter(u => u.projectId === projectId && situacoesElegiveis.includes(u.situacao))
       .sort((a, b) => a.unidade.localeCompare(b.unidade, 'pt-BR', { numeric: true })),
-    [unidadesPrincipais, projectId, transicao]
+    [unidadesPrincipais, projectId, situacoesElegiveis]
   );
 
   const corretoresConhecidos = useMemo(
     () => Array.from(new Set(movimentos.map(m => m.corretor))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [movimentos]
+  );
+  const imobiliariasConhecidas = useMemo(
+    () => Array.from(new Set([...movimentos, ...propostas].map(m => m.imobiliaria).filter((v): v is string => !!v)))
+      .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [movimentos, propostas]
   );
   const clientesSugeridos = useMemo(() => Array.from(new Set(leads.map(l => l.nome))).slice(0, 200), [leads]);
 
@@ -139,7 +158,8 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
       { chave: 'leads', titulo: 'Leads', icone: <Users size={13} />, cor: 'text-blue-400',
         total: String(leads.length), sub: `${leads.filter(l => noMesAtual(l.entradaEm)).length} neste mês` },
       { chave: 'propostas', titulo: 'Propostas', icone: <FileText size={13} />, cor: 'text-violet-400',
-        total: '—', sub: 'ainda sem origem de dados' },
+        total: String(propostas.filter(p => p.etapa !== 'venda').length),
+        sub: `${propostas.filter(p => p.etapa === 'venda').length} chegaram à venda` },
       { chave: 'reservas', titulo: 'Reservas', icone: <Bookmark size={13} />, cor: 'text-amber-400',
         total: String(unidadesPrincipais.filter(u => u.situacao === 'reservado').length),
         sub: caindo > 0 ? `${caindo} ${caindo === 1 ? 'cai' : 'caem'} em até 3 dias` : 'unidades reservadas agora' },
@@ -148,9 +168,9 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
       { chave: 'distratos', titulo: 'Distratos', icone: <Undo2 size={13} />, cor: 'text-rose-400',
         total: String(distratos.length), sub: `${distratos.filter(v => noMesAtual(v.dataDistrato)).length} neste mês` },
     ];
-  }, [leads, movimentos, vendas, unidadesPrincipais, projetosComTabela]);
+  }, [leads, movimentos, propostas, vendas, unidadesPrincipais, projetosComTabela]);
 
-  const trocarTipo = (novo: ComercialMovimentoTipo) => {
+  const trocarTipo = (novo: FormTipo) => {
     setTipo(novo);
     // A lista de unidades elegíveis muda com o tipo; a escolhida pode não servir mais.
     setUnidadeId('');
@@ -165,7 +185,9 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
     if (tipo === 'distrato' && comprador && !cliente.trim()) setCliente(comprador);
   };
 
-  const podeSalvar = !!cliente.trim() && !!corretor.trim() && !!unidadeId && (tipo === 'reserva' || !!data) && !salvando;
+  const podeSalvar = ehProposta
+    ? !!cliente.trim() && !!corretor.trim() && !!projectId && !!data && !!fluxoPagamento.trim() && !salvando
+    : !!cliente.trim() && !!corretor.trim() && !!unidadeId && (tipo === 'reserva' || !!data) && !salvando;
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,17 +197,38 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
     setErro(null);
     setSucesso(null);
     try {
+      if (ehProposta) {
+        await criarProposta({
+          projectId,
+          unidadeId: unidade?.id ?? null,
+          unidade: unidade?.unidade ?? null,
+          cliente: cliente.trim(),
+          corretor: corretor.trim(),
+          imobiliaria: imobiliaria.trim() || null,
+          fluxoPagamento: fluxoPagamento.trim(),
+          enviadaEm: data,
+          arquivos,
+        });
+        queryClient.invalidateQueries({ queryKey: ['comercialPropostas'] });
+        setSucesso('Proposta adicionada ao kanban em "Propostas realizadas".');
+        setCliente('');
+        setUnidadeId('');
+        setFluxoPagamento('');
+        setArquivos([]);
+        return;
+      }
       await registrarMovimentoComercial({
-        tipo,
+        tipo: tipo as ComercialMovimentoTipo,
         unidadeId,
         cliente: cliente.trim(),
         corretor: corretor.trim(),
+        imobiliaria: imobiliaria.trim() || null,
         data: tipo === 'reserva' ? null : data,
         diasParaCair: tipo === 'reserva' ? diasParaCair : null,
       });
-      ['comercialMovimentos', 'siengeTabelaVendas', 'siengeVendas']
+      ['comercialMovimentos', 'siengeTabelaVendas', 'siengeVendas', 'siengeUnidadeHistorico']
         .forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
-      setSucesso(`${TIPOS.find(t => t.id === tipo)!.feito}: unidade ${unidade?.unidade ?? ''} agora está como ${SITUACAO_LABELS[transicao.para]}.`);
+      setSucesso(`${TIPOS.find(t => t.id === tipo)!.feito}: unidade ${unidade?.unidade ?? ''} agora está como ${SITUACAO_LABELS[transicao!.para]}.`);
       setCliente('');
       setUnidadeId('');
     } catch (err: any) {
@@ -231,7 +274,7 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
             {/* Não usa <Campo>: ele é um <label>, e um clique no rótulo acionaria o primeiro botão. */}
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Adicionar</span>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                 {TIPOS.map(t => (
                   <button
                     key={t.id}
@@ -268,6 +311,16 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
                 </datalist>
               </Campo>
 
+              <Campo label="Imobiliária (opcional)">
+                <input
+                  className={inputCls} value={imobiliaria} onChange={e => setImobiliaria(e.target.value)}
+                  placeholder="Nome da imobiliária" list="comercial-imobiliarias"
+                />
+                <datalist id="comercial-imobiliarias">
+                  {imobiliariasConhecidas.map(n => <option key={n} value={n} />)}
+                </datalist>
+              </Campo>
+
               <Campo label="Empreendimento">
                 <select
                   className={selectCls} value={projectId}
@@ -279,9 +332,9 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
               </Campo>
 
               <Campo
-                label="Unidade"
+                label={ehProposta ? 'Unidade (opcional)' : 'Unidade'}
                 hint={projectId && unidadesElegiveis.length === 0
-                  ? `Nenhuma unidade ${transicao.de.map(s => SITUACAO_LABELS[s].toLowerCase()).join(' ou ')} neste empreendimento.`
+                  ? `Nenhuma unidade ${situacoesElegiveis.map(s => SITUACAO_LABELS[s].toLowerCase()).join(' ou ')} neste empreendimento.`
                   : undefined}
               >
                 <select
@@ -302,6 +355,11 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
                   <input type="date" className={inputCls} value={data} onChange={e => setData(e.target.value)} />
                 </Campo>
               )}
+              {ehProposta && (
+                <Campo label="Data de envio">
+                  <input type="date" className={inputCls} value={data} onChange={e => setData(e.target.value)} />
+                </Campo>
+              )}
               {tipo === 'distrato' && (
                 <Campo label="Data do distrato">
                   <input type="date" className={inputCls} value={data} onChange={e => setData(e.target.value)} />
@@ -318,12 +376,51 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
               )}
             </div>
 
+            {ehProposta && (
+              <div className="space-y-3">
+                <Campo label="Fluxo de pagamento" hint="Descreva como o cliente propõe pagar: entrada, parcelas, intermediárias, financiamento…">
+                  <textarea
+                    className={`${inputCls} min-h-[96px] resize-y`} value={fluxoPagamento}
+                    onChange={e => setFluxoPagamento(e.target.value)}
+                    placeholder="Ex.: entrada de R$ 50.000 no ato, 36 parcelas de R$ 3.200, intermediárias anuais de R$ 20.000 e saldo no financiamento."
+                  />
+                </Campo>
+
+                {/* Não usa <Campo>: o <label> faria o clique no rótulo abrir o seletor de arquivos. */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Print ou anexo</span>
+                  <label className="inline-flex items-center gap-1.5 self-start text-[11px] px-2 py-1.5 rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 cursor-pointer transition-colors">
+                    <Paperclip size={11} /> Anexar arquivo
+                    <input
+                      type="file" multiple accept="image/*,application/pdf" className="hidden"
+                      onChange={e => {
+                        const novos = Array.from(e.target.files ?? []);
+                        e.target.value = '';
+                        setArquivos(a => [...a, ...novos]);
+                      }}
+                    />
+                  </label>
+                  {arquivos.map((f, i) => (
+                    <div key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 text-[11px] text-zinc-300 bg-[#121214] border border-zinc-900/60 rounded-md px-2 py-1">
+                      <span className="truncate">{f.name}</span>
+                      <button type="button" onClick={() => setArquivos(a => a.filter((_, j) => j !== i))} className="text-zinc-500 hover:text-zinc-200" title="Remover">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                  <span className="text-[10px] text-zinc-600">Imagens ou PDF, até 15 MB cada.</span>
+                </div>
+              </div>
+            )}
+
             {erro && <p className="text-[11px] text-rose-300 bg-rose-500/[0.06] border border-rose-500/20 rounded-md px-2.5 py-1.5">{erro}</p>}
             {sucesso && <p className="text-[11px] text-emerald-300 bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2.5 py-1.5">{sucesso}</p>}
 
             <div className="flex items-center justify-between gap-3 pt-1">
               <span className="text-[10px] text-zinc-500">
-                {transicao.de.map(s => SITUACAO_LABELS[s]).join(' / ')} → <span className="text-zinc-300">{SITUACAO_LABELS[transicao.para]}</span>
+                {transicao
+                  ? <>{transicao.de.map(s => SITUACAO_LABELS[s]).join(' / ')} → <span className="text-zinc-300">{SITUACAO_LABELS[transicao.para]}</span></>
+                  : 'Não altera a situação da unidade.'}
               </span>
               <CrmButton type="submit" variant="primary" disabled={!podeSalvar}>
                 <Plus size={12} /> {salvando ? 'Salvando…' : 'Adicionar'}
@@ -355,7 +452,7 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
                       <span className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border shrink-0 ${t.chip}`}>{t.label}</span>
                     </div>
                     <p className="text-[10px] text-zinc-500 mt-1 truncate">
-                      {m.cliente} · corretor {m.corretor}
+                      {m.cliente} · corretor {m.corretor}{m.imobiliaria ? ` (${m.imobiliaria})` : ''}
                       {detalheMovimento(m) && <> · {detalheMovimento(m)}</>}
                     </p>
                   </div>
@@ -365,6 +462,8 @@ export default function ComercialInicio({ projects, projectDisplays, unidades, v
           </div>
         </section>
       </div>
+
+      <PropostasKanban propostas={propostas} projects={projects} />
     </div>
   );
 }

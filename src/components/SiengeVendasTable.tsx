@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { AlertTriangle, Check, ShieldCheck, GripVertical, Trash2, Plus, X, Microscope } from 'lucide-react';
+import { AlertTriangle, Check, ShieldCheck, GripVertical, Trash2, Plus, X, Microscope, History } from 'lucide-react';
+import UnidadeHistoricoModal from './comercial/UnidadeHistoricoModal';
 import { SiengeCalculoRegra, SiengeTabelaVendaColuna, SiengeTabelaVendaUnidade, SiengeValidacao, SiengeVendaSituacao } from '../types';
 import { ColunaOuRegra, SITUACAO_LABELS, calcRegraValor, calcValidacaoParcelas, calcValidacaoValorUnidade, formatBrNumber, formatCurrencyInput, isDiferencaOk, mergeColunasRegras, parseBrNumber, parseCurrencyInput } from '../lib/siengeVendasTabela';
 
@@ -292,7 +293,7 @@ function DynamicCell({ coluna, text, editavel, casas, onChange, onCommit }: { co
 }
 
 
-function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, validacoesValorUnidade, mostrarValidacao, terceiros, editavel, onSave, onDelete }: {
+function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, validacoesValorUnidade, mostrarValidacao, terceiros, editavel, onSave, onDelete, onHistorico }: {
   item: SiengeTabelaVendaUnidade;
   index: number;
   colunas: SiengeTabelaVendaColuna[];
@@ -305,6 +306,7 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
   editavel: boolean;
   onSave: (item: SiengeTabelaVendaUnidade) => void;
   onDelete: (id: string) => void;
+  onHistorico: (item: SiengeTabelaVendaUnidade) => void;
 }) {
   // Com edição livre ligada o campo é sempre um input ativo (máscara de
   // centavos ao digitar) — 2 casas ali, sempre. Só em modo leitura (edição
@@ -440,6 +442,14 @@ function VendaRow({ item, index, colunas, merged, regras, validacoesParcelas, va
       </td>
       <td className={`${CELL_PAD} ${CELL_TIGHT}`}>
         <div className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={() => onHistorico(item)}
+            title="Histórico de situação da unidade"
+            className="p-1 text-zinc-500 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors"
+          >
+            <History size={12} />
+          </button>
           {editavel && dirty && (
             <button
               type="button"
@@ -622,6 +632,7 @@ function sum(values: number[]): number {
 
 export default function SiengeVendasTable({ projectId, versaoId, unidades, allUnidadeNames, colunas, regras, validacoes, mostrarValidacao, terceiros, editavel, onSave, onDelete, onSaveColuna, onSaveRegra }: SiengeVendasTableProps) {
   const [addingNew, setAddingNew] = useState(false);
+  const [historicoDe, setHistoricoDe] = useState<SiengeTabelaVendaUnidade | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [overSide, setOverSide] = useState<'before' | 'after'>('before');
@@ -765,6 +776,7 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
               editavel={editavel}
               onSave={onSave}
               onDelete={onDelete}
+              onHistorico={setHistoricoDe}
             />
           ))}
           {editavel && (addingNew ? (
@@ -825,6 +837,13 @@ export default function SiengeVendasTable({ projectId, versaoId, unidades, allUn
             ? 'Nenhuma unidade corresponde à busca ou ao filtro de situação.'
             : 'Nenhuma unidade cadastrada para este empreendimento ainda.'}
         </p>
+      )}
+      {historicoDe && (
+        <UnidadeHistoricoModal
+          projectId={historicoDe.projectId}
+          unidade={historicoDe.unidade}
+          onClose={() => setHistoricoDe(null)}
+        />
       )}
     </div>
     </CasasDecimaisContext.Provider>

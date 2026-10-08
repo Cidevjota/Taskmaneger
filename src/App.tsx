@@ -43,6 +43,7 @@ import InboxView from './components/InboxView';
 import ConfirmModal from './components/ConfirmModal';
 import SiengeView from './components/SiengeView';
 import ComercialInicio, { ComercialTabBar, ComercialTab } from './components/comercial/ComercialInicio';
+import ComercialHistorico from './components/comercial/ComercialHistorico';
 import DashboardView from './components/DashboardView';
 import HomeView from './components/HomeView';
 
@@ -574,6 +575,8 @@ export default function App() {
         else if (table === 'sienge_tabela_vendas_revisoes') invalidate('siengeTabelaVendaRevisoes');
         else if (table === 'sienge_vendas') invalidate('siengeVendas');
         else if (table === 'comercial_movimentos') invalidate('comercialMovimentos');
+        else if (table === 'comercial_propostas') invalidate('comercialPropostas');
+        else if (table === 'sienge_unidade_historico') invalidate('siengeUnidadeHistorico');
         else if (table === 'sienge_orcamento_config') invalidate('siengeOrcamentoConfig');
         else if (table === 'sienge_calculo_regras') invalidate('siengeCalculoRegras');
         else if (table === 'sienge_validacoes') invalidate('siengeValidacoes');
@@ -1598,14 +1601,20 @@ export default function App() {
             </div>
           )}
 
+          {activeView === 'comercial' && comercialTab === 'historico' && (
+            <div className="flex-1 min-h-0">
+              <ComercialHistorico projects={projects} />
+            </div>
+          )}
+
           {/* Finanças e as abas Tabela de Vendas / Dashboard do Comercial são a
               mesma instância: no Comercial ela fica travada na aba escolhida e
               sem barra de abas própria. Compartilhar o componente evita duplicar
               toda a fiação de handlers abaixo. */}
-          {(activeView === 'sienge' || (activeView === 'comercial' && comercialTab !== 'inicio')) && (
+          {(activeView === 'sienge' || (activeView === 'comercial' && (comercialTab === 'vendas' || comercialTab === 'vendas_dashboard'))) && (
             <div className="flex-1 min-h-0">
             <SiengeView
-              forcedTab={activeView === 'comercial' && comercialTab !== 'inicio' ? comercialTab : undefined}
+              forcedTab={activeView === 'comercial' && (comercialTab === 'vendas' || comercialTab === 'vendas_dashboard') ? comercialTab : undefined}
               titles={siengeTitles}
               statusHistory={siengeTitleStatusHistory}
               lotes={siengeLotes}

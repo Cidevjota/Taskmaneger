@@ -3,6 +3,7 @@
 // mesmo passo em que grava o lançamento.
 import { supabase } from './supabase';
 import { SiengeVendaSituacao } from '../types';
+import { UPLOAD_LIMITS, sanitizeFileName, uploadToStorage } from './storage';
 
 export type ComercialMovimentoTipo = 'venda' | 'distrato' | 'reserva';
 export type ComercialReservaStatus = 'ativa' | 'convertida' | 'expirada' | 'cancelada';
@@ -15,6 +16,7 @@ export interface ComercialMovimento {
   unidade: string;
   cliente: string;
   corretor: string;
+  imobiliaria: string | null;
   dataAssinatura: string | null;
   dataDistrato: string | null;
   diasParaCair: number | null;
@@ -42,6 +44,7 @@ function toMovimento(r: any): ComercialMovimento {
     unidade: r.unidade,
     cliente: r.cliente,
     corretor: r.corretor,
+    imobiliaria: r.imobiliaria ?? null,
     dataAssinatura: r.data_assinatura ?? null,
     dataDistrato: r.data_distrato ?? null,
     diasParaCair: r.dias_para_cair ?? null,
@@ -67,6 +70,7 @@ export async function registrarMovimentoComercial(params: {
   unidadeId: string;
   cliente: string;
   corretor: string;
+  imobiliaria?: string | null;
   /** yyyy-mm-dd — assinatura do contrato (venda) ou data do distrato. */
   data?: string | null;
   diasParaCair?: number | null;
@@ -78,7 +82,169 @@ export async function registrarMovimentoComercial(params: {
     p_corretor: params.corretor,
     p_data: params.data ?? null,
     p_dias_para_cair: params.diasParaCair ?? null,
+    p_imobiliaria: params.imobiliaria ?? null,
   });
   if (error) throw error;
   return String(data);
+}
+
+// ─── Propostas ────────────────────────────────────────────────────────────
+// Acompanhamento da negociação. Não mexe na situação da unidade: é CRUD simples.
+
+export type PropostaEtapa = 'realizada' | 'em_analise' | 'contra_proposta' | 'analise_final' | 'venda';
+
+export const PROPOSTA_ETAPAS: { id: PropostaEtapa; label: string; dot: string; accentBg: string; accentBorder: string }[] = [
+  { id: 'realizada',       label: 'Propostas realizadas', dot: 'bg-violet-400',  accentBg: 'bg-violet-500/[0.04]',  accentBorder: 'border-violet-500/30' },
+  { id: 'em_analise',      label: 'Propostas em análise', dot: 'bg-blue-400',    accentBg: 'bg-blue-500/[0.04]',    accentBorder: 'border-blue-500/30' },
+  { id: 'contra_proposta', label: 'Contra proposta',      dot: 'bg-amber-400',   accentBg: 'bg-amber-500/[0.04]',   accentBorder: 'border-amber-500/30' },
+  { id: 'analise_final',   label: 'Análise final',        dot: 'bg-orange-400',  accentBg: 'bg-orange-500/[0.04]',  accentBorder: 'border-orange-500/30' },
+  { id: 'venda',           label: 'Venda',                dot: 'bg-emerald-400', accentBg: 'bg-emerald-500/[0.04]', accentBorder: 'border-emerald-500/30' },
+];
+
+export interface PropostaAnexo {
+  name: string;
+  url: string;
+}
+
+export interface ComercialProposta {
+  id: string;
+  projectId: string;
+  unidadeId: string | null;
+  unidade: string | null;
+  cliente: string;
+  corretor: string;
+  imobiliaria: string | null;
+  fluxoPagamento: string;
+  anexos: PropostaAnexo[];
+  etapa: PropostaEtapa;
+  /** yyyy-mm-dd */
+  enviadaEm: string;
+  createdAt: string;
+}
+
+function toProposta(r: any): ComercialProposta {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    unidadeId: r.unidade_id ?? null,
+    unidade: r.unidade ?? null,
+    cliente: r.cliente,
+    corretor: r.corretor,
+    imobiliaria: r.imobiliaria ?? null,
+    fluxoPagamento: r.fluxo_pagamento ?? '',
+    anexos: Array.isArray(r.anexos) ? r.anexos : [],
+    etapa: r.etapa,
+    enviadaEm: r.enviada_em,
+    createdAt: r.created_at,
+  };
+}
+
+export async function fetchComercialPropostas(): Promise<ComercialProposta[]> {
+  const { data, error } = await supabase
+    .from('comercial_propostas')
+    .select('*')
+    .order('enviada_em', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(toProposta);
+}
+
+export async function criarProposta(params: {
+  projectId: string;
+  unidadeId?: string | null;
+  unidade?: string | null;
+  cliente: string;
+  corretor: string;
+  imobiliaria?: string | null;
+  fluxoPagamento: string;
+  /** yyyy-mm-dd */
+  enviadaEm: string;
+  arquivos: File[];
+}): Promise<void> {
+  // O id nasce no cliente para os anexos já irem para a pasta da própria proposta.
+  const id = crypto.randomUUID();
+  const anexos: PropostaAnexo[] = [];
+  for (const file of params.arquivos) {
+    const url = await uploadToStorage(
+      'attachments',
+      `comercial/propostas/${id}/${Date.now()}-${sanitizeFileName(file.name)}`,
+      file,
+      UPLOAD_LIMITS.task,
+    );
+    anexos.push({ name: file.name, url });
+  }
+
+  const { error } = await supabase.from('comercial_propostas').insert({
+    id,
+    project_id: params.projectId,
+    unidade_id: params.unidadeId ?? null,
+    unidade: params.unidade ?? null,
+    cliente: params.cliente,
+    corretor: params.corretor,
+    imobiliaria: params.imobiliaria ?? null,
+    fluxo_pagamento: params.fluxoPagamento,
+    anexos,
+    enviada_em: params.enviadaEm,
+  });
+  if (error) throw error;
+}
+
+export async function moverProposta(id: string, etapa: PropostaEtapa): Promise<void> {
+  const { error } = await supabase.from('comercial_propostas').update({ etapa }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function excluirProposta(id: string): Promise<void> {
+  const { error } = await supabase.from('comercial_propostas').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Histórico de situação das unidades ───────────────────────────────────
+// Gravado por trigger a cada mudança de situação na Tabela de Vendas; o client
+// só lê.
+
+export type UnidadeHistoricoOrigem = 'comercial' | 'tabela' | 'prazo' | 'importado';
+
+export const HISTORICO_ORIGEM_LABELS: Record<UnidadeHistoricoOrigem, string> = {
+  comercial: 'Lançamento no Comercial',
+  tabela: 'Alterar Situação (Tabela de Vendas)',
+  prazo: 'Reserva caiu por prazo',
+  importado: 'Registro anterior ao histórico',
+};
+
+export interface UnidadeHistorico {
+  id: string;
+  projectId: string;
+  unidade: string;
+  situacaoAnterior: SiengeVendaSituacao | null;
+  situacaoNova: SiengeVendaSituacao;
+  motivo: string | null;
+  cliente: string | null;
+  corretor: string | null;
+  imobiliaria: string | null;
+  origem: UnidadeHistoricoOrigem;
+  alteradoPorNome: string | null;
+  createdAt: string;
+}
+
+export async function fetchUnidadeHistorico(): Promise<UnidadeHistorico[]> {
+  const { data, error } = await supabase
+    .from('sienge_unidade_historico')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    projectId: r.project_id,
+    unidade: r.unidade,
+    situacaoAnterior: r.situacao_anterior ?? null,
+    situacaoNova: r.situacao_nova,
+    motivo: r.motivo ?? null,
+    cliente: r.cliente ?? null,
+    corretor: r.corretor ?? null,
+    imobiliaria: r.imobiliaria ?? null,
+    origem: r.origem,
+    alteradoPorNome: r.alterado_por_nome ?? null,
+    createdAt: r.created_at,
+  }));
 }
