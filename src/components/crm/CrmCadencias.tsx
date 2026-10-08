@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, GripVertical, Save, Power, Info } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Save, Power, Info, MessageCircle, Phone, Pencil } from 'lucide-react';
 import {
-  CrmCadencia, CrmCadenciaEtapa, CrmIntervaloUnidade,
-  CRM_DIAS_SEMANA, CRM_ETAPAS, CRM_TIPOS_ACAO,
+  CrmCadencia, CrmCadenciaEtapa, CrmIntervaloUnidade, CrmPeriodo,
+  CRM_DIAS_SEMANA, CRM_PERIODOS, CRM_ETAPAS, CRM_TIPOS_ACAO,
 } from '../../lib/crmTypes';
 import { Campo, CrmButton, inputCls, selectCls } from './CrmShared';
 
@@ -26,20 +26,13 @@ const GATILHOS_SITUACAO = [
   { id: 'manual',           label: 'Manual' },
 ];
 
-/** Minutos totais de uma etapa, para somar e descobrir em que dia da cadência ela cai. */
-const paraMinutos = (etapa: CrmCadenciaEtapa) =>
-  etapa.intervaloValor * (etapa.intervaloUnidade === 'horas' ? 60 : 1);
-
-/** Agrupa as etapas em blocos D0, D1, D2… somando os intervalos a partir do disparo da cadência. */
+/** Agrupa as etapas em blocos D0, D1, D2… pelo dia gravado em cada uma. */
 function agruparPorDia(etapas: CrmCadenciaEtapa[]) {
-  let acumuladoMin = 0;
   const grupos: { dia: number; etapas: CrmCadenciaEtapa[] }[] = [];
   for (const etapa of etapas) {
-    acumuladoMin += paraMinutos(etapa);
-    const dia = Math.floor(acumuladoMin / 1440);
     const grupoAtual = grupos[grupos.length - 1];
-    if (grupoAtual && grupoAtual.dia === dia) grupoAtual.etapas.push(etapa);
-    else grupos.push({ dia, etapas: [etapa] });
+    if (grupoAtual && grupoAtual.dia === etapa.dia) grupoAtual.etapas.push(etapa);
+    else grupos.push({ dia: etapa.dia, etapas: [etapa] });
   }
   return grupos;
 }
@@ -56,7 +49,7 @@ export default function CrmCadencias({
   const selecionada = cadencias.find(c => c.id === selecionadaId) ?? cadencias[0] ?? null;
 
   const minhasEtapas = useMemo(
-    () => etapas.filter(e => e.cadenciaId === selecionada?.id).sort((a, b) => a.ordem - b.ordem),
+    () => etapas.filter(e => e.cadenciaId === selecionada?.id).sort((a, b) => a.dia - b.dia || a.ordem - b.ordem),
     [etapas, selecionada?.id]
   );
 
@@ -121,6 +114,53 @@ export default function CrmCadencias({
   );
 }
 
+const TIPOS_RAPIDOS = [
+  { tipo: 'WhatsApp', Icone: MessageCircle },
+  { tipo: 'Ligação',  Icone: Phone },
+];
+
+/** Escolha do tipo por ícone (WhatsApp / Ligação) e, no lápis, campo livre para digitar outro. */
+function TipoAcao({ tipo, disabled, onChange }: { tipo: string; disabled: boolean; onChange: (t: string) => void }) {
+  const personalizado = !TIPOS_RAPIDOS.some(t => t.tipo === tipo);
+  const [digitando, setDigitando] = useState(false);
+  const mostrarCampo = digitando || personalizado;
+
+  const btn = (ativo: boolean) =>
+    `p-1.5 rounded border transition-colors disabled:opacity-50 ${
+      ativo
+        ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+        : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+    }`;
+
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      {TIPOS_RAPIDOS.map(({ tipo: t, Icone }) => (
+        <button key={t} type="button" disabled={disabled} title={t}
+          onClick={() => { setDigitando(false); onChange(t); }}
+          className={btn(tipo === t)}>
+          <Icone size={13} />
+        </button>
+      ))}
+      <button type="button" disabled={disabled} title="Digitar outro tipo"
+        onClick={() => setDigitando(d => !d)}
+        className={btn(mostrarCampo)}>
+        <Pencil size={13} />
+      </button>
+      {mostrarCampo && (
+        <input
+          list="crm-tipos-acao-cadencia"
+          defaultValue={personalizado ? tipo : ''}
+          autoFocus={digitando}
+          disabled={disabled}
+          placeholder="Tipo"
+          onBlur={e => e.target.value.trim() && onChange(e.target.value.trim())}
+          className={`${inputCls} w-32`}
+        />
+      )}
+    </div>
+  );
+}
+
 function CadenciaEditor({
   cadencia, etapas, podeEditar, onSalvar, onExcluir, onSalvarEtapa, onExcluirEtapa,
 }: {
@@ -143,6 +183,40 @@ function CadenciaEditor({
     setSalvando(true);
     try { await onSalvar(form); } finally { setSalvando(false); }
   };
+
+  /** Insere um item logo após `etapa`, empurrando as seguintes uma posição para baixo. */
+  const adicionarApos = async (etapa: CrmCadenciaEtapa) => {
+    const seguintes = etapas.filter(e => e.ordem > etapa.ordem).sort((a, b) => b.ordem - a.ordem);
+    for (const e of seguintes) await onSalvarEtapa({ ...e, ordem: e.ordem + 1 });
+    await onSalvarEtapa({
+      cadenciaId: cadencia.id,
+      tipo: CRM_TIPOS_ACAO[1] ?? CRM_TIPOS_ACAO[0],
+      ordem: etapa.ordem + 1,
+      dia: etapa.dia,
+      periodo: etapa.periodo ?? null,
+      intervaloValor: etapa.dia === 0 ? 30 : 0,
+      intervaloUnidade: 'minutos',
+    });
+  };
+
+  const ultimoDia = etapas.reduce((m, e) => Math.max(m, e.dia), 0);
+  const ultimaOrdem = etapas.reduce((m, e) => Math.max(m, e.ordem), 0);
+
+  const novaEtapaD0 = async () => {
+    // D0 vem antes dos demais dias: abre espaço no fim do bloco D0.
+    const fimD0 = etapas.filter(e => e.dia === 0).reduce((m, e) => Math.max(m, e.ordem), 0);
+    const seguintes = etapas.filter(e => e.ordem > fimD0).sort((a, b) => b.ordem - a.ordem);
+    for (const e of seguintes) await onSalvarEtapa({ ...e, ordem: e.ordem + 1 });
+    await onSalvarEtapa({
+      cadenciaId: cadencia.id, tipo: CRM_TIPOS_ACAO[0], ordem: fimD0 + 1,
+      dia: 0, intervaloValor: 5, intervaloUnidade: 'minutos',
+    });
+  };
+
+  const novoDia = () => onSalvarEtapa({
+    cadenciaId: cadencia.id, tipo: CRM_TIPOS_ACAO[0], ordem: ultimaOrdem + 1,
+    dia: ultimoDia + 1, periodo: 'manha', intervaloValor: 0, intervaloUnidade: 'minutos',
+  });
 
   const alternarDia = (dia: number) =>
     set({
@@ -233,15 +307,14 @@ function CadenciaEditor({
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Etapas da cadência</h4>
           {podeEditar && (
-            <CrmButton size="xs" onClick={() => onSalvarEtapa({
-              cadenciaId: cadencia.id,
-              tipo: CRM_TIPOS_ACAO[0],
-              ordem: etapas.length + 1,
-              intervaloValor: 24,
-              intervaloUnidade: 'horas',
-            })}>
-              <Plus size={11} /> Nova etapa
-            </CrmButton>
+            <div className="flex items-center gap-1.5">
+              <CrmButton size="xs" onClick={novaEtapaD0}>
+                <Plus size={11} /> Etapa em D0
+              </CrmButton>
+              <CrmButton size="xs" onClick={novoDia}>
+                <Plus size={11} /> Novo dia (D{ultimoDia + 1})
+              </CrmButton>
+            </div>
           )}
         </div>
 
@@ -266,31 +339,43 @@ function CadenciaEditor({
                       <GripVertical size={12} className="text-zinc-700 shrink-0" />
                       <span className="text-[10px] font-mono text-zinc-600 w-5 shrink-0">{inicioIndex + i + 1}</span>
 
-                      <input
-                        list="crm-tipos-acao-cadencia"
-                        defaultValue={etapa.tipo}
+                      <TipoAcao
+                        tipo={etapa.tipo}
                         disabled={!podeEditar}
-                        onBlur={e => e.target.value !== etapa.tipo && onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, tipo: e.target.value })}
-                        className={`${inputCls} w-40`}
+                        onChange={tipo => tipo !== etapa.tipo && onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, tipo })}
                       />
-                      <label className="flex items-center gap-1.5 text-[10px] text-zinc-500 shrink-0">
-                        após
-                        <input
-                          type="number" min={0} defaultValue={etapa.intervaloValor} disabled={!podeEditar}
-                          onBlur={e => Number(e.target.value) !== etapa.intervaloValor &&
-                            onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, intervaloValor: Math.max(0, Number(e.target.value) || 0) })}
-                          className={`${inputCls} w-14`}
-                        />
-                        <select
-                          defaultValue={etapa.intervaloUnidade}
-                          disabled={!podeEditar}
-                          onChange={e => onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, intervaloUnidade: e.target.value as CrmIntervaloUnidade })}
-                          className={`${selectCls} !w-24 shrink-0`}
-                        >
-                          <option value="minutos">minutos</option>
-                          <option value="horas">horas</option>
-                        </select>
-                      </label>
+                      {etapa.dia === 0 ? (
+                        <label className="flex items-center gap-1.5 text-[10px] text-zinc-500 shrink-0">
+                          após
+                          <input
+                            type="number" min={0} defaultValue={etapa.intervaloValor} disabled={!podeEditar}
+                            onBlur={e => Number(e.target.value) !== etapa.intervaloValor &&
+                              onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, intervaloValor: Math.max(0, Number(e.target.value) || 0) })}
+                            className={`${inputCls} w-14`}
+                          />
+                          <select
+                            defaultValue={etapa.intervaloUnidade}
+                            disabled={!podeEditar}
+                            onChange={e => onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, intervaloUnidade: e.target.value as CrmIntervaloUnidade })}
+                            className={`${selectCls} !w-24 shrink-0`}
+                          >
+                            <option value="minutos">minutos</option>
+                            <option value="horas">horas</option>
+                          </select>
+                        </label>
+                      ) : (
+                        <label className="flex items-center gap-1.5 text-[10px] text-zinc-500 shrink-0">
+                          de
+                          <select
+                            value={etapa.periodo ?? 'manha'}
+                            disabled={!podeEditar}
+                            onChange={e => onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, periodo: e.target.value as CrmPeriodo })}
+                            className={`${selectCls} !w-28 shrink-0`}
+                          >
+                            {CRM_PERIODOS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                          </select>
+                        </label>
+                      )}
                       <input
                         defaultValue={etapa.mensagem || ''}
                         disabled={!podeEditar}
@@ -299,6 +384,12 @@ function CadenciaEditor({
                           onSalvarEtapa({ ...etapa, cadenciaId: etapa.cadenciaId, mensagem: e.target.value || null })}
                         className={`${inputCls} flex-1 min-w-0`}
                       />
+                      {podeEditar && (
+                        <button onClick={() => adicionarApos(etapa)} title="Adicionar item após este"
+                          className="p-1 rounded text-zinc-600 hover:text-blue-300 transition-colors shrink-0">
+                          <Plus size={12} />
+                        </button>
+                      )}
                       {podeEditar && (
                         <button onClick={() => onExcluirEtapa(etapa.id)}
                           className="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors shrink-0">

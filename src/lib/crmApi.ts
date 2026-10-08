@@ -77,6 +77,7 @@ const toCadencia = (r: any): CrmCadencia => ({
 
 const toCadenciaEtapa = (r: any): CrmCadenciaEtapa => ({
   id: r.id, cadenciaId: r.cadencia_id, ordem: r.ordem, tipo: r.tipo,
+  dia: r.dia ?? 0, periodo: r.periodo,
   intervaloValor: r.intervalo_valor, intervaloUnidade: r.intervalo_unidade,
   mensagem: r.mensagem, ativo: r.ativo,
 });
@@ -348,6 +349,8 @@ export async function saveCrmCadenciaEtapa(e: Partial<CrmCadenciaEtapa> & { cade
     cadencia_id: e.cadenciaId,
     ordem: e.ordem ?? 0,
     tipo: e.tipo,
+    dia: e.dia ?? 0,
+    periodo: e.periodo ?? null,
     intervalo_valor: e.intervaloValor ?? 24,
     intervalo_unidade: e.intervaloUnidade ?? 'horas',
     mensagem: e.mensagem ?? null,

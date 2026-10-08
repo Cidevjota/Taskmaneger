@@ -189,10 +189,22 @@ export interface CrmNextAction {
 /** Unidade do intervalo de uma etapa da cadência — minutos para ações rápidas, horas para o resto. */
 export type CrmIntervaloUnidade = 'minutos' | 'horas';
 
+/** Período do dia em que uma etapa de D1 em diante é executada. */
+export type CrmPeriodo = 'manha' | 'tarde' | 'noite';
+
+export const CRM_PERIODOS: { id: CrmPeriodo; label: string }[] = [
+  { id: 'manha', label: 'Manhã' },
+  { id: 'tarde', label: 'Tarde' },
+  { id: 'noite', label: 'Noite' },
+];
+
 export interface CrmCadenciaEtapa {
   id: string;
   cadenciaId: string;
   ordem: number;
+  /** 0 = D0 (usa intervalo); 1+ = dia seguinte (usa período). */
+  dia: number;
+  periodo?: CrmPeriodo | null;
   tipo: string;
   intervaloValor: number;
   intervaloUnidade: CrmIntervaloUnidade;
