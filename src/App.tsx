@@ -42,6 +42,7 @@ import SettingsView from './components/SettingsView';
 import InboxView from './components/InboxView';
 import ConfirmModal from './components/ConfirmModal';
 import SiengeView from './components/SiengeView';
+import ComercialInicio, { ComercialTabBar, ComercialTab } from './components/comercial/ComercialInicio';
 import DashboardView from './components/DashboardView';
 import HomeView from './components/HomeView';
 
@@ -101,6 +102,7 @@ export default function App() {
   // Navigation Routing states
   const [activeView, setActiveView] = useState<ViewType>('home');
   const [activeTaskViewType, setActiveTaskViewType] = useState<'board' | 'list'>('board');
+  const [comercialTab, setComercialTab] = useState<ComercialTab>('inicio');
   // A sidebar expandida come 280px — 20% de um notebook de 1366px, e é o que
   // sobra de largura para o kanban. Abaixo de 1280px ela nasce recolhida e volta
   // sozinha quando a janela cresce. O listener reage só à TRANSIÇÃO do limiar
@@ -571,6 +573,7 @@ export default function App() {
         else if (table === 'sienge_tabela_vendas_colunas') invalidate('siengeTabelaVendaColunas');
         else if (table === 'sienge_tabela_vendas_revisoes') invalidate('siengeTabelaVendaRevisoes');
         else if (table === 'sienge_vendas') invalidate('siengeVendas');
+        else if (table === 'comercial_movimentos') invalidate('comercialMovimentos');
         else if (table === 'sienge_orcamento_config') invalidate('siengeOrcamentoConfig');
         else if (table === 'sienge_calculo_regras') invalidate('siengeCalculoRegras');
         else if (table === 'sienge_validacoes') invalidate('siengeValidacoes');
@@ -1356,10 +1359,8 @@ export default function App() {
         return 'CRM';
       case 'settings':
         return 'Ajustes';
-      case 'sienge_vendas':
-        return 'Tabela de Vendas';
-      case 'sienge_vendas_dashboard':
-        return 'Dashboard de Vendas';
+      case 'comercial':
+        return 'Comercial';
       default:
         return 'Workspace';
     }
@@ -1581,12 +1582,30 @@ export default function App() {
             />
           )}
 
-          {/* Finanças e Tabela de Vendas são a mesma instância: a segunda é a
-              primeira travada na aba de vendas e sem barra de abas. Compartilhar
-              o componente evita duplicar toda a fiação de handlers abaixo. */}
-          {(activeView === 'sienge' || activeView === 'sienge_vendas' || activeView === 'sienge_vendas_dashboard') && (
+          {activeView === 'comercial' && (
+            <ComercialTabBar tab={comercialTab} onChange={setComercialTab} />
+          )}
+
+          {activeView === 'comercial' && comercialTab === 'inicio' && (
+            <div className="flex-1 min-h-0">
+              <ComercialInicio
+                projects={projects}
+                projectDisplays={siengeProjectDisplays}
+                unidades={siengeTabelaVendas}
+                versoes={siengeTabelaVendaVersoes}
+                vendas={siengeVendas}
+              />
+            </div>
+          )}
+
+          {/* Finanças e as abas Tabela de Vendas / Dashboard do Comercial são a
+              mesma instância: no Comercial ela fica travada na aba escolhida e
+              sem barra de abas própria. Compartilhar o componente evita duplicar
+              toda a fiação de handlers abaixo. */}
+          {(activeView === 'sienge' || (activeView === 'comercial' && comercialTab !== 'inicio')) && (
+            <div className="flex-1 min-h-0">
             <SiengeView
-              forcedTab={activeView === 'sienge_vendas' ? 'vendas' : activeView === 'sienge_vendas_dashboard' ? 'vendas_dashboard' : undefined}
+              forcedTab={activeView === 'comercial' && comercialTab !== 'inicio' ? comercialTab : undefined}
               titles={siengeTitles}
               statusHistory={siengeTitleStatusHistory}
               lotes={siengeLotes}
@@ -1862,6 +1881,7 @@ export default function App() {
                 await deleteSiengeSubcategoria(id);
               }}
             />
+            </div>
           )}
 
           {activeView === 'dashboard' && (

@@ -29,8 +29,7 @@ import {
   Search,
   Receipt,
   BarChart2,
-  Table2,
-  LayoutDashboard,
+  Handshake,
   Home
 } from 'lucide-react';
 import { ViewType, Project, Task } from '../types';
@@ -482,38 +481,22 @@ export default function Sidebar({
                 {!collapsed && <span className="relative z-10">Finanças</span>}
               </button>
 
-              {/* Mesma regra de acesso de quando era aba dentro de Finanças. */}
+              {/* Tabela de Vendas e Dashboard viraram abas daqui; a regra de
+                  acesso é a mesma de quando eram itens próprios do menu. */}
               {canAccessMetasDashboard(currentUser) && (
                 <button
-                  onClick={() => setActiveView('sienge_vendas')}
+                  onClick={() => setActiveView('comercial')}
                   className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    activeView === 'sienge_vendas'
+                    activeView === 'comercial'
                       ? 'text-blue-300'
                       : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
                   }`}
                 >
-                  {activeView === 'sienge_vendas' && (
+                  {activeView === 'comercial' && (
                     <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-blue-500/10 border border-blue-500/20 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
                   )}
-                  <Table2 size={14} className={`relative z-10 ${activeView === 'sienge_vendas' ? 'text-blue-400' : 'text-zinc-550'}`} />
-                  {!collapsed && <span className="relative z-10">Tabela de Vendas</span>}
-                </button>
-              )}
-
-              {canAccessMetasDashboard(currentUser) && (
-                <button
-                  onClick={() => setActiveView('sienge_vendas_dashboard')}
-                  className={`relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    activeView === 'sienge_vendas_dashboard'
-                      ? 'text-blue-300'
-                      : 'hover:bg-zinc-900/55 hover:text-zinc-200 border border-transparent'
-                  }`}
-                >
-                  {activeView === 'sienge_vendas_dashboard' && (
-                    <motion.div layoutId="sidebar-active-pill" className="absolute inset-0 bg-blue-500/10 border border-blue-500/20 rounded-md" transition={{ duration: 0.18, ease: 'easeOut' }} />
-                  )}
-                  <LayoutDashboard size={14} className={`relative z-10 ${activeView === 'sienge_vendas_dashboard' ? 'text-blue-400' : 'text-zinc-550'}`} />
-                  {!collapsed && <span className="relative z-10">Dashboard</span>}
+                  <Handshake size={14} className={`relative z-10 ${activeView === 'comercial' ? 'text-blue-400' : 'text-zinc-550'}`} />
+                  {!collapsed && <span className="relative z-10">Comercial</span>}
                 </button>
               )}
 
